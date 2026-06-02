@@ -2,7 +2,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { state, type ContextMonitorSample } from "../context-control/state.js";
 import type { ContextScope as ContextMonitorScope } from "../context-control/observation.js";
-import { currentScope as deriveCurrentScope, scopedSamples as filterScopedSamples } from "../context-control/scope.js";
+import { currentContextScope, scopedContextSamples } from "../context-control/query.js";
 import { recordContextObservation as appendContextObservation } from "../context-control/store.js";
 import { getToolSchemaSnapshot, recordToolSchemaCurrent } from "../context-control/tool-schemas.js";
 import { getContextIntelligenceReport, recordContextDecision } from "../context-control/report.js";
@@ -27,27 +27,17 @@ function svg(res: http.ServerResponse, body: string): void {
   res.end(body);
 }
 
-function currentScope(): ContextMonitorScope {
-  return deriveCurrentScope(state.samples);
+function scopedSamples(scope: ContextMonitorScope = currentContextScope()): ContextMonitorSample[] {
+  return scopedContextSamples(scope);
 }
-
-function scopedSamples(scope: ContextMonitorScope = currentScope()): ContextMonitorSample[] {
-  return filterScopedSamples(state.samples, { ...scope, mode: scope.mode ?? "strict" });
-}
-
-let activeWebScope: ContextMonitorScope | undefined;
 
 function scopeFromQuery(url: URL): ContextMonitorScope {
-  const hasExplicitScope = url.searchParams.has("cwd") || url.searchParams.has("sessionId") || url.searchParams.has("scopeMode");
-  if (!hasExplicitScope && activeWebScope) return activeWebScope;
-  const fallback = activeWebScope ?? currentScope();
-  const scope = {
+  const fallback = currentContextScope();
+  return {
     cwd: url.searchParams.get("cwd") ?? fallback.cwd,
     sessionId: url.searchParams.get("sessionId") ?? fallback.sessionId,
     mode: url.searchParams.get("scopeMode") === "include-global" ? "include-global" : "strict",
   } satisfies ContextMonitorScope;
-  activeWebScope = scope;
-  return scope;
 }
 
 async function readRequestBody(req: http.IncomingMessage, maxBytes = 64 * 1024): Promise<unknown> {

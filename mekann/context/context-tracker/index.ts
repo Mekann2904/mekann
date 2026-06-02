@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
 import { ensureContextMonitorServer, recordCompaction } from "./server.js";
 import { recordContextObservation } from "../observations.js";
-import type { ContextObservation } from "../context-control/observation.js";
+import type { ContextObservation, MessageBreakdownItem } from "../context-control/observation.js";
 
 // ─── helpers ─────────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@ function openUrl(url: string): void {
   }
 }
 
-function messageBreakdown(messages: unknown, limit = 20): Array<Record<string, unknown>> {
+function messageBreakdown(messages: unknown, limit = 20): MessageBreakdownItem[] {
   if (!Array.isArray(messages)) return [];
   return messages
     .map((message: any, index) => {
@@ -94,23 +94,12 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
 
   function publish(input: ContextObservation, ctx: any): void {
     const usage = ctx?.getContextUsage?.();
-    const base = { cwd: ctx?.cwd, sessionId: ctx?.sessionId };
-    const contextUsage = { contextTokens: usage?.tokens, contextPercent: usage?.percent };
-    switch (input.phase) {
-      case "prompt":
-        return void recordContextObservation({ ...base, phase: input.phase, summary: { ...input.summary, ...contextUsage } });
-      case "context":
-        return void recordContextObservation({ ...base, phase: input.phase, summary: { ...input.summary, ...contextUsage } });
-      case "provider_request":
-        return void recordContextObservation({ ...base, phase: input.phase, summary: { ...input.summary, ...contextUsage } });
-      case "tool_end":
-        return void recordContextObservation({ ...base, phase: input.phase, summary: { ...input.summary, ...contextUsage } });
-      case "cacheable_context":
-        return void recordContextObservation({ ...base, phase: input.phase, summary: { ...input.summary, ...contextUsage } });
-      case "session_start":
-      case "session_compact":
-        return void recordContextObservation({ ...base, phase: input.phase, summary: { ...input.summary, ...contextUsage } });
-    }
+    void recordContextObservation({
+      ...input,
+      cwd: ctx?.cwd,
+      sessionId: ctx?.sessionId,
+      summary: { ...input.summary, contextTokens: usage?.tokens, contextPercent: usage?.percent },
+    });
   }
 
   // ─── lifecycle hooks ─────────────────────────────────────────

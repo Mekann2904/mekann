@@ -1,21 +1,10 @@
-import type { ContextScope as ContextMonitorScope } from "./observation.js";
-import { currentScope as deriveCurrentScope, scopedSamples as filterScopedSamples } from "./scope.js";
-import { state, type ContextMonitorSample } from "./state.js";
+import type { ContextScope as ContextMonitorScope, MessageBreakdownItem } from "./observation.js";
+import { fmtBytes } from "./format.js";
+import { currentContextScope, latestSampleWith, scopedContextSamples } from "./query.js";
+import { state } from "./state.js";
 
-function fmtBytes(n: number): string {
-  if (!Number.isFinite(n) || n < 0) return "—";
-  if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(2)} MB`;
-  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${n} B`;
-}
-
-function currentScope(): ContextMonitorScope {
-  return deriveCurrentScope(state.samples);
-}
-
-function scopedSamples(scope: ContextMonitorScope = currentScope()): ContextMonitorSample[] {
-  return filterScopedSamples(state.samples, { ...scope, mode: scope.mode ?? "strict" });
-}
+const currentScope = currentContextScope;
+const scopedSamples = scopedContextSamples;
 
 // ─── data access ─────────────────────────────────────────────────
 
@@ -107,14 +96,6 @@ interface OptimizationRecommendation {
   reason: string;
 }
 
-function latestSampleWith(key: string, scope: ContextMonitorScope = currentScope()): ContextMonitorSample | undefined {
-  const samples = scopedSamples(scope);
-  for (let i = samples.length - 1; i >= 0; i--) {
-    if (samples[i].summary?.[key] !== undefined) return samples[i];
-  }
-  return undefined;
-}
-
 function contextWindowEstimate(scope: ContextMonitorScope = currentScope()): number | null {
   const tokens = Number(latestVal("contextTokens", scope));
   const percent = Number(latestVal("contextPercent", scope));
@@ -134,9 +115,13 @@ function growthRate(scope: ContextMonitorScope = currentScope()) {
   };
 }
 
+function isMessageBreakdownItem(value: unknown): value is MessageBreakdownItem {
+  return typeof value === "object" && value !== null && Number.isFinite(Number((value as { bytes?: unknown }).bytes));
+}
+
 function topMessageItems(limit = 20, scope: ContextMonitorScope = currentScope()) {
   const sample = latestSampleWith("messageBreakdown", scope);
-  const items = Array.isArray(sample?.summary?.messageBreakdown) ? sample!.summary.messageBreakdown as any[] : [];
+  const items = Array.isArray(sample?.summary?.messageBreakdown) ? sample.summary.messageBreakdown.filter(isMessageBreakdownItem) : [];
   return items.slice(0, limit).map((m, index) => ({
     rank: index + 1,
     type: m.role ?? "message",

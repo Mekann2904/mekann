@@ -12,7 +12,9 @@ export function matchesScope(sample: StoredContextObservation, scope: ContextSco
     if (!cwdMatches) return false;
   }
   if (scope.sessionId !== undefined) {
-    const sessionMatches = sample.sessionId === scope.sessionId || (mode === "include-global" && sample.sessionId === undefined);
+    const projectScoped = sample.cwd !== undefined && sample.cwd === scope.cwd && sample.sessionId === undefined;
+    const globalScoped = mode === "include-global" && sample.cwd === undefined && sample.sessionId === undefined;
+    const sessionMatches = sample.sessionId === scope.sessionId || projectScoped || globalScoped;
     if (!sessionMatches) return false;
   }
   return true;

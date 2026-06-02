@@ -129,4 +129,13 @@ describe("context tool registration observation", () => {
     expect(report.context.payloadBytes).toBe(1000);
     expect(report.health.risk).toBe("low");
   });
+
+  it("includes project-scoped observations in the matching session view", () => {
+    recordContextMonitorSample({ cwd: "/repo/a", phase: "cacheable_context", summary: { prefixHash: "a", prefixChars: 123 } });
+    recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "provider_request", summary: { contextTokens: 1000, contextPercent: 10, payloadBytes: 1000 } });
+
+    const report = getContextIntelligenceReport("timeline", 10, { cwd: "/repo/a", sessionId: "a" }) as any;
+
+    expect(report.timeline.map((sample: any) => sample.phase)).toEqual(["cacheable_context", "provider_request"]);
+  });
 });

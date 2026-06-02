@@ -1,23 +1,14 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { CacheFriendlySummary, ActualProviderSummary } from "../../../core/cache-friendly-prompt/reportTypes.js";
-import { state, type ContextMonitorSample } from "../state.js";
+import { state } from "../state.js";
 import type { ContextScope as ContextMonitorScope } from "../observation.js";
-import { currentScope as deriveCurrentScope, scopedSamples as filterScopedSamples } from "../scope.js";
+import { fmtBytes } from "../format.js";
+import { currentContextScope, latestCacheableContextSample, scopedContextSamples } from "../query.js";
 import { getToolSchemaSnapshot } from "../tool-schemas.js";
 import { computeAlerts, latestVal, numLatest, numPrev, payloadBreakdown, toolOutputBreakdown } from "../report.js";
 
 // ─── helpers ─────────────────────────────────────────────────────
-
-
-
-
-function fmtBytes(n: number): string {
-  if (!Number.isFinite(n) || n < 0) return "—";
-  if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(2)} MB`;
-  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${n} B`;
-}
 
 function fmtDelta(prev: number | undefined, cur: number): string {
   if (prev === undefined || !Number.isFinite(prev)) return "";
@@ -37,13 +28,8 @@ function esc(v: unknown): string {
   return String(v ?? "—").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]!));
 }
 
-function currentScope(): ContextMonitorScope {
-  return deriveCurrentScope(state.samples);
-}
-
-function scopedSamples(scope: ContextMonitorScope = currentScope()): ContextMonitorSample[] {
-  return filterScopedSamples(state.samples, { ...scope, mode: scope.mode ?? "strict" });
-}
+const currentScope = currentContextScope;
+const scopedSamples = scopedContextSamples;
 
 // ─── HTML dashboard ──────────────────────────────────────────────
 
@@ -68,14 +54,6 @@ function toolSchemaTable(): string {
   return `<table><thead><tr><th>Tool</th><th>Schema bytes</th><th></th></tr></thead><tbody>${tools
     .map((t) => `<tr><td>${esc(t.name)}</td><td>${fmtBytes(t.schemaBytes)}</td><td><div class="bar flat"><span style="width:${Math.max(1, Math.round(t.schemaBytes / max * 100))}%"></span></div></td></tr>`)
     .join("")}</tbody></table>`;
-}
-
-function latestCacheableContextSample(scope: ContextMonitorScope = currentScope()): ContextMonitorSample | undefined {
-  const samples = scopedSamples(scope);
-  for (let i = samples.length - 1; i >= 0; i--) {
-    if (samples[i].phase === "cacheable_context") return samples[i];
-  }
-  return undefined;
 }
 
 function cacheableContextTable(scope: ContextMonitorScope = currentScope()): string {
@@ -240,7 +218,7 @@ ${webNav()}
 <div class="spacer"></div>
 <h2>By provider prefix hash</h2><div class="panel">${actualRows(summary.actualByProviderPrefixHash)}</div>
 <p class="sub" style="margin-top:20px">JSON: <a href="/cache-efficiency/snapshot">/cache-efficiency/snapshot</a> / Existing report: <a href="/snapshot">/snapshot</a></p>
-</main><script>(()=>{async function refresh(){try{const r=await fetch(location.pathname+'?partial=1',{cache:'no-store'});if(!r.ok)return;const h=await r.text();const d=new DOMParser().parseFromString(h,'text/html');const n=d.querySelector('main')?.innerHTML??'';const m=document.querySelector('main');if(n&&m&&n!==m.innerHTML){const y=scrollY;m.innerHTML=n;scrollTo({top:y,behavior:'instant'});}}catch{}}setInterval(refresh,5000);})();</script></body></html>`;
+</main><script>(()=>{async function refresh(){try{const u=new URL(location.href);u.searchParams.set('partial','1');const r=await fetch(u,{cache:'no-store'});if(!r.ok)return;const h=await r.text();const d=new DOMParser().parseFromString(h,'text/html');const n=d.querySelector('main')?.innerHTML??'';const m=document.querySelector('main');if(n&&m&&n!==m.innerHTML){const y=scrollY;m.innerHTML=n;scrollTo({top:y,behavior:'instant'});}}catch{}}setInterval(refresh,5000);})();</script></body></html>`;
 }
 
 export function renderDashboard(scope: ContextMonitorScope = currentScope()): string {
@@ -353,7 +331,9 @@ ${samples.map((s) => {
   let last = document.querySelector('main')?.innerHTML ?? '';
   async function refresh() {
     try {
-      const res = await fetch(location.pathname + '?partial=1', { cache: 'no-store' });
+      const refreshUrl = new URL(location.href);
+      refreshUrl.searchParams.set('partial', '1');
+      const res = await fetch(refreshUrl, { cache: 'no-store' });
       if (!res.ok) return;
       const html = await res.text();
       const doc = new DOMParser().parseFromString(html, 'text/html');

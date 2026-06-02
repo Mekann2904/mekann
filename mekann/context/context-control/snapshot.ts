@@ -1,19 +1,13 @@
-import { state, type ContextMonitorSample } from "./state.js";
+import { state } from "./state.js";
 import type { ContextScope } from "./observation.js";
-import { currentScope, scopedSamples } from "./scope.js";
+import { currentContextScope, latestCacheableContextSample, scopedContextSamples } from "./query.js";
 import { getToolSchemaSnapshot } from "./tool-schemas.js";
 import { computeAlerts, getContextIntelligenceReport, payloadBreakdown, toolOutputBreakdown } from "./report.js";
 
-export function latestCacheableContextSample(scope: ContextScope = currentScope(state.samples)): ContextMonitorSample | undefined {
-  const samples = scopedSamples(state.samples, { ...scope, mode: scope.mode ?? "strict" });
-  for (let i = samples.length - 1; i >= 0; i--) {
-    if (samples[i].phase === "cacheable_context") return samples[i];
-  }
-  return undefined;
-}
+export { latestCacheableContextSample } from "./query.js";
 
-export function getContextMonitorSnapshot(scope: ContextScope = currentScope(state.samples)) {
-  const samples = scopedSamples(state.samples, { ...scope, mode: scope.mode ?? "strict" });
+export function getContextMonitorSnapshot(scope: ContextScope = currentContextScope()) {
+  const samples = scopedContextSamples(scope);
   return {
     scope,
     server: { port: state.port, url: state.port ? `http://127.0.0.1:${state.port}` : undefined },

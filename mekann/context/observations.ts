@@ -1,7 +1,7 @@
 import { recordContextObservation as appendContextObservation } from "./context-control/store.js";
-import type { ContextObservation } from "./context-control/observation.js";
+import type { ContextObservationInput } from "./context-control/store.js";
 
-export type RecordContextObservationInput = ContextObservation;
+export type RecordContextObservationInput = ContextObservationInput;
 
 /**
  * Best-effort observation seam for context-control monitoring.

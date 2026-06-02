@@ -2,7 +2,7 @@ import { state } from "./state.js";
 import type { ContextObservation, ContextScope, StoredContextObservation } from "./observation.js";
 import { currentScope, scopedSamples } from "./scope.js";
 
-type ContextObservationInput = ContextObservation | (Omit<StoredContextObservation, "id" | "at"> & { at?: number });
+export type ContextObservationInput = ContextObservation | (Omit<StoredContextObservation, "id" | "at"> & { at?: number });
 
 export function recordContextObservation(input: ContextObservationInput): StoredContextObservation {
   const stored: StoredContextObservation = { cwd: input.cwd, sessionId: input.sessionId, phase: input.phase, summary: input.summary as Record<string, unknown>, id: state.nextId++, at: input.at ?? Date.now() };
