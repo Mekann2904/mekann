@@ -37,7 +37,7 @@ const EXPECTED_PROMPT_PROVIDERS_BY_MODULE: Record<string, string[]> = {
 	"safety/sandbox/index.ts": ["sandbox"],
 	"safety/modes/index.ts": ["modes"],
 	"autonomy/goal/index.ts": ["goal"],
-	"autonomy/subagent/index.ts": ["subagent"],
+	"autonomy/subagent/promptProvider.ts": ["subagent"],
 	"autonomy/autoresearch/index.ts": ["autoresearch"],
 };
 

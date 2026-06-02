@@ -11,8 +11,14 @@ import { spawn, execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomBytes } from "node:crypto";
-import { parseMetricLines } from "./state.js";
 import { truncateTail as truncateTailShared } from "../../utils/truncate-utils/index.js";
+import {
+	createStreamingParseState,
+	finalizeParsedRunOutput,
+	parseExternalInfo,
+	parseStreamingChunk,
+} from "./runOutputParser.js";
+export { parseExternalInfo, type ExternalInfo } from "./runOutputParser.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -62,13 +68,6 @@ export interface RunResult {
 	streamError: string | null;
 }
 
-export interface ExternalInfo {
-	externalRunId: string | null;
-	externalArtifactDir: string | null;
-	externalSummaryPath: string | null;
-	externalViewlogPath: string | null;
-	externalMetricsPath: string | null;
-}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -107,42 +106,6 @@ export function filterSecrets(text: string): string {
 		result = result.replace(pattern, replace);
 	}
 	return result;
-}
-
-// ---------------------------------------------------------------------------
-// External info parsing
-// ---------------------------------------------------------------------------
-
-/** Parse RUN_ID / ARTIFACT_DIR / SUMMARY_PATH / VIEWLOG_PATH / METRICS_PATH from stdout. */
-export function parseExternalInfo(output: string): ExternalInfo {
-	const info: ExternalInfo = {
-		externalRunId: null,
-		externalArtifactDir: null,
-		externalSummaryPath: null,
-		externalViewlogPath: null,
-		externalMetricsPath: null,
-	};
-
-	for (const line of output.split("\n")) {
-		const trimmed = line.trim();
-		if (!trimmed) continue;
-
-		const match = trimmed.match(
-			/^(RUN_ID|ARTIFACT_DIR|SUMMARY_PATH|VIEWLOG_PATH|METRICS_PATH)\s+(.+)$/,
-		);
-		if (!match) continue;
-
-		const [, key, value] = match;
-		switch (key) {
-			case "RUN_ID": info.externalRunId = value.trim(); break;
-			case "ARTIFACT_DIR": info.externalArtifactDir = value.trim(); break;
-			case "SUMMARY_PATH": info.externalSummaryPath = value.trim(); break;
-			case "VIEWLOG_PATH": info.externalViewlogPath = value.trim(); break;
-			case "METRICS_PATH": info.externalMetricsPath = value.trim(); break;
-		}
-	}
-
-	return info;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,92 +151,41 @@ interface SpawnParams {
 }
 
 /** Setup streaming log files for stdout/stderr. Returns nulls when logDir is unset. */
-function setupLogStreams(logDir: string | undefined): {
+interface LogStreamState {
 	stdoutStream: fs.WriteStream | null;
 	stderrStream: fs.WriteStream | null;
 	logFilesWritten: boolean;
 	streamError: string | null;
-} {
-	let stdoutStream: fs.WriteStream | null = null;
-	let stderrStream: fs.WriteStream | null = null;
-	let logFilesWritten = false;
-	let streamError: string | null = null;
+}
+
+function setupLogStreams(logDir: string | undefined): LogStreamState {
+	const state: LogStreamState = {
+		stdoutStream: null,
+		stderrStream: null,
+		logFilesWritten: false,
+		streamError: null,
+	};
 
 	if (logDir) {
 		try {
 			if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-			stdoutStream = fs.createWriteStream(path.join(logDir, "stdout.log"), { flags: "w" });
-			stderrStream = fs.createWriteStream(path.join(logDir, "stderr.log"), { flags: "w" });
-			logFilesWritten = true;
-		} catch {
-			logFilesWritten = false;
+			state.stdoutStream = fs.createWriteStream(path.join(logDir, "stdout.log"), { flags: "w" });
+			state.stderrStream = fs.createWriteStream(path.join(logDir, "stderr.log"), { flags: "w" });
+			state.logFilesWritten = true;
+		} catch (error) {
+			state.logFilesWritten = false;
+			state.streamError = error instanceof Error ? error.message : String(error);
 		}
 	}
 
-	if (stdoutStream) {
-		stdoutStream.on("error", (e) => {
-			streamError = e.message;
-			logFilesWritten = false;
-		});
-	}
-	if (stderrStream) {
-		stderrStream.on("error", (e) => {
-			streamError = e.message;
-			logFilesWritten = false;
-		});
-	}
-
-	return { stdoutStream, stderrStream, logFilesWritten, streamError };
-}
-
-/** Streaming parse state for METRIC / RUN_ID / ARTIFACT_DIR etc. */
-interface StreamingParseState {
-	metrics: Record<string, number>;
-	extRunId: string | null;
-	extArtifactDir: string | null;
-	extSummaryPath: string | null;
-	extViewlogPath: string | null;
-	extMetricsPath: string | null;
-	stdoutBuf: string;
-	stderrBuf: string;
-}
-
-function createStreamingParseState(): StreamingParseState {
-	return {
-		metrics: {},
-		extRunId: null, extArtifactDir: null,
-		extSummaryPath: null, extViewlogPath: null, extMetricsPath: null,
-		stdoutBuf: "", stderrBuf: "",
+	const markStreamError = (error: Error) => {
+		state.streamError = error.message;
+		state.logFilesWritten = false;
 	};
-}
+	state.stdoutStream?.on("error", markStreamError);
+	state.stderrStream?.on("error", markStreamError);
 
-function spLine(sp: StreamingParseState, line: string): void {
-	const t = line.trim();
-	// Accept both "METRIC name=value" and "METRIC: name=value"
-	if (t.startsWith("METRIC ") || t.startsWith("METRIC:")) {
-		const rest = t.startsWith("METRIC: ") ? t.slice(8) : t.slice(7);
-		const eq = rest.indexOf("=");
-		if (eq >= 0) {
-			const n = rest.slice(0, eq).trim();
-			const v = Number(rest.slice(eq + 1).trim());
-			if (n && !isNaN(v)) sp.metrics[n] = v;
-		}
-	}
-	const m = t.match(/^(RUN_ID|ARTIFACT_DIR|SUMMARY_PATH|VIEWLOG_PATH|METRICS_PATH)\s+(.+)$/);
-	if (m) switch (m[1]) {
-		case "RUN_ID": sp.extRunId = m[2].trim(); break;
-		case "ARTIFACT_DIR": sp.extArtifactDir = m[2].trim(); break;
-		case "SUMMARY_PATH": sp.extSummaryPath = m[2].trim(); break;
-		case "VIEWLOG_PATH": sp.extViewlogPath = m[2].trim(); break;
-		case "METRICS_PATH": sp.extMetricsPath = m[2].trim(); break;
-	}
-}
-
-function spChunk(sp: StreamingParseState, chunk: string, bufKey: "stdoutBuf" | "stderrBuf"): void {
-	sp[bufKey] += chunk;
-	const lines = sp[bufKey].split("\n");
-	sp[bufKey] = lines.pop() ?? "";
-	for (const l of lines) spLine(sp, l);
+	return state;
 }
 
 /** Shared spawn execution used by both runCommand and runArgvCommand. */
@@ -284,7 +196,7 @@ function runSpawn(params: SpawnParams, timeoutMs: number, signal: AbortSignal | 
 		let timedOut = false;
 		let killSignal: string | null = null;
 
-		const { stdoutStream, stderrStream, logFilesWritten, streamError } = setupLogStreams(logDir);
+		const logStreams = setupLogStreams(logDir);
 		const child = spawn(...params.spawnArgs);
 
 		let stdout = "";
@@ -294,15 +206,15 @@ function runSpawn(params: SpawnParams, timeoutMs: number, signal: AbortSignal | 
 		child.stdout!.on("data", (chunk: Buffer) => {
 			const str = chunk.toString("utf8");
 			if (Buffer.byteLength(stdout, "utf8") < CAPTURE_MAX_BYTES) stdout += str;
-			if (stdoutStream) stdoutStream.write(filterSecrets(str));
-			spChunk(sp, str, "stdoutBuf");
+			if (logStreams.stdoutStream) logStreams.stdoutStream.write(filterSecrets(str));
+			parseStreamingChunk(sp, str, "stdoutBuf");
 		});
 
 		child.stderr!.on("data", (chunk: Buffer) => {
 			const str = chunk.toString("utf8");
 			if (Buffer.byteLength(stderr, "utf8") < CAPTURE_MAX_BYTES) stderr += str;
-			if (stderrStream) stderrStream.write(filterSecrets(str));
-			spChunk(sp, str, "stderrBuf");
+			if (logStreams.stderrStream) logStreams.stderrStream.write(filterSecrets(str));
+			parseStreamingChunk(sp, str, "stderrBuf");
 		});
 
 		function killGroup(sig: string): void {
@@ -328,20 +240,8 @@ function runSpawn(params: SpawnParams, timeoutMs: number, signal: AbortSignal | 
 			signal?.removeEventListener("abort", abortHandler);
 
 			const durationSeconds = (Date.now() - t0) / 1000;
-			if (sp.stdoutBuf) spLine(sp, sp.stdoutBuf);
-			if (sp.stderrBuf) spLine(sp, sp.stderrBuf);
-
 			const combined = stdout + (stderr ? "\n" + stderr : "");
-			const inMemParsed = parseMetricLines(combined);
-			const inMemExt = parseExternalInfo(stdout);
-			const parsed = { ...inMemParsed, ...sp.metrics };
-			const externalInfo: ExternalInfo = {
-				externalRunId: sp.extRunId ?? inMemExt.externalRunId,
-				externalArtifactDir: sp.extArtifactDir ?? inMemExt.externalArtifactDir,
-				externalSummaryPath: sp.extSummaryPath ?? inMemExt.externalSummaryPath,
-				externalViewlogPath: sp.extViewlogPath ?? inMemExt.externalViewlogPath,
-				externalMetricsPath: sp.extMetricsPath ?? inMemExt.externalMetricsPath,
-			};
+			const { parsedMetrics: parsed, externalInfo } = finalizeParsedRunOutput(sp, stdout, stderr);
 
 			const result: RunResult = {
 				command: params.commandLabel,
@@ -350,16 +250,16 @@ function runSpawn(params: SpawnParams, timeoutMs: number, signal: AbortSignal | 
 				output: truncateTail(combined, OUTPUT_MAX_LINES, OUTPUT_MAX_BYTES),
 				parsedMetrics: Object.keys(parsed).length > 0 ? parsed : null,
 				checks: { passed: null, timedOut: false, output: "", stdout: "", stderr: "", durationSeconds: 0 },
-				stdout, stderr, signal: sig, logFilesWritten, streamError,
+				stdout, stderr, signal: sig, logFilesWritten: logStreams.logFilesWritten, streamError: logStreams.streamError,
 				...externalInfo,
 			};
 
 			const flushes: Promise<void>[] = [];
-			if (stdoutStream && !stdoutStream.destroyed) {
-				flushes.push(new Promise<void>(r => { stdoutStream!.end(() => r()); }));
+			if (logStreams.stdoutStream && !logStreams.stdoutStream.destroyed) {
+				flushes.push(new Promise<void>(r => { logStreams.stdoutStream!.end(() => r()); }));
 			}
-			if (stderrStream && !stderrStream.destroyed) {
-				flushes.push(new Promise<void>(r => { stderrStream!.end(() => r()); }));
+			if (logStreams.stderrStream && !logStreams.stderrStream.destroyed) {
+				flushes.push(new Promise<void>(r => { logStreams.stderrStream!.end(() => r()); }));
 			}
 
 			if (flushes.length > 0) {
