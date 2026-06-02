@@ -9,7 +9,6 @@ import { handleClear } from "../clear.js";
 import { featureStringValue } from "../../settings/enabled.js";
 import { setToolsActive } from "../../settings/toolSurface.js";
 import { shouldExposeManualOrAlwaysSurface, shouldRestoreSessionContextSurface } from "../surface-policy.js";
-import { recordToolSchemaObservation } from "../recording.js";
 import {
 	CONTEXT_LEDGER_COMMAND_COMPLETIONS,
 	clampInt,
@@ -45,8 +44,6 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 		syncContextLedgerToolSurface();
 	}
 	const KindEnum = Type.Enum(Object.fromEntries(CONTEXT_EVENT_KINDS.map((kind) => [kind, kind])) as Record<string, string>);
-
-	void recordToolSchemaObservation("search_context_events", {});
 	pi.registerTool({
 		name: "search_context_events",
 		label: "Search Context Events",
@@ -75,7 +72,6 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	void recordToolSchemaObservation("summarize_session_context", {});
 	pi.registerTool({
 		name: "summarize_session_context",
 		label: "Summarize Session Context",

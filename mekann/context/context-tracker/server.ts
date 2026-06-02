@@ -51,12 +51,11 @@ function esc(v: unknown): string {
 }
 
 function currentScope(): { cwd?: string; sessionId?: string } {
-  const latest = scopedSamples().at(-1);
+  const latest = state.samples.at(-1);
   return { cwd: latest?.cwd, sessionId: latest?.sessionId };
 }
 
-function scopedSamples(): ContextMonitorSample[] {
-  const scope = currentScope();
+function scopedSamples(scope = currentScope()): ContextMonitorSample[] {
   return state.samples.filter((sample) => {
     if (scope.cwd && sample.cwd && sample.cwd !== scope.cwd) return false;
     if (scope.sessionId && sample.sessionId && sample.sessionId !== scope.sessionId) return false;

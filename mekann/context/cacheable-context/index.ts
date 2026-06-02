@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
 import { featureStringValue, isFeatureEnabled } from "../../settings/enabled.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
-import { recordContextObservation } from "../recording.js";
+import { recordContextObservation } from "../observations.js";
 import { normalizePromptSurface } from "../surface-policy.js";
 import { buildCacheableContext, collectSourceHashes, isManifestFresh, readManifest, type CacheableContextConfig, type Manifest } from "./builder.js";
 

@@ -80,10 +80,10 @@ describe("mekann integrated extension", () => {
 		}
 	});
 
-	it("loads suites in the intended top-level order", () => {
+	it("loads context instrumentation before the suites it observes", () => {
 		const source = read("mekann/index.ts");
 		const calls = [...source.matchAll(/await (core|safety|autonomy|utils|context)\(pi\);/g)].map((m) => m[1]);
-		expect(calls).toEqual(["core", "safety", "autonomy", "utils", "context"]);
+		expect(calls).toEqual(["context", "core", "safety", "autonomy", "utils"]);
 	});
 
 	it("loads sandbox before modes inside safety", () => {
