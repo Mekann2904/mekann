@@ -33,7 +33,6 @@ import { featureRawConfig, isFeatureEnabled } from "../../settings/enabled.js";
 import { setToolsActive } from "../../settings/toolSurface.js";
 import { projectFeatureToolSurface } from "../../settings/toolSurfaceProjection.js";
 import { registerSubagentFlags } from "./flags.js";
-import { registerContextTool } from "../../context/observations.js";
 
 let sharedSpawnAgent: ((params: SpawnParams, ctx: ExtensionContext) => Promise<SpawnResult>) | undefined;
 
@@ -382,7 +381,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
 
   // ─── Tools ────────────────────────────────────────────────────
 
-  registerContextTool(pi, {
+  pi.registerTool({
     name: "spawn_agent",
     label: "Spawn subagent",
     description:
@@ -439,7 +438,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     }),
   });
 
-  registerContextTool(pi, {
+  pi.registerTool({
     name: "message_agent",
     label: "Message subagent",
     description:
@@ -461,7 +460,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     }),
   });
 
-  registerContextTool(pi, {
+  pi.registerTool({
     name: "wait_agent",
     label: "Wait for subagent updates",
     description:
@@ -482,7 +481,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     }),
   });
 
-  registerContextTool(pi, {
+  pi.registerTool({
     name: "list_agents",
     label: "List subagents",
     description: "List all agents, optionally filtered by path prefix.",
@@ -499,7 +498,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     }),
   });
 
-  registerContextTool(pi, {
+  pi.registerTool({
     name: "agent_results",
     label: "Manage subagent results",
     description: "List, show, apply, reject, or retry stored structured subagent results.",
@@ -532,7 +531,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     }),
   });
 
-  registerContextTool(pi, {
+  pi.registerTool({
     name: "close_agent",
     label: "Close subagent",
     description:

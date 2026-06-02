@@ -1,5 +1,4 @@
-import type { ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import type { TSchema } from "typebox";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export interface RecordContextObservationInput {
 	cwd?: string;
@@ -40,7 +39,19 @@ export function recordToolRegistrationObservation(name: string, parameters: unkn
 	}
 }
 
-export function registerContextTool<TParams extends TSchema, TDetails = unknown, TState = any>(pi: ExtensionAPI, tool: ToolDefinition<TParams, TDetails, TState>): void {
-	pi.registerTool(tool);
-	recordToolRegistrationObservation(String(tool.name ?? "unknown"), tool.parameters ?? {});
+const decoratedApis = new WeakSet<ExtensionAPI>();
+
+/**
+ * Instrument the Pi tool-registration boundary once, so individual features can
+ * keep using the canonical `pi.registerTool` API without importing context
+ * monitoring concerns.
+ */
+export function observeToolRegistrations(pi: ExtensionAPI): void {
+	if (decoratedApis.has(pi)) return;
+	decoratedApis.add(pi);
+	const registerTool = pi.registerTool.bind(pi);
+	pi.registerTool = ((tool: Parameters<ExtensionAPI["registerTool"]>[0]) => {
+		registerTool(tool);
+		recordToolRegistrationObservation(String(tool.name ?? "unknown"), tool.parameters ?? {});
+	}) as ExtensionAPI["registerTool"];
 }

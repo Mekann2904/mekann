@@ -17,7 +17,6 @@ import { handleClear } from "../clear.js";
 import { recordToolOutputArtifact } from "../recording.js";
 import { OutputGateController } from "./controller.js";
 import type { SearchToolOutputsInput } from "./search.js";
-import { registerContextTool } from "../observations.js";
 
 // ---------------------------------------------------------------------------
 // Re-exports (backward compatibility)
@@ -88,7 +87,7 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 	}
 
 	// --- search_tool_outputs tool ---
-	registerContextTool(pi, {
+	pi.registerTool({
 		name: "search_tool_outputs",
 		label: "Search Stored Tool Outputs",
 		description:
