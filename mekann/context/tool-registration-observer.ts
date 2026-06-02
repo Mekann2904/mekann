@@ -28,7 +28,8 @@ export function observeToolRegistrations(pi: ExtensionAPI): void {
 	decoratedApis.add(pi);
 	const registerTool = pi.registerTool.bind(pi);
 	pi.registerTool = ((tool: Parameters<ExtensionAPI["registerTool"]>[0]) => {
-		registerTool(tool);
+		const result = registerTool(tool);
 		recordToolRegistrationObservation(String(tool.name ?? "unknown"), tool.parameters ?? {});
+		return result;
 	}) as ExtensionAPI["registerTool"];
 }

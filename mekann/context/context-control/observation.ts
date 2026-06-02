@@ -78,7 +78,9 @@ export type ContextObservation =
   | CacheableContextObservation
   | SessionObservation;
 
-export interface StoredContextObservation extends Omit<ContextObservation, "at"> {
+export interface StoredContextObservation extends ContextObservationBase {
   id: number;
   at: number;
+  phase: ContextObservationPhase;
+  summary: Record<string, unknown>;
 }

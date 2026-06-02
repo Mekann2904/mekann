@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { observeToolRegistrations } from "../tool-registration-observer.js";
 import { getContextIntelligenceReport, recordContextMonitorSample } from "./server.js";
-import { state } from "./state.js";
+import { state } from "../context-control/state.js";
 
 function resetContextTrackerState(): void {
   state.tools.clear();
@@ -61,6 +61,21 @@ describe("context tool registration observation", () => {
     expect(state.tools.size).toBe(1);
   });
 
+  it("preserves the underlying registerTool return value", () => {
+    const handle = { dispose: vi.fn() };
+    const pi = {
+      on: vi.fn(),
+      registerCommand: vi.fn(),
+      registerTool: vi.fn(() => handle),
+    } as any;
+
+    observeToolRegistrations(pi);
+    const result = pi.registerTool({ name: "returning_tool", parameters: { type: "object" }, execute: async () => ({ content: "ok" }) });
+
+    expect(result).toBe(handle);
+    expect(state.tools.has("returning_tool")).toBe(true);
+  });
+
   it("updates same-name tool schema totals to reflect the current registration surface", () => {
     const pi = {
       on: vi.fn(),
@@ -91,6 +106,17 @@ describe("context tool registration observation", () => {
     expect(report.health.risk).toBe("low");
     expect(report.toolOutputBreakdown.map((item: any) => item.label)).toEqual(["a_tool"]);
     expect(report.topContributors.some((item: any) => item.source === "b_tool")).toBe(false);
+  });
+
+  it("does not let partially global samples bypass other scoped dimensions", () => {
+    recordContextMonitorSample({ sessionId: "b", phase: "provider_request", summary: { contextTokens: 9000, contextPercent: 90, payloadBytes: 9000 } });
+    recordContextMonitorSample({ cwd: "/repo/b", phase: "provider_request", summary: { contextTokens: 8000, contextPercent: 80, payloadBytes: 8000 } });
+    recordContextMonitorSample({ phase: "provider_request", summary: { contextTokens: 7000, contextPercent: 70, payloadBytes: 7000 } });
+    recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "provider_request", summary: { contextTokens: 1000, contextPercent: 10, payloadBytes: 1000 } });
+
+    const report = getContextIntelligenceReport("timeline", 10, { cwd: "/repo/a", sessionId: "a", mode: "include-global" }) as any;
+
+    expect(report.timeline.map((sample: any) => sample.summary.contextTokens)).toEqual([7000, 1000]);
   });
 
   it("uses strict scope by default instead of mixing unscoped samples into scoped reports", () => {

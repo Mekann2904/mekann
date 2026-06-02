@@ -1,4 +1,4 @@
-import { state, type ToolSchemaRecord } from "../context-tracker/state.js";
+import { state, type ToolSchemaRecord } from "./state.js";
 
 export interface ToolSchemaSnapshot {
   tools: ToolSchemaRecord[];

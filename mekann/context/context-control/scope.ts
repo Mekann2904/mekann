@@ -8,12 +8,12 @@ export function currentScope(samples: StoredContextObservation[]): ContextScope 
 export function matchesScope(sample: StoredContextObservation, scope: ContextScope): boolean {
   const mode = scope.mode ?? "strict";
   if (scope.cwd !== undefined) {
-    if (mode === "include-global" && sample.cwd === undefined) return true;
-    if (sample.cwd !== scope.cwd) return false;
+    const cwdMatches = sample.cwd === scope.cwd || (mode === "include-global" && sample.cwd === undefined);
+    if (!cwdMatches) return false;
   }
   if (scope.sessionId !== undefined) {
-    if (mode === "include-global" && sample.sessionId === undefined) return true;
-    if (sample.sessionId !== scope.sessionId) return false;
+    const sessionMatches = sample.sessionId === scope.sessionId || (mode === "include-global" && sample.sessionId === undefined);
+    if (!sessionMatches) return false;
   }
   return true;
 }

@@ -1,4 +1,5 @@
 import http from "node:http";
+import type { StoredContextObservation } from "./observation.js";
 
 export interface ToolSchemaRecord {
   name: string;
@@ -6,14 +7,7 @@ export interface ToolSchemaRecord {
   registeredAt: number;
 }
 
-export interface ContextMonitorSample {
-  id: number;
-  at: number;
-  cwd?: string;
-  sessionId?: string;
-  phase: string;
-  summary: Record<string, unknown>;
-}
+export type ContextMonitorSample = StoredContextObservation;
 
 export interface ContextMonitorState {
   server?: http.Server;
@@ -27,7 +21,7 @@ export interface ContextMonitorState {
   decisions: Array<{ at: number; decision: unknown }>;
 }
 
-const KEY = Symbol.for("mekann.contextMonitor.server.v1");
+const KEY = Symbol.for("mekann.contextControl.state.v1");
 
 function initState(): ContextMonitorState {
   return { samples: [], tools: new Map(), toolSchemaTotalBytes: 0, nextId: 1, compactionCount: 0, decisions: [] };
