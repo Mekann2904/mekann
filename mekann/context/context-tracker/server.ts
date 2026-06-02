@@ -97,11 +97,12 @@ export async function ensureContextMonitorServer(preferredPort = 0): Promise<{ p
       if (url.pathname === "/llm/context-timeline") return json(res, 200, getContextIntelligenceReport("timeline", Number(url.searchParams.get("limit") ?? 50), scope));
       if (url.pathname === "/llm/context-recommendations") return json(res, 200, getContextIntelligenceReport("recommendations", 20, scope));
       if (url.pathname === "/llm/context-budget") return json(res, 200, getContextIntelligenceReport("budget", 20, scope));
+      if (url.pathname === "/llm/context-plan") return json(res, 200, getContextIntelligenceReport("budget", Number(url.searchParams.get("limit") ?? 20), scope));
       if (url.pathname === "/llm/context-decision" && req.method === "POST") {
         recordContextDecision(await readRequestBody(req));
         return json(res, 200, { ok: true });
       }
-      return json(res, 404, { error: "not_found", endpoints: ["/", "/dashboard", "/cache-efficiency", "/cache-efficiency/snapshot", "/health", "/snapshot", "/events", "/tools", "/llm/context-report", "/llm/context-recommendations"] });
+      return json(res, 404, { error: "not_found", endpoints: ["/", "/dashboard", "/cache-efficiency", "/cache-efficiency/snapshot", "/health", "/snapshot", "/events", "/tools", "/llm/context-report", "/llm/context-plan", "/llm/context-recommendations"] });
     })().catch((error) => json(res, String(error?.message ?? "").includes("request body exceeds") ? 413 : 500, { error: "internal_error", message: String(error?.message ?? error) }));
   });
   state.server.unref();

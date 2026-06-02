@@ -3,6 +3,7 @@ import type { ContextScope } from "./observation.js";
 import { currentContextScope, latestCacheableContextSample, scopedContextSamples } from "./query.js";
 import { getToolSchemaSnapshot } from "./tool-schemas.js";
 import { computeAlerts, getContextIntelligenceReport, payloadBreakdown, toolOutputBreakdown } from "./report.js";
+import { buildContextBudgetPlan } from "./planner.js";
 
 export { latestCacheableContextSample } from "./query.js";
 
@@ -21,6 +22,7 @@ export function getContextMonitorSnapshot(scope: ContextScope = currentContextSc
     payloadBreakdown: payloadBreakdown(scope),
     toolOutputBreakdown: toolOutputBreakdown(scope),
     contextIntelligence: getContextIntelligenceReport("report", 10, scope),
+    contextPlan: buildContextBudgetPlan(samples, scope),
     decisions: state.decisions.slice(-20),
   };
 }

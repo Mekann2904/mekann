@@ -7,6 +7,8 @@ import { fmtBytes } from "../format.js";
 import { currentContextScope, latestCacheableContextSample, scopedContextSamples } from "../query.js";
 import { getToolSchemaSnapshot } from "../tool-schemas.js";
 import { computeAlerts, latestVal, numLatest, numPrev, payloadBreakdown, toolOutputBreakdown } from "../report.js";
+import { buildContextBudgetPlan } from "../planner.js";
+import { dashboardStyle } from "./dashboard-style.js";
 
 // ─── helpers ─────────────────────────────────────────────────────
 
@@ -56,11 +58,24 @@ function toolSchemaTable(): string {
     .join("")}</tbody></table>`;
 }
 
+function plannerTable(scope: ContextMonitorScope = currentScope()): string {
+  const plan = buildContextBudgetPlan(scopedSamples(scope), scope);
+  return `<table><tbody>
+<tr><td>Pressure</td><td class="${plan.pressure === "critical" || plan.pressure === "high" ? "warn" : "ok"}">${esc(plan.pressure)}</td></tr>
+<tr><td>Dynamic tail budget</td><td>${fmtBytes(plan.budget.dynamicTailMaxBytes)}</td></tr>
+<tr><td>Inline message budget</td><td>${fmtBytes(plan.budget.largestInlineMessageBytes)}</td></tr>
+<tr><td>Tool output budget</td><td>${fmtBytes(plan.budget.toolOutputInlineBytes)}</td></tr>
+</tbody></table>
+<div class="spacer"></div>
+<table><thead><tr><th>Decision</th><th>Target</th><th>Priority</th><th>Savings</th></tr></thead><tbody>${plan.decisions.slice(0, 8).map((d) => `<tr><td>${esc(d.kind)}</td><td>${esc(d.target)}</td><td>${esc(d.priority)}</td><td>${fmtBytes(d.expectedSavingsBytes)}</td></tr>`).join("")}</tbody></table>`;
+}
+
 function cacheableContextTable(scope: ContextMonitorScope = currentScope()): string {
   const sample = latestCacheableContextSample(scope);
   if (!sample) return '<span class="dim">No cacheable-context sample yet</span>';
   const s = sample.summary;
-  const fragments = Array.isArray(s.fragments) ? s.fragments as any[] : [];
+  interface CacheableContextFragment { id?: unknown; source?: unknown; chars?: unknown }
+  const fragments: CacheableContextFragment[] = Array.isArray(s.fragments) ? s.fragments : [];
   return `<table><tbody>
 <tr><td>Prefix</td><td class="accent">${fmtBytes(Number(s.prefixChars ?? 0))}</td></tr>
 <tr><td>Mode</td><td>${esc(s.contextMode)} / ${esc(s.promptSurface)}</td></tr>
@@ -69,55 +84,6 @@ function cacheableContextTable(scope: ContextMonitorScope = currentScope()): str
 <tr><td>Hash</td><td class="dim">${esc(String(s.prefixHash ?? "").slice(0, 26))}${s.prefixHash ? "…" : ""}</td></tr>
 </tbody></table>
 ${fragments.length === 0 ? "" : `<div class="spacer"></div><table><thead><tr><th>Fragment</th><th>Source</th><th>Size</th></tr></thead><tbody>${fragments.map((f) => `<tr><td>${esc(f.id)}</td><td class="dim">${esc(f.source)}</td><td>${fmtBytes(Number(f.chars ?? 0))}</td></tr>`).join("")}</tbody></table>`}`;
-}
-
-function dashboardStyle(): string {
-  return `:root{--bg:#1a1b26;--surface:#24283b;--border:#3b4261;--text:#c0caf5;--dim:#565f89;--accent:#7aa2f7;--cyan:#7dcfff;--green:#9ece6a;--red:#f7768e;--orange:#ff9e64;--purple:#bb9af7;--heading:#c0caf5}
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:13px;line-height:1.5}
-main{max-width:1280px;margin:0 auto;padding:24px}
-h1{font-size:20px;font-weight:600;color:var(--heading);margin-bottom:4px}
-h2{font-size:14px;font-weight:600;color:var(--heading);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
-.sub{color:var(--dim);font-size:12px;margin-bottom:20px}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
-.grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:16px}
-.panel{background:var(--surface);border:1px solid var(--border);border-radius:0;padding:16px}
-.panel h2{margin-top:0}
-.graph{width:100%;background:#0f172a;border:1px solid var(--border);display:block}
-.metric{font-size:24px;font-weight:700;color:var(--accent)}
-.metric .delta{font-size:12px;font-weight:400;margin-left:6px}
-.label{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
-table{width:100%;border-collapse:collapse;font-size:12px}
-td,th{padding:6px 10px;text-align:left;border-bottom:1px solid var(--border)}
-th{color:var(--dim);font-weight:600;font-size:11px}
-.bar{height:8px;background:#1e2030;border-radius:0;overflow:hidden;min-width:60px}
-.bar span{display:block;height:100%;background:var(--accent)}
-.trend-bar{display:inline-flex;flex-direction:column;align-items:center;width:18px;margin-right:2px;vertical-align:bottom}
-.trend-bar span{display:block;width:12px;background:var(--accent)}
-.trend-bar small{font-size:9px;color:var(--dim);margin-top:2px}
-.legend{display:flex;gap:12px;margin-bottom:8px;font-size:11px}
-.legend span{display:inline-flex;align-items:center;gap:4px}
-.legend i{display:inline-block;width:10px;height:10px;border:1px solid var(--border)}
-.tag{display:inline-block;border:1px solid var(--border);padding:2px 6px;margin:2px;font-size:11px;color:var(--text)}
-.alert{display:flex;align-items:flex-start;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px}
-.alert:last-child{border-bottom:none}
-.alert .icon{font-weight:700}
-.alert.warn .icon{color:var(--orange)}
-.alert.info .icon{color:var(--accent)}
-.warn{color:var(--orange)}
-.ok{color:var(--green)}
-.dim{color:var(--dim)}
-.accent{color:var(--accent)}
-a{color:var(--cyan);text-decoration:none}
-a:hover{text-decoration:underline}
-.nav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px}
-.nav a{border:1px solid var(--border);padding:6px 10px;background:var(--surface)}
-.card-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
-.card-list .panel{display:block;color:var(--text)}
-.card-list .panel strong{display:block;color:var(--heading);font-size:15px;margin-bottom:6px}
-.spacer{height:20px}
-@media(max-width:900px){.grid2,.grid3,.grid4{grid-template-columns:1fr}}`;
 }
 
 function cacheFriendlyDirForDashboard(scope: ContextMonitorScope = currentScope()): string {
@@ -144,7 +110,7 @@ function graphImg(name: string, alt: string): string {
 }
 
 function webNav(): string {
-  return `<nav class="nav"><a href="/">Home</a><a href="/dashboard">Context Monitor</a><a href="/cache-efficiency">Cache Efficiency</a><a href="/snapshot">Snapshot</a><a href="/events">Events</a><a href="/tools">Tools</a><a href="/llm/context-report">LLM Report</a><a href="/health">Health</a></nav>`;
+  return `<nav class="nav"><a href="/">Home</a><a href="/dashboard">Context Monitor</a><a href="/cache-efficiency">Cache Efficiency</a><a href="/snapshot">Snapshot</a><a href="/events">Events</a><a href="/tools">Tools</a><a href="/llm/context-report">LLM Report</a><a href="/llm/context-plan">Context Plan</a><a href="/health">Health</a></nav>`;
 }
 
 export function renderHome(): string {
@@ -159,6 +125,7 @@ ${webNav()}
 <a class="panel" href="/events"><strong>Events JSON</strong><span class="dim">Recorded context monitor samples.</span></a>
 <a class="panel" href="/tools"><strong>Tools JSON</strong><span class="dim">Registered tool schema sizes and total tool schema weight.</span></a>
 <a class="panel" href="/llm/context-report"><strong>LLM Context Report</strong><span class="dim">Context intelligence report endpoint for agents and humans.</span></a>
+<a class="panel" href="/llm/context-plan"><strong>Context Plan JSON</strong><span class="dim">Agent-consumable planner decisions for inline, retrieve, summarize, omit, and monitor actions.</span></a>
 </div>
 </main></body></html>`;
 }
@@ -179,6 +146,7 @@ export async function renderCacheEfficiencyDashboard(scope: ContextMonitorScope 
   const warmHit = summary.actualWarmTokenHitRateWeighted;
   const coldHit = summary.actualColdTokenHitRateWeighted;
   const proxy = summary.windowPrefixReuseRate;
+  const cachePlan = buildContextBudgetPlan(scopedSamples(scope), scope, summary);
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cache Efficiency — Mekann</title><style>${dashboardStyle()}</style></head><body><main>
 ${webNav()}
 <h1>Cache Efficiency</h1>
@@ -202,6 +170,9 @@ ${webNav()}
 <div class="panel"><h2>Latest prefix</h2><table><tbody><tr><td>Provider/model</td><td class="accent">${esc(`${latest?.provider ?? "unknown"}/${latest?.model ?? "unknown"}`)}</td></tr><tr><td>Stable prefix hash</td><td class="dim">${esc(String(latest?.stablePrefixHash ?? "").slice(0, 12))}</td></tr><tr><td>Stable chars</td><td>${esc(latest?.stablePrefixChars ?? 0)}</td></tr><tr><td>Total prompt chars</td><td>${esc(latest?.totalPromptChars ?? 0)}</td></tr></tbody></table></div>
 <div class="panel"><h2>Proxy stability</h2><table><tbody><tr><td>Adjacent reuse rate</td><td class="accent">${fmtPct(summary.adjacentPrefixReuseRate)}</td></tr><tr><td>Same key streak</td><td>${summary.recentSameReuseKeyStreak} requests</td></tr><tr><td>Provider prefix hash changes</td><td>${summary.providerPrefixHashChanges}</td></tr><tr><td>Warnings</td><td>${summary.warningCount}</td></tr></tbody></table></div>
 </div>
+<div class="spacer"></div>
+<h2>Cache tuning decisions</h2>
+<div class="panel"><table><thead><tr><th>Decision</th><th>Target</th><th>Priority</th><th>Reason</th></tr></thead><tbody>${cachePlan.decisions.slice(0, 8).map((d) => `<tr><td>${esc(d.kind)}</td><td>${esc(d.target)}</td><td>${esc(d.priority)}</td><td class="dim">${esc(d.reason)}</td></tr>`).join("")}</tbody></table></div>
 <div class="spacer"></div>
 <h2>Actual provider cache hit rate</h2>
 <div class="panel">${graphImg("actual-hit-rate.svg", "actual provider cache hit rate overall")}</div>
@@ -274,9 +245,19 @@ ${breakdown.map((c, i) => {
 </div>
 </div>
 
+<div class="grid2">
+<div>
+<h2>Context planner</h2>
+<div class="panel">
+${plannerTable(scope)}
+</div>
+</div>
+<div>
 <h2>Cacheable context</h2>
 <div class="panel">
 ${cacheableContextTable(scope)}
+</div>
+</div>
 </div>
 
 <h2>Tool impact</h2>
@@ -351,4 +332,3 @@ ${samples.map((s) => {
 })();
 </script></body></html>`;
 }
-

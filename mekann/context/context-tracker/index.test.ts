@@ -1,7 +1,8 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { observeToolRegistrations } from "../tool-registration-observer.js";
-import { getContextIntelligenceReport, recordContextMonitorSample } from "./server.js";
+import { getContextIntelligenceReport, getContextMonitorSnapshot, recordContextMonitorSample } from "./server.js";
 import { state } from "../context-control/state.js";
+import { buildContextBudgetPlan } from "../context-control/planner.js";
 
 function resetContextTrackerState(): void {
   state.tools.clear();
@@ -137,5 +138,65 @@ describe("context tool registration observation", () => {
     const report = getContextIntelligenceReport("timeline", 10, { cwd: "/repo/a", sessionId: "a" }) as any;
 
     expect(report.timeline.map((sample: any) => sample.phase)).toEqual(["cacheable_context", "provider_request"]);
+  });
+
+  it("turns context observations into planner decisions", () => {
+    recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "context", summary: { messageCount: 2, messageBytes: 90_000, messageBreakdown: [{ role: "tool", source: "tool:bash", bytes: 70_000 }] } });
+    recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "tool_end", summary: { toolName: "bash", resultBytes: 80_000 } });
+    recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "provider_request", summary: { contextTokens: 9000, contextPercent: 90, payloadBytes: 100_000, messageBytes: 90_000, systemPromptBytes: 5_000 } });
+
+    const report = getContextIntelligenceReport("budget", 10, { cwd: "/repo/a", sessionId: "a" }) as any;
+
+    expect(report.planner.pressure).toBe("critical");
+    expect(report.planner.budget.dynamicTailMaxBytes).toBe(4096);
+    expect(report.decisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "summarize", target: "tool:bash", priority: "high" }),
+      expect.objectContaining({ kind: "externalize", target: "tool:bash" }),
+      expect.objectContaining({ kind: "omit", target: "dynamic-tail:low-priority-fragments", priority: "high" }),
+    ]));
+  });
+
+  it("turns cache efficiency telemetry into tuning decisions", () => {
+    const plan = buildContextBudgetPlan([], {}, { actualWarmRequestCount: 3, actualWarmTokenHitRateWeighted: 0.2, providerPrefixHashChanges: 5, dynamicTruncationCount: 2, dynamicTruncationOmittedChars: 9000 });
+
+    expect(plan.decisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "retrieve", target: "cache-friendly-prompt:prefix-churn", priority: "high" }),
+      expect.objectContaining({ kind: "monitor", target: "cache-friendly-prompt:provider-prefix-hash" }),
+      expect.objectContaining({ kind: "summarize", target: "dynamic-tail:truncated-fragments" }),
+    ]));
+  });
+
+  it("exposes planner decisions in the monitor snapshot", () => {
+    recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "provider_request", summary: { contextTokens: 9000, contextPercent: 90, payloadBytes: 90_000 } });
+
+    const snapshot = getContextMonitorSnapshot({ cwd: "/repo/a", sessionId: "a" }) as any;
+
+    expect(snapshot.contextPlan.pressure).toBe("critical");
+    expect(snapshot.contextPlan.decisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "omit", target: "dynamic-tail:low-priority-fragments" }),
+    ]));
+  });
+
+  it("keeps output-gate artifacts retrieval-oriented", () => {
+    recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "context", summary: { messageCount: 1, messageBytes: 1000, messageBreakdown: [{ role: "tool", source: "[output-gate] Large bash output stored. artifact: og_abc_1", bytes: 1000 }] } });
+    recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "provider_request", summary: { contextTokens: 1000, contextPercent: 10, payloadBytes: 10_000 } });
+
+    const report = getContextIntelligenceReport("budget", 10, { cwd: "/repo/a", sessionId: "a" }) as any;
+
+    expect(report.decisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "retrieve", target: "output-gate:og_abc_1", priority: "medium" }),
+    ]));
+  });
+
+  it("keeps cacheable-context overflow as retrieval-oriented planner work", () => {
+    recordContextMonitorSample({ cwd: "/repo/a", phase: "cacheable_context", summary: { prefixChars: 31_000, maxPrefixChars: 32_000, prefixHash: "p" } });
+    recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "provider_request", summary: { contextTokens: 1000, contextPercent: 10, payloadBytes: 10_000, messageBytes: 2_000, systemPromptBytes: 7_000 } });
+
+    const report = getContextIntelligenceReport("budget", 10, { cwd: "/repo/a", sessionId: "a" }) as any;
+
+    expect(report.decisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "retrieve", target: "cacheable-context:overflow-fragments", priority: "medium" }),
+      expect.objectContaining({ kind: "retrieve", target: "system-prompt:optional-guidance" }),
+    ]));
   });
 });
