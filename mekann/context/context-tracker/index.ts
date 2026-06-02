@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
 import { ensureContextMonitorServer, recordCompaction } from "./server.js";
 import { recordContextObservation } from "../observations.js";
+import type { ContextObservation } from "../context-control/observation.js";
 
 // ─── helpers ─────────────────────────────────────────────────────
 
@@ -91,21 +92,32 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
     serverUrl = server.url;
   }
 
-  function publish(ctx: any, phase: string, summary: Record<string, unknown>): void {
+  function publish(input: ContextObservation, ctx: any): void {
     const usage = ctx?.getContextUsage?.();
-    void recordContextObservation({
-      cwd: ctx?.cwd,
-      sessionId: ctx?.sessionId,
-      phase: phase as any,
-      summary: { ...summary, contextTokens: usage?.tokens, contextPercent: usage?.percent } as any,
-    });
+    const base = { cwd: ctx?.cwd, sessionId: ctx?.sessionId };
+    const contextUsage = { contextTokens: usage?.tokens, contextPercent: usage?.percent };
+    switch (input.phase) {
+      case "prompt":
+        return void recordContextObservation({ ...base, phase: input.phase, summary: { ...input.summary, ...contextUsage } });
+      case "context":
+        return void recordContextObservation({ ...base, phase: input.phase, summary: { ...input.summary, ...contextUsage } });
+      case "provider_request":
+        return void recordContextObservation({ ...base, phase: input.phase, summary: { ...input.summary, ...contextUsage } });
+      case "tool_end":
+        return void recordContextObservation({ ...base, phase: input.phase, summary: { ...input.summary, ...contextUsage } });
+      case "cacheable_context":
+        return void recordContextObservation({ ...base, phase: input.phase, summary: { ...input.summary, ...contextUsage } });
+      case "session_start":
+      case "session_compact":
+        return void recordContextObservation({ ...base, phase: input.phase, summary: { ...input.summary, ...contextUsage } });
+    }
   }
 
   // ─── lifecycle hooks ─────────────────────────────────────────
 
   pi.on("session_start", async (_event: any, ctx: any) => {
     if (autoStartServer) await startServer(ctx);
-    publish(ctx, "session_start", {});
+    publish({ phase: "session_start", summary: {} }, ctx);
   });
 
   pi.on("session_shutdown", async () => {
@@ -115,38 +127,41 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
   const agentStartInspectionEvent = "before_" + "agent_start";
   pi.on(agentStartInspectionEvent as any, async (event: any, ctx: any) => {
     const toolNames = selectedToolNames(event?.systemPromptOptions);
-    publish(ctx, "prompt", {
-      promptBytes: byteLen(event?.prompt ?? ""),
-      systemPromptBytes: byteLen(event?.systemPrompt ?? ctx?.getSystemPrompt?.() ?? ""),
-      systemPromptParts: systemPromptParts(event?.systemPromptOptions, event?.systemPrompt ?? ctx?.getSystemPrompt?.() ?? ""),
-      toolCount: toolNames.length,
-      tools: toolNames,
-      contextFileCount: Array.isArray(event?.systemPromptOptions?.contextFiles) ? event.systemPromptOptions.contextFiles.length : undefined,
-      skillCount: Array.isArray(event?.systemPromptOptions?.skills) ? event.systemPromptOptions.skills.length : undefined,
-    });
+    publish({
+      phase: "prompt",
+      summary: {
+        promptBytes: byteLen(event?.prompt ?? ""),
+        systemPromptBytes: byteLen(event?.systemPrompt ?? ctx?.getSystemPrompt?.() ?? ""),
+        systemPromptParts: systemPromptParts(event?.systemPromptOptions, event?.systemPrompt ?? ctx?.getSystemPrompt?.() ?? ""),
+        toolCount: toolNames.length,
+        tools: toolNames,
+        contextFileCount: Array.isArray(event?.systemPromptOptions?.contextFiles) ? event.systemPromptOptions.contextFiles.length : undefined,
+        skillCount: Array.isArray(event?.systemPromptOptions?.skills) ? event.systemPromptOptions.skills.length : undefined,
+      },
+    }, ctx);
   });
 
   pi.on("context", async (event: any, ctx: any) => {
     const m = countMessages(event?.messages);
-    publish(ctx, "context", {
+    publish({ phase: "context", summary: {
       messageCount: m.count,
       messageBytes: m.bytes,
       messageBreakdown: messageBreakdown(event?.messages),
-    });
+    } }, ctx);
   });
 
   pi.on("before_provider_request", async (event: any, ctx: any) => {
-    publish(ctx, "provider_request", { payloadBytes: byteLen(event?.payload) });
+    publish({ phase: "provider_request", summary: { payloadBytes: byteLen(event?.payload) } }, ctx);
   });
 
   pi.on("tool_execution_end", async (event: any, ctx: any) => {
-    publish(ctx, "tool_end", {
+    publish({ phase: "tool_end", summary: {
       toolCallId: event?.toolCallId,
       toolName: event?.toolName,
       argsBytes: byteLen(event?.args),
       resultBytes: byteLen(event?.result),
       isError: Boolean(event?.isError),
-    });
+    } }, ctx);
   });
 
   pi.on("session_compact" as any, async (_event: any, _ctx: any) => {

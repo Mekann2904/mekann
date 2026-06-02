@@ -63,13 +63,11 @@ export interface Contributor {
 export function payloadBreakdown(scope: ContextMonitorScope = currentScope()): Contributor[] {
   const sys = numLatest("systemPromptBytes", scope);
   const msg = numLatest("messageBytes", scope);
-  const lastResult = numLatest("resultBytes", scope);
   const payload = numLatest("payloadBytes", scope);
   const overhead = payload - sys - msg;
   const items: Contributor[] = [
     { label: "System prompt", bytes: sys, pct: 0 },
     { label: "Messages", bytes: msg, pct: 0 },
-    { label: "Last tool result", bytes: lastResult, pct: 0 },
     { label: "Provider overhead", bytes: Math.max(0, overhead), pct: 0 },
   ].filter((c) => c.bytes > 0);
   const total = items.reduce((s, c) => s + c.bytes, 0) || 1;
