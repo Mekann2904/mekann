@@ -27,7 +27,7 @@ describe("context tool registration observation", () => {
     pi.registerTool({ name: "example_tool", label: "Example", description: "Example", parameters: { type: "object", properties: { query: { type: "string" } } } as any, execute: async () => ({ content: "ok" }) });
 
     expect(registered.map((tool) => tool.name)).toEqual(["example_tool"]);
-    await vi.waitFor(() => expect(state.tools.get("example_tool")?.schemaBytes).toBeGreaterThan(0));
+    expect(state.tools.get("example_tool")?.schemaBytes).toBeGreaterThan(0);
     expect(state.toolSchemaTotalBytes).toBe(state.tools.get("example_tool")?.schemaBytes);
   });
 
@@ -57,8 +57,25 @@ describe("context tool registration observation", () => {
     pi.registerTool({ name: "single_record", label: "Single", description: "Single", parameters: { type: "object", properties: { value: { type: "string" } } } as any, execute: async () => ({ content: "ok" }) });
 
     expect(registered).toHaveLength(1);
-    await vi.waitFor(() => expect(state.tools.has("single_record")).toBe(true));
+    expect(state.tools.has("single_record")).toBe(true);
     expect(state.tools.size).toBe(1);
+  });
+
+  it("updates same-name tool schema totals to reflect the current registration surface", () => {
+    const pi = {
+      on: vi.fn(),
+      registerCommand: vi.fn(),
+      registerTool: vi.fn(),
+    } as any;
+
+    observeToolRegistrations(pi);
+    pi.registerTool({ name: "changing_tool", parameters: { type: "object", properties: { a: { type: "string" } } }, execute: async () => ({ content: "ok" }) });
+    const first = state.tools.get("changing_tool")!.schemaBytes;
+    pi.registerTool({ name: "changing_tool", parameters: { type: "object", properties: { a: { type: "string" }, b: { type: "string" } } }, execute: async () => ({ content: "ok" }) });
+    const second = state.tools.get("changing_tool")!.schemaBytes;
+
+    expect(second).toBeGreaterThan(first);
+    expect(state.toolSchemaTotalBytes).toBe(second);
   });
 
   it("keeps context intelligence derived values scoped to the requested sample set", () => {
@@ -74,5 +91,16 @@ describe("context tool registration observation", () => {
     expect(report.health.risk).toBe("low");
     expect(report.toolOutputBreakdown.map((item: any) => item.label)).toEqual(["a_tool"]);
     expect(report.topContributors.some((item: any) => item.source === "b_tool")).toBe(false);
+  });
+
+  it("uses strict scope by default instead of mixing unscoped samples into scoped reports", () => {
+    recordContextMonitorSample({ phase: "provider_request", summary: { contextTokens: 9000, contextPercent: 90, payloadBytes: 9000, messageBytes: 100, systemPromptBytes: 8000 } });
+    recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "provider_request", summary: { contextTokens: 1000, contextPercent: 10, payloadBytes: 1000, messageBytes: 700, systemPromptBytes: 100 } });
+
+    const report = getContextIntelligenceReport("report", 10, { cwd: "/repo/a", sessionId: "a" }) as any;
+
+    expect(report.context.tokens).toBe(1000);
+    expect(report.context.payloadBytes).toBe(1000);
+    expect(report.health.risk).toBe("low");
   });
 });

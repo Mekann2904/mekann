@@ -1,10 +1,7 @@
-export interface RecordContextObservationInput {
-	cwd?: string;
-	sessionId?: string;
-	phase: string;
-	summary: Record<string, unknown>;
-	at?: number;
-}
+import { recordContextObservation as appendContextObservation } from "./context-control/store.js";
+import type { ContextObservation } from "./context-control/observation.js";
+
+export type RecordContextObservationInput = ContextObservation;
 
 /**
  * Best-effort observation seam for context-control monitoring.
@@ -15,8 +12,7 @@ export interface RecordContextObservationInput {
  */
 export async function recordContextObservation(input: RecordContextObservationInput): Promise<void> {
 	try {
-		const { recordContextMonitorSample } = await import("./context-tracker/server.js");
-		recordContextMonitorSample(input);
+		appendContextObservation(input);
 	} catch {
 		// Best-effort by contract: monitoring must not break the caller.
 	}

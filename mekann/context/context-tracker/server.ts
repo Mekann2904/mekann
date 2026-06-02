@@ -4,6 +4,10 @@ import type { AddressInfo } from "node:net";
 import * as path from "node:path";
 import type { CacheFriendlySummary, ActualProviderSummary } from "../../core/cache-friendly-prompt/reportTypes.js";
 import { state, type ContextMonitorSample } from "./state.js";
+import type { ContextScope as ContextMonitorScope } from "../context-control/observation.js";
+import { currentScope as deriveCurrentScope, scopedSamples as filterScopedSamples } from "../context-control/scope.js";
+import { recordContextObservation as appendContextObservation } from "../context-control/store.js";
+import { getToolSchemaSnapshot, recordToolSchemaCurrent } from "../context-control/tool-schemas.js";
 
 // ─── helpers ─────────────────────────────────────────────────────
 
@@ -50,19 +54,12 @@ function esc(v: unknown): string {
   return String(v ?? "—").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]!));
 }
 
-type ContextMonitorScope = { cwd?: string; sessionId?: string };
-
 function currentScope(): ContextMonitorScope {
-  const latest = state.samples.at(-1);
-  return { cwd: latest?.cwd, sessionId: latest?.sessionId };
+  return deriveCurrentScope(state.samples as any);
 }
 
 function scopedSamples(scope: ContextMonitorScope = currentScope()): ContextMonitorSample[] {
-  return state.samples.filter((sample) => {
-    if (scope.cwd && sample.cwd && sample.cwd !== scope.cwd) return false;
-    if (scope.sessionId && sample.sessionId && sample.sessionId !== scope.sessionId) return false;
-    return true;
-  });
+  return filterScopedSamples(state.samples as any, { ...scope, mode: scope.mode ?? "strict" }) as any;
 }
 
 // ─── data access ─────────────────────────────────────────────────
@@ -339,7 +336,7 @@ function payloadTrendBars(scope: ContextMonitorScope = currentScope()): string {
 }
 
 function toolSchemaTable(): string {
-  const tools = [...state.tools.values()].sort((a, b) => b.schemaBytes - a.schemaBytes).slice(0, 15);
+  const tools = getToolSchemaSnapshot().tools.sort((a, b) => b.schemaBytes - a.schemaBytes).slice(0, 15);
   if (tools.length === 0) return '<span class="dim">No tool schemas recorded</span>';
   const max = Math.max(...tools.map((t) => t.schemaBytes), 1);
   return `<table><thead><tr><th>Tool</th><th>Schema bytes</th><th></th></tr></thead><tbody>${tools
@@ -535,8 +532,9 @@ function renderDashboard(scope: ContextMonitorScope = currentScope()): string {
   const outputBreakdown = toolOutputBreakdown(scope);
   const alerts = computeAlerts(scope);
   const samples = scopedSamples(scope).slice(-50).reverse();
-  const totalTools = state.tools.size;
-  const schemaTotal = state.toolSchemaTotalBytes;
+  const toolSchemas = getToolSchemaSnapshot();
+  const totalTools = toolSchemas.tools.length;
+  const schemaTotal = toolSchemas.totalBytes;
   const compactions = state.compactionCount;
 
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Context Monitor — Mekann</title><style>${dashboardStyle()}</style></head><body><main>
@@ -651,16 +649,11 @@ ${samples.map((s) => {
 // ─── public api ──────────────────────────────────────────────────
 
 export function recordContextMonitorSample(sample: Omit<ContextMonitorSample, "id" | "at"> & { at?: number }): ContextMonitorSample {
-  const stored: ContextMonitorSample = { id: state.nextId++, at: sample.at ?? Date.now(), cwd: sample.cwd, sessionId: sample.sessionId, phase: sample.phase, summary: sample.summary };
-  state.samples.push(stored);
-  if (state.samples.length > 500) state.samples.splice(0, state.samples.length - 500);
-  return stored;
+  return appendContextObservation({ cwd: sample.cwd, sessionId: sample.sessionId, at: sample.at, phase: sample.phase as any, summary: sample.summary as any }) as any;
 }
 
 export function recordToolSchema(name: string, schemaBytes: number): void {
-  if (state.tools.has(name)) return; // first registration wins
-  state.tools.set(name, { name, schemaBytes, registeredAt: Date.now() });
-  state.toolSchemaTotalBytes += schemaBytes;
+  recordToolSchemaCurrent(name, schemaBytes);
 }
 
 export function recordCompaction(): void {
@@ -674,7 +667,7 @@ export function getContextMonitorSnapshot(scope: ContextMonitorScope = currentSc
     latest: scopedSamples(scope).at(-1) ?? null,
     cacheableContext: latestCacheableContextSample(scope)?.summary ?? null,
     sampleCount: scopedSamples(scope).length,
-    tools: [...state.tools.values()],
+    tools: getToolSchemaSnapshot().tools,
     compactionCount: state.compactionCount,
     lastCompactionAt: state.lastCompactionAt ?? null,
     alerts: computeAlerts(scope),
@@ -705,7 +698,10 @@ export async function ensureContextMonitorServer(preferredPort = 0): Promise<{ p
     if (url.pathname === "/health") return json(res, 200, { ok: true });
     if (url.pathname === "/snapshot") return json(res, 200, getContextMonitorSnapshot(scope));
     if (url.pathname === "/events") return json(res, 200, { samples: scopedSamples(scope) });
-    if (url.pathname === "/tools") return json(res, 200, { tools: [...state.tools.values()], totalBytes: state.toolSchemaTotalBytes });
+    if (url.pathname === "/tools") {
+      const toolSchemas = getToolSchemaSnapshot();
+      return json(res, 200, { tools: toolSchemas.tools, totalBytes: toolSchemas.totalBytes });
+    }
     if (url.pathname === "/llm/context-report") return json(res, 200, getContextIntelligenceReport(String(url.searchParams.get("action") ?? "report"), Number(url.searchParams.get("limit") ?? 20), scope));
     if (url.pathname === "/llm/context-health") return json(res, 200, getContextIntelligenceReport("health", 20, scope));
     if (url.pathname === "/llm/context-top-contributors") return json(res, 200, getContextIntelligenceReport("top_contributors", Number(url.searchParams.get("limit") ?? 20), scope));

@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { recordToolSchemaCurrent } from "./context-control/tool-schemas.js";
 
 function byteLen(value: unknown): number {
 	if (typeof value === "string") return Buffer.byteLength(value, "utf8");
@@ -7,9 +8,7 @@ function byteLen(value: unknown): number {
 
 function recordToolRegistrationObservation(name: string, parameters: unknown): void {
 	try {
-		void import("./context-tracker/server.js").then(({ recordToolSchema }) => {
-			recordToolSchema(name, byteLen(parameters ?? {}));
-		}).catch(() => {});
+		recordToolSchemaCurrent(name, byteLen(parameters ?? {}));
 	} catch {
 		// Best-effort by contract: monitoring must not break the caller.
 	}

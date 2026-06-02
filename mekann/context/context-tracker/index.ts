@@ -1,7 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { spawn } from "node:child_process";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
-import { ensureContextMonitorServer, recordContextMonitorSample, recordCompaction } from "./server.js";
+import { ensureContextMonitorServer, recordCompaction } from "./server.js";
+import { recordContextObservation } from "../observations.js";
 
 // ─── helpers ─────────────────────────────────────────────────────
 
@@ -92,11 +93,11 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
 
   function publish(ctx: any, phase: string, summary: Record<string, unknown>): void {
     const usage = ctx?.getContextUsage?.();
-    recordContextMonitorSample({
+    void recordContextObservation({
       cwd: ctx?.cwd,
       sessionId: ctx?.sessionId,
-      phase,
-      summary: { ...summary, contextTokens: usage?.tokens, contextPercent: usage?.percent },
+      phase: phase as any,
+      summary: { ...summary, contextTokens: usage?.tokens, contextPercent: usage?.percent } as any,
     });
   }
 
