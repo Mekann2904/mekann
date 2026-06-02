@@ -22,6 +22,7 @@ Thumbs.db
 .pi/
 .autoresearch/
 .pi-cache-friendly/
+.reasonix/truncated-results/
 
 # Mekann generated cache artifacts
 .mekann/cacheable-context/
