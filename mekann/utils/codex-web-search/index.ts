@@ -23,6 +23,7 @@ import type { CodexReasoningEffort, SearchContextSize } from "../codex-shared/ty
 import type { CodexWebSearchDetails } from "./result.js";
 import { CodexWebSearchRuntime } from "./runtime.js";
 import type { CodexWebSearchConfig } from "./runtime.js";
+import { registerContextTool } from "../../context/observations.js";
 
 // ---------------------------------------------------------------------------
 // Tool schema
@@ -321,5 +322,5 @@ const codexWebSearchTool: ToolDefinition<typeof CodexWebSearchParams, CodexWebSe
 // ---------------------------------------------------------------------------
 
 export default function codexWebSearch(pi: ExtensionAPI): void {
-	pi.registerTool(codexWebSearchTool);
+	registerContextTool(pi, codexWebSearchTool);
 }

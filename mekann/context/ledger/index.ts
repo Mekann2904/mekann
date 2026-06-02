@@ -9,6 +9,7 @@ import { handleClear } from "../clear.js";
 import { featureStringValue } from "../../settings/enabled.js";
 import { setToolsActive } from "../../settings/toolSurface.js";
 import { shouldExposeManualOrAlwaysSurface, shouldRestoreSessionContextSurface } from "../surface-policy.js";
+import { registerContextTool } from "../observations.js";
 import {
 	CONTEXT_LEDGER_COMMAND_COMPLETIONS,
 	clampInt,
@@ -44,7 +45,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 		syncContextLedgerToolSurface();
 	}
 	const KindEnum = Type.Enum(Object.fromEntries(CONTEXT_EVENT_KINDS.map((kind) => [kind, kind])) as Record<string, string>);
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "search_context_events",
 		label: "Search Context Events",
 		description: "Search decisions, tasks, errors, plans, and artifact references stored in the context ledger.",
@@ -72,7 +73,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "summarize_session_context",
 		label: "Summarize Session Context",
 		description: "Read the latest session snapshot or rebuild one from context events. Use this to restore working memory after session restart or compaction.",

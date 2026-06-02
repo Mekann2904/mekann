@@ -20,6 +20,7 @@ import { featureBooleanValue, isFeatureEnabled } from "../../settings/enabled.js
 import { SandboxExecutionControl, SANDBOX_BLOCK_HINT } from "./executionControl.js";
 import { formatSandboxRuntimeStatus, type SandboxRuntimeStatus } from "./runtimeStatus.js";
 import { appendWorkspaceBashAllowlistCommand, getBashAllowlist, getBashMode, isBashCommandAllowed, setWorkspaceBashMode, type BashMode } from "./bashPolicy.js";
+import { registerContextTool } from "../../context/observations.js";
 
 export { DEFAULT_LLM_OUTPUT_MAX_BYTES, DEFAULT_LLM_OUTPUT_MAX_LINES, getEffectiveLlmOutputMaxBytes, getEffectiveLlmOutputMaxLines, truncateForLlm } from "./truncation.js";
 export type { TruncateForLlmOptions } from "./truncation.js";
@@ -173,7 +174,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 	// Dummy initial localBash for registerTool spread (will be replaced on session_start)
 	const initialBash = createBashTool(process.cwd());
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		...initialBash,
 		label: "bash (サンドボックス)",
 		async execute(id, params, signal, onUpdate, ctx) {
@@ -186,7 +187,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	// ─── Elevation tool (LLM → user permission request) ─────────────
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "request_elevation",
 		label: "サンドボックス権限昇格リクエスト",
 		description: "Request user-approved temporary elevation for a legitimate command blocked by the active sandbox.",

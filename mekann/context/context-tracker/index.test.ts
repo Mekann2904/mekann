@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import contextTrackerExtension from "./index.js";
+import { registerContextTool } from "../observations.js";
 import { state } from "./state.js";
 
 function resetContextTrackerState(): void {
@@ -7,12 +8,12 @@ function resetContextTrackerState(): void {
   state.toolSchemaTotalBytes = 0;
 }
 
-describe("context tracker tool registration observation", () => {
+describe("context tool registration observation", () => {
   beforeEach(() => {
     resetContextTrackerState();
   });
 
-  it("records tool schema bytes at the registerTool boundary", () => {
+  it("records tool schema bytes at the registerTool boundary", async () => {
     const registered: any[] = [];
     const pi = {
       on: vi.fn(),
@@ -21,27 +22,22 @@ describe("context tracker tool registration observation", () => {
     } as any;
 
     contextTrackerExtension(pi);
-    pi.registerTool({ name: "example_tool", parameters: { type: "object", properties: { query: { type: "string" } } } });
+    registerContextTool(pi, { name: "example_tool", label: "Example", description: "Example", parameters: { type: "object", properties: { query: { type: "string" } } } as any, execute: async () => ({ content: "ok" }) });
 
     expect(registered.map((tool) => tool.name)).toEqual(["example_tool"]);
-    expect(state.tools.get("example_tool")?.schemaBytes).toBeGreaterThan(0);
+    await vi.waitFor(() => expect(state.tools.get("example_tool")?.schemaBytes).toBeGreaterThan(0));
     expect(state.toolSchemaTotalBytes).toBe(state.tools.get("example_tool")?.schemaBytes);
   });
 
-  it("does not double-wrap the same ExtensionAPI", () => {
-    const originalRegisterTool = vi.fn();
+  it("records after the underlying tool registration succeeds", () => {
     const pi = {
       on: vi.fn(),
       registerCommand: vi.fn(),
-      registerTool: originalRegisterTool,
+      registerTool: vi.fn(() => { throw new Error("registration failed"); }),
     } as any;
 
-    contextTrackerExtension(pi);
-    contextTrackerExtension(pi);
-    pi.registerTool({ name: "single_record", parameters: { type: "object" } });
+    expect(() => registerContextTool(pi, { name: "failed_record", label: "Failed", description: "Failed", parameters: { type: "object" } as any, execute: async () => ({ content: "ok" }) })).toThrow("registration failed");
 
-    expect(originalRegisterTool).toHaveBeenCalledOnce();
-    expect(state.tools.size).toBe(1);
-    expect(state.tools.has("single_record")).toBe(true);
+    expect(state.tools.has("failed_record")).toBe(false);
   });
 });

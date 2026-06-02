@@ -1,27 +1,13 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { spawn } from "node:child_process";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
-import { ensureContextMonitorServer, recordContextMonitorSample, recordCompaction, recordToolSchema } from "./server.js";
+import { ensureContextMonitorServer, recordContextMonitorSample, recordCompaction } from "./server.js";
 
 // ─── helpers ─────────────────────────────────────────────────────
 
 function byteLen(value: unknown): number {
   if (typeof value === "string") return Buffer.byteLength(value, "utf8");
   try { return Buffer.byteLength(JSON.stringify(value), "utf8"); } catch { return 0; }
-}
-
-const REGISTER_TOOL_OBSERVER = Symbol.for("mekann.contextTracker.registerToolObserver");
-
-function installToolRegistrationObserver(pi: ExtensionAPI): void {
-  const target = pi as ExtensionAPI & { [REGISTER_TOOL_OBSERVER]?: true };
-  if (target[REGISTER_TOOL_OBSERVER]) return;
-
-  const originalRegisterTool = pi.registerTool.bind(pi);
-  pi.registerTool = ((tool: Parameters<ExtensionAPI["registerTool"]>[0]) => {
-    recordToolSchema(String((tool as any)?.name ?? "unknown"), byteLen((tool as any)?.parameters ?? {}));
-    return originalRegisterTool(tool as any);
-  }) as ExtensionAPI["registerTool"];
-  target[REGISTER_TOOL_OBSERVER] = true;
 }
 
 function countMessages(messages: unknown): { count: number; bytes: number } {
@@ -93,7 +79,6 @@ function selectedToolNames(options: any): string[] {
 
 export default function contextTrackerExtension(pi: ExtensionAPI): void {
   if (featureValue("context-tracker", "enabled") === false) return;
-  installToolRegistrationObserver(pi);
 
   const cfg = featureConfig("context-tracker");
   const port = Number(cfg.port ?? 0) || 0;

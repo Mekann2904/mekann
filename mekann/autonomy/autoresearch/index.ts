@@ -120,6 +120,7 @@ import {
 } from "./scale.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { projectFeatureToolSurface } from "../../settings/toolSurfaceProjection.js";
+import { registerContextTool } from "../../context/observations.js";
 
 
 // ---------------------------------------------------------------------------
@@ -502,7 +503,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	// ─── Tool: autoresearch_evaluate_query ─────────────────────
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_evaluate_query",
 		label: "autoresearch evaluate query",
 		description: "Evaluate whether a natural-language request can become an autoresearch contract.",
@@ -542,7 +543,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		excluded_paths: Type.Optional(Type.Array(Type.String(), { description: "Excluded path patterns." })),
 	});
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_init",
 		label: "autoresearch init",
 		description:
@@ -560,7 +561,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	// ─── Tool: autoresearch_run ────────────────────────────────
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_run",
 		label: "autoresearch run",
 		description:
@@ -583,7 +584,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	// ─── Tool: autoresearch_log ────────────────────────────────
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_log",
 		label: "autoresearch log",
 		description: "Record an experiment result; keep commits, discard/crash/checks_failed revert.",
@@ -609,7 +610,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	// ─── Tool: autoresearch_plan ───────────────────────────────
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_plan",
 		label: "autoresearch plan",
 		description:
@@ -630,7 +631,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	// ─── Tool: autoresearch_approve ────────────────────────────
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_approve",
 		label: "autoresearch approve",
 		description:
@@ -651,7 +652,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	// ─── Tool: autoresearch candidates ─────────────────────────
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_candidate_escrow",
 		label: "autoresearch candidate escrow",
 		description: "Escrow pending subagent patch results as autoresearch candidates.",
@@ -668,7 +669,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		async execute(_tc, params, _signal, _ou, ctx) { return executeCandidateEscrow(store, params, ctx); },
 	});
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_list_candidates",
 		label: "autoresearch list candidates",
 		description: "List autoresearch candidates for the current plan.",
@@ -676,7 +677,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		async execute(_tc, params, _signal, _ou, ctx) { return executeListCandidates(store, params as Record<string, never>, ctx); },
 	});
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_show_candidate",
 		label: "autoresearch show candidate",
 		description: "Show an autoresearch candidate, optionally with patch/source content.",
@@ -684,7 +685,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		async execute(_tc, params, _signal, _ou, ctx) { return executeShowCandidate(store, params, ctx); },
 	});
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_reject_candidate",
 		label: "autoresearch reject candidate",
 		description: "Reject an autoresearch candidate without changing the source subagent result.",
@@ -692,7 +693,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		async execute(_tc, params, _signal, _ou, ctx) { return executeRejectCandidate(store, params, ctx); },
 	});
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_apply_candidate",
 		label: "autoresearch apply candidate",
 		description: "Apply one pending autoresearch candidate as a trial patch. Does not mark subagent result applied.",
@@ -700,7 +701,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		async execute(_tc, params, _signal, _ou, ctx) { return executeApplyCandidate(store, params, ctx); },
 	});
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_suggest_subagents",
 		label: "autoresearch suggest subagents",
 		description: "Suggest scout/proposer/critic subagent spawn payloads derived from the current contract.",
@@ -713,7 +714,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_apply_candidate_isolated",
 		label: "autoresearch apply candidate isolated",
 		description: "Apply one pending candidate in .pi/autoresearch-worktrees/<candidateId> for isolated evaluation.",
@@ -723,7 +724,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	// ─── Tools: autoresearch scale supervisor ───────────────────
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_scale_next",
 		label: "autoresearch scale next",
 		description: "Get the next autoresearch scaling supervisor action.",
@@ -739,7 +740,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_scale_complete_action",
 		label: "autoresearch scale complete action",
 		description: "Record completion of an autoresearch scaling action.",
@@ -758,7 +759,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_scale_ingest",
 		label: "autoresearch scale ingest",
 		description: "Ingest tool/subagent/candidate results for the active scale action.",
@@ -773,7 +774,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_scale_status",
 		label: "autoresearch scale status",
 		description: "Show autoresearch scaling status.",
@@ -786,7 +787,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	// ─── Tool: autoresearch_run_contract ───────────────────────
 
-	pi.registerTool({
+	registerContextTool(pi, {
 		name: "autoresearch_run_contract",
 		label: "autoresearch run contract",
 		description:

@@ -50,12 +50,36 @@ function esc(v: unknown): string {
   return String(v ?? "—").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]!));
 }
 
-function currentScope(): { cwd?: string; sessionId?: string } {
+type ContextMonitorScope = { cwd?: string; sessionId?: string };
+
+let activeScope: ContextMonitorScope | undefined;
+
+function currentScope(): ContextMonitorScope {
   const latest = state.samples.at(-1);
   return { cwd: latest?.cwd, sessionId: latest?.sessionId };
 }
 
-function scopedSamples(scope = currentScope()): ContextMonitorSample[] {
+function withCurrentScope<T>(fn: () => T): T {
+  const previous = activeScope;
+  activeScope = currentScope();
+  try {
+    return fn();
+  } finally {
+    activeScope = previous;
+  }
+}
+
+async function withCurrentScopeAsync<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = activeScope;
+  activeScope = currentScope();
+  try {
+    return await fn();
+  } finally {
+    activeScope = previous;
+  }
+}
+
+function scopedSamples(scope = activeScope ?? currentScope()): ContextMonitorSample[] {
   return state.samples.filter((sample) => {
     if (scope.cwd && sample.cwd && sample.cwd !== scope.cwd) return false;
     if (scope.sessionId && sample.sessionId && sample.sessionId !== scope.sessionId) return false;
@@ -690,9 +714,9 @@ export async function ensureContextMonitorServer(preferredPort = 0): Promise<{ p
     void (async () => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     if (url.pathname === "/") return html(res, renderHome());
-    if (url.pathname === "/dashboard") return html(res, renderDashboard());
-    if (url.pathname === "/cache-efficiency") return html(res, await renderCacheEfficiencyDashboard());
-    if (url.pathname === "/cache-efficiency/snapshot") return json(res, 200, await readCacheEfficiencySummary());
+    if (url.pathname === "/dashboard") return html(res, withCurrentScope(() => renderDashboard()));
+    if (url.pathname === "/cache-efficiency") return html(res, await withCurrentScopeAsync(() => renderCacheEfficiencyDashboard()));
+    if (url.pathname === "/cache-efficiency/snapshot") return json(res, 200, await withCurrentScopeAsync(() => readCacheEfficiencySummary()));
     if (url.pathname.startsWith("/cache-efficiency/artifacts/")) {
       const name = decodeURIComponent(url.pathname.slice("/cache-efficiency/artifacts/".length));
       const body = await readCacheEfficiencySvg(name);
@@ -700,15 +724,15 @@ export async function ensureContextMonitorServer(preferredPort = 0): Promise<{ p
       return json(res, 404, { error: "not_found" });
     }
     if (url.pathname === "/health") return json(res, 200, { ok: true });
-    if (url.pathname === "/snapshot") return json(res, 200, getContextMonitorSnapshot());
-    if (url.pathname === "/events") return json(res, 200, { samples: scopedSamples() });
+    if (url.pathname === "/snapshot") return json(res, 200, withCurrentScope(() => getContextMonitorSnapshot()));
+    if (url.pathname === "/events") return json(res, 200, withCurrentScope(() => ({ samples: scopedSamples() })));
     if (url.pathname === "/tools") return json(res, 200, { tools: [...state.tools.values()], totalBytes: state.toolSchemaTotalBytes });
-    if (url.pathname === "/llm/context-report") return json(res, 200, getContextIntelligenceReport(String(url.searchParams.get("action") ?? "report"), Number(url.searchParams.get("limit") ?? 20)));
-    if (url.pathname === "/llm/context-health") return json(res, 200, getContextIntelligenceReport("health"));
-    if (url.pathname === "/llm/context-top-contributors") return json(res, 200, getContextIntelligenceReport("top_contributors", Number(url.searchParams.get("limit") ?? 20)));
-    if (url.pathname === "/llm/context-timeline") return json(res, 200, getContextIntelligenceReport("timeline", Number(url.searchParams.get("limit") ?? 50)));
-    if (url.pathname === "/llm/context-recommendations") return json(res, 200, getContextIntelligenceReport("recommendations"));
-    if (url.pathname === "/llm/context-budget") return json(res, 200, getContextIntelligenceReport("budget"));
+    if (url.pathname === "/llm/context-report") return json(res, 200, withCurrentScope(() => getContextIntelligenceReport(String(url.searchParams.get("action") ?? "report"), Number(url.searchParams.get("limit") ?? 20))));
+    if (url.pathname === "/llm/context-health") return json(res, 200, withCurrentScope(() => getContextIntelligenceReport("health")));
+    if (url.pathname === "/llm/context-top-contributors") return json(res, 200, withCurrentScope(() => getContextIntelligenceReport("top_contributors", Number(url.searchParams.get("limit") ?? 20))));
+    if (url.pathname === "/llm/context-timeline") return json(res, 200, withCurrentScope(() => getContextIntelligenceReport("timeline", Number(url.searchParams.get("limit") ?? 50))));
+    if (url.pathname === "/llm/context-recommendations") return json(res, 200, withCurrentScope(() => getContextIntelligenceReport("recommendations")));
+    if (url.pathname === "/llm/context-budget") return json(res, 200, withCurrentScope(() => getContextIntelligenceReport("budget")));
     if (url.pathname === "/llm/context-decision" && req.method === "POST") {
       const chunks: Buffer[] = [];
       req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));

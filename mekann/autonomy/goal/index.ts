@@ -37,6 +37,7 @@ import { truncateToWidth } from "@earendil-works/pi-tui";
 import { registerGoalCommand } from "./command.js";
 import { recordGoalEvent, type GoalAction } from "./context-events.js";
 import { MODE_STATUS_EVENT } from "../../safety/policy-core/modes.js";
+import { registerContextTool } from "../../context/observations.js";
 
 
 // ---------------------------------------------------------------------------
@@ -263,7 +264,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
   // ─── Model tools ──────────────────────────────────────────────
 
   // get_goal
-  pi.registerTool({
+  registerContextTool(pi, {
     name: "get_goal",
     label: "Get current goal",
     description:
@@ -302,7 +303,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
   });
 
   // create_goal
-  pi.registerTool({
+  registerContextTool(pi, {
     name: "create_goal",
     label: "Create a goal",
     description:
@@ -350,7 +351,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
   });
 
   // update_goal
-  pi.registerTool({
+  registerContextTool(pi, {
     name: "update_goal",
     label: "Update goal",
     description:
