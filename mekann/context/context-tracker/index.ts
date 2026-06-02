@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
 import { ensureContextMonitorServer, recordCompaction } from "./server.js";
@@ -77,6 +78,14 @@ function selectedToolNames(options: any): string[] {
   return selected.map((t: any) => String(t?.name ?? t)).filter(Boolean);
 }
 
+function hashStrings(values: string[]): string {
+  return createHash("sha256").update(values.join("\n"), "utf8").digest("hex");
+}
+
+function isSorted(values: string[]): boolean {
+  return values.every((value, index) => index === 0 || values[index - 1].localeCompare(value) <= 0);
+}
+
 // ─── extension ───────────────────────────────────────────────────
 
 export default function contextTrackerExtension(pi: ExtensionAPI): void {
@@ -124,6 +133,9 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
         systemPromptParts: systemPromptParts(event?.systemPromptOptions, event?.systemPrompt ?? ctx?.getSystemPrompt?.() ?? ""),
         toolCount: toolNames.length,
         tools: toolNames,
+        toolSetHash: hashStrings([...toolNames].sort()),
+        toolOrderHash: hashStrings(toolNames),
+        toolOrderStable: isSorted(toolNames),
         contextFileCount: Array.isArray(event?.systemPromptOptions?.contextFiles) ? event.systemPromptOptions.contextFiles.length : undefined,
         skillCount: Array.isArray(event?.systemPromptOptions?.skills) ? event.systemPromptOptions.skills.length : undefined,
       },

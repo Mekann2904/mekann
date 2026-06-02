@@ -3,6 +3,7 @@ import { observeToolRegistrations } from "../tool-registration-observer.js";
 import { getContextIntelligenceReport, getContextMonitorSnapshot, recordContextMonitorSample } from "./server.js";
 import { state } from "../context-control/state.js";
 import { buildContextBudgetPlan } from "../context-control/planner.js";
+import { toolSurfaceAnalysis } from "../context-control/analysis.js";
 
 function resetContextTrackerState(): void {
   state.tools.clear();
@@ -185,6 +186,32 @@ describe("context tool registration observation", () => {
 
     expect(report.decisions).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "retrieve", target: "output-gate:og_abc_1", priority: "medium" }),
+    ]));
+  });
+
+  it("tracks selected-tool surface churn for prompt-cache review", () => {
+    recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "prompt", summary: { toolCount: 2, tools: ["bash", "read"], toolSetHash: "set-a", toolOrderHash: "order-a", toolOrderStable: true } });
+    recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "prompt", summary: { toolCount: 2, tools: ["read", "bash"], toolSetHash: "set-a", toolOrderHash: "order-b", toolOrderStable: false } });
+    recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "provider_request", summary: { contextTokens: 1000, contextPercent: 10, payloadBytes: 10_000 } });
+
+    const surface = toolSurfaceAnalysis({ cwd: "/repo/a", sessionId: "a" });
+    const report = getContextIntelligenceReport("budget", 10, { cwd: "/repo/a", sessionId: "a" }) as any;
+
+    expect(surface.toolSetHashChanges).toBe(0);
+    expect(surface.toolOrderHashChanges).toBe(1);
+    expect(surface.toolOrderStable).toBe(false);
+    expect(report.decisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "monitor", target: "tools:canonical-order" }),
+    ]));
+  });
+
+  it("adds token estimates to context planner savings", () => {
+    recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "context", summary: { messageCount: 1, messageBytes: 70_000, messageBreakdown: [{ role: "tool", source: "tool:bash", bytes: 70_000 }] } });
+
+    const report = getContextIntelligenceReport("budget", 10, { cwd: "/repo/a", sessionId: "a" }) as any;
+
+    expect(report.decisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "summarize", target: "tool:bash", expectedSavingsTokens: expect.any(Number) }),
     ]));
   });
 

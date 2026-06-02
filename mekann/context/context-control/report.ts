@@ -90,6 +90,7 @@ export function getContextIntelligenceReport(action = "report", limit = 20, scop
     },
     growth: analysis.growth,
     alerts: analysis.alerts,
+    toolSurface: analysis.toolSurface,
     compactions: { count: state.compactionCount, lastAt: state.lastCompactionAt ?? null },
     planner,
   };

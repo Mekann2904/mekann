@@ -1,9 +1,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { canonicalizeJson } from "../core/prompt-core/index.js";
 import { recordToolSchemaCurrent } from "./context-control/tool-schemas.js";
 
 function byteLen(value: unknown): number {
 	if (typeof value === "string") return Buffer.byteLength(value, "utf8");
-	try { return Buffer.byteLength(JSON.stringify(value), "utf8"); } catch { return 0; }
+	try { return Buffer.byteLength(canonicalizeJson(value), "utf8"); } catch { return 0; }
 }
 
 function recordToolRegistrationObservation(name: string, parameters: unknown): void {

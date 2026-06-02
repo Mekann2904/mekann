@@ -6,6 +6,7 @@ import type { ContextScope as ContextMonitorScope } from "../observation.js";
 import { fmtBytes } from "../format.js";
 import { currentContextScope, latestCacheableContextSample, scopedContextSamples } from "../query.js";
 import { getToolSchemaSnapshot } from "../tool-schemas.js";
+import { toolSurfaceAnalysis } from "../analysis.js";
 import { computeAlerts, latestVal, numLatest, numPrev, payloadBreakdown, toolOutputBreakdown } from "../report.js";
 import { buildContextBudgetPlan } from "../planner.js";
 import { dashboardStyle } from "./dashboard-style.js";
@@ -188,6 +189,10 @@ ${webNav()}
 <h2>By request role</h2><div class="panel">${actualRows(summary.actualByRequestRole)}</div>
 <div class="spacer"></div>
 <h2>By provider prefix hash</h2><div class="panel">${actualRows(summary.actualByProviderPrefixHash)}</div>
+<div class="spacer"></div>
+<h2>By selected tool set hash</h2><div class="panel">${actualRows(summary.actualByToolSetHash)}</div>
+<div class="spacer"></div>
+<h2>By tool order hash</h2><div class="panel">${actualRows(summary.actualByToolOrderHash)}</div>
 <p class="sub" style="margin-top:20px">JSON: <a href="/cache-efficiency/snapshot">/cache-efficiency/snapshot</a> / Existing report: <a href="/snapshot">/snapshot</a></p>
 </main><script>(()=>{async function refresh(){try{const u=new URL(location.href);u.searchParams.set('partial','1');const r=await fetch(u,{cache:'no-store'});if(!r.ok)return;const h=await r.text();const d=new DOMParser().parseFromString(h,'text/html');const n=d.querySelector('main')?.innerHTML??'';const m=document.querySelector('main');if(n&&m&&n!==m.innerHTML){const y=scrollY;m.innerHTML=n;scrollTo({top:y,behavior:'instant'});}}catch{}}setInterval(refresh,5000);})();</script></body></html>`;
 }
@@ -210,6 +215,7 @@ export function renderDashboard(scope: ContextMonitorScope = currentScope()): st
   const toolSchemas = getToolSchemaSnapshot();
   const totalTools = toolSchemas.tools.length;
   const schemaTotal = toolSchemas.totalBytes;
+  const toolSurface = toolSurfaceAnalysis(scope);
   const compactions = state.compactionCount;
 
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Context Monitor — Mekann</title><style>${dashboardStyle()}</style></head><body><main>
@@ -270,6 +276,17 @@ ${toolSchemaTable()}
 <h2>Output weight (cumulative)</h2>
 ${outputBreakdown.length === 0 ? '<span class="dim">No tool output data</span>' : `<table><thead><tr><th>Tool</th><th>Output</th><th></th></tr></thead><tbody>${outputBreakdown.map((c) => `<tr><td>${esc(c.label)}</td><td>${fmtBytes(c.bytes)}</td><td><div class="bar"><span style="width:${Math.max(1, c.pct)}%"></span></div></td></tr>`).join("")}</tbody></table>`}
 </div>
+</div>
+<div class="spacer"></div>
+<div class="panel">
+<h2>Tool cache stability</h2>
+<table><tbody>
+<tr><td>Selected tools</td><td>${esc(toolSurface.latestToolCount)}</td></tr>
+<tr><td>Tool set hash changes</td><td class="${toolSurface.toolSetHashChanges > 0 ? "warn" : "ok"}">${esc(toolSurface.toolSetHashChanges)}</td></tr>
+<tr><td>Tool order hash changes</td><td class="${toolSurface.toolOrderHashChanges > toolSurface.toolSetHashChanges ? "warn" : "ok"}">${esc(toolSurface.toolOrderHashChanges)}</td></tr>
+<tr><td>Canonical name order</td><td class="${toolSurface.toolOrderStable === false ? "warn" : "ok"}">${esc(toolSurface.toolOrderStable === null ? "unknown" : toolSurface.toolOrderStable ? "yes" : "no")}</td></tr>
+<tr><td>Schema surface</td><td>${fmtBytes(toolSurface.schemaTotalBytes)}</td></tr>
+</tbody></table>
 </div>
 
 <div class="spacer"></div>

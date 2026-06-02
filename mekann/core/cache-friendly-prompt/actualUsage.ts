@@ -36,6 +36,9 @@ export type ActualUsageLog = NormalizedActualCacheUsage & {
   stablePrefixHash?: string;
   featureCacheablePrefixHash?: string;
   providerPrefixHash?: string;
+  toolSetHash?: string;
+  toolOrderHash?: string;
+  toolOrderStable?: boolean;
   providerPrefixChars?: number;
   stablePrefixChars?: number;
   semiStableChars?: number;

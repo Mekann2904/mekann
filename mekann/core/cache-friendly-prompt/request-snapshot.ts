@@ -43,6 +43,9 @@ export type PromptRequestSnapshotState = {
 	semiStableHash?: string;
 	featureCacheablePrefixHash?: string;
 	providerPrefixHash?: string;
+	toolSetHash?: string;
+	toolOrderHash?: string;
+	toolOrderStable?: boolean;
 	stablePrefixChars: number;
 	stablePrefixTokenEstimate?: number;
 	semiStableChars?: number;
@@ -322,12 +325,22 @@ export interface InitialSnapshotInput {
 	requestRoleSource?: string;
 	baseSystemText: string;
 	rendered: RenderedFragments;
+	selectedTools?: string[];
+}
+
+function hashStrings(values: string[]): string {
+	return sha256(values.join("\n"));
+}
+
+function isSorted(values: string[]): boolean {
+	return values.every((value, index) => index === 0 || values[index - 1].localeCompare(value) <= 0);
 }
 
 export function createInitialSnapshot(
 	input: InitialSnapshotInput,
 ): PromptRequestSnapshotState {
 	const { baseSystemText, rendered } = input;
+	const selectedTools = input.selectedTools ?? [];
 
 	const { stableBaseSystemText } = splitVolatileRuntimeBlock(baseSystemText);
 	const featureCacheablePrefixText = joinPromptPartsCanonical([
@@ -357,6 +370,9 @@ export function createInitialSnapshot(
 			: undefined,
 		featureCacheablePrefixHash: sha256(featureCacheablePrefixText),
 		providerPrefixHash: sha256(providerPrefixText),
+		toolSetHash: selectedTools.length ? hashStrings([...selectedTools].sort()) : undefined,
+		toolOrderHash: selectedTools.length ? hashStrings(selectedTools) : undefined,
+		toolOrderStable: selectedTools.length ? isSorted(selectedTools) : undefined,
 		stablePrefixChars: rendered.stableText.length,
 		stablePrefixTokenEstimate: estimateTokens(rendered.stableText),
 		semiStableChars: rendered.semiStableText
@@ -508,6 +524,9 @@ export function buildRequestLog(input: RequestLogInput): CacheFriendlyRequestLog
 		featureCacheablePrefixTokenEstimate:
 			s?.featureCacheablePrefixTokenEstimate,
 		providerPrefixHash: s?.providerPrefixHash,
+		toolSetHash: s?.toolSetHash,
+		toolOrderHash: s?.toolOrderHash,
+		toolOrderStable: s?.toolOrderStable,
 		providerPrefixChars: s?.providerPrefixChars,
 		providerPrefixTokenEstimate: s?.providerPrefixTokenEstimate,
 		totalPromptChars: input.finalText.length,
@@ -565,6 +584,9 @@ export function buildActualUsageLog(
 		stablePrefixHash: s?.stablePrefixHash,
 		featureCacheablePrefixHash: s?.featureCacheablePrefixHash,
 		providerPrefixHash: s?.providerPrefixHash,
+		toolSetHash: s?.toolSetHash,
+		toolOrderHash: s?.toolOrderHash,
+		toolOrderStable: s?.toolOrderStable,
 		providerPrefixChars: s?.providerPrefixChars,
 		stablePrefixChars: s?.stablePrefixChars,
 		semiStableChars: s?.semiStableChars,

@@ -67,6 +67,12 @@ const DEFAULT_CONFIG: CacheFriendlyPromptConfig = {
 	reportDebounceMs: 1000,
 };
 
+function selectedToolNames(options: any): string[] {
+	const selected = options?.selectedTools;
+	if (!Array.isArray(selected)) return [];
+	return selected.map((tool: any) => String(tool?.name ?? tool)).filter(Boolean);
+}
+
 // ---------------------------------------------------------------------------
 // Extension entry point
 // ---------------------------------------------------------------------------
@@ -109,6 +115,7 @@ export default function cacheFriendlyPromptExtension(
 			requestRoleSource,
 			baseSystemText,
 			rendered,
+			selectedTools: selectedToolNames(event?.systemPromptOptions),
 		});
 
 		registry.rememberRunState(runKey, state);

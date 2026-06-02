@@ -1,5 +1,5 @@
 import type { ContextScope } from "./observation.js";
-import { latestMessageBreakdown } from "./analysis.js";
+import { latestMessageBreakdown, toolSurfaceAnalysis } from "./analysis.js";
 import type { ContextMonitorSample } from "./state.js";
 
 export type ContextPlannerDecisionKind = "inline" | "retrieve" | "summarize" | "externalize" | "omit" | "monitor";
@@ -9,6 +9,7 @@ export interface ContextPlannerDecision {
   target: string;
   priority: "high" | "medium" | "low";
   expectedSavingsBytes: number;
+  expectedSavingsTokens?: number;
   qualityRisk: "low" | "medium" | "high";
   reason: string;
 }
@@ -19,6 +20,8 @@ export interface ContextCacheEfficiencySummary {
   actualMatchedRequestCount?: number;
   actualMatchedTokenHitRateWeighted?: number | null;
   providerPrefixHashChanges?: number;
+  toolSetHashChanges?: number;
+  toolOrderHashChanges?: number;
   providerModelSwitches?: number;
   dynamicTruncationCount?: number;
   dynamicTruncationOmittedChars?: number;
@@ -77,9 +80,13 @@ function outputGateArtifactId(text: string): string | undefined {
   return text.match(/\bog_[a-z0-9]+_[a-z0-9]+\b/)?.[0];
 }
 
+function withTokenEstimate(decision: ContextPlannerDecision): ContextPlannerDecision {
+  return { ...decision, expectedSavingsTokens: decision.expectedSavingsTokens ?? Math.ceil(decision.expectedSavingsBytes / 4) };
+}
+
 function uniqueDecisions(decisions: ContextPlannerDecision[]): ContextPlannerDecision[] {
   const seen = new Set<string>();
-  return decisions.filter((decision) => {
+  return decisions.map(withTokenEstimate).filter((decision) => {
     const key = `${decision.kind}:${decision.target}`;
     if (seen.has(key)) return false;
     seen.add(key);
@@ -125,9 +132,15 @@ const pressureRule: PlannerRule = (ctx) => ctx.pressure === "critical" || ctx.pr
 const cacheableContextRule: PlannerRule = (ctx) => {
   const prefixChars = Number(ctx.latestValue("prefixChars") ?? 0);
   const maxPrefixChars = Number(ctx.latestValue("maxPrefixChars") ?? 0);
-  return maxPrefixChars > 0 && prefixChars / maxPrefixChars > 0.9
-    ? [{ kind: "retrieve", target: "cacheable-context:overflow-fragments", priority: "medium", expectedSavingsBytes: Math.round(prefixChars * 0.2), qualityRisk: "low", reason: "Cacheable context prefix is close to maxPrefixChars; keep locator inline and retrieve optional fragments on demand." }]
-    : [];
+  const promptSurface = String(ctx.latestValue("promptSurface") ?? "");
+  const decisions: ContextPlannerDecision[] = [];
+  if (maxPrefixChars > 0 && prefixChars / maxPrefixChars > 0.9) {
+    decisions.push({ kind: "retrieve", target: "cacheable-context:overflow-fragments", priority: "medium", expectedSavingsBytes: Math.round(prefixChars * 0.2), qualityRisk: "low", reason: "Cacheable context prefix is close to maxPrefixChars; keep locator inline and retrieve optional fragments on demand." });
+  }
+  if (promptSurface === "full" && prefixChars > 16 * 1024) {
+    decisions.push({ kind: "retrieve", target: "cacheable-context:full-surface", priority: "medium", expectedSavingsBytes: Math.round(prefixChars * 0.75), qualityRisk: "medium", reason: "Full cacheable-context is large for normal tasks; prefer locator mode and targeted retrieval unless this task explicitly needs all domain docs inline." });
+  }
+  return decisions;
 };
 
 const systemPromptRule: PlannerRule = (ctx) => {
@@ -136,6 +149,21 @@ const systemPromptRule: PlannerRule = (ctx) => {
   return payloadBytes > 0 && systemPromptBytes / payloadBytes > 0.3
     ? [{ kind: "retrieve", target: "system-prompt:optional-guidance", priority: "low", expectedSavingsBytes: Math.round(systemPromptBytes * 0.15), qualityRisk: "medium", reason: "System prompt is more than 30% of provider payload; lazy-load optional guidance." }]
     : [];
+};
+
+const toolSurfaceCacheRule: PlannerRule = (ctx) => {
+  const toolSurface = toolSurfaceAnalysis(ctx.scope);
+  const decisions: ContextPlannerDecision[] = [];
+  if (toolSurface.toolSetHashChanges > 0) {
+    decisions.push({ kind: "monitor", target: "tools:selected-tool-set", priority: "medium", expectedSavingsBytes: 0, qualityRisk: "low", reason: `Selected tool set changed ${toolSurface.toolSetHashChanges} times in scoped prompt samples; keep normal-task tool surfaces stable or split rarely used tools behind on-demand workflows.` });
+  }
+  if (toolSurface.toolOrderHashChanges > toolSurface.toolSetHashChanges) {
+    decisions.push({ kind: "monitor", target: "tools:canonical-order", priority: "medium", expectedSavingsBytes: 0, qualityRisk: "low", reason: "Tool order changed more often than the selected tool set; canonical tool ordering would preserve provider prefix cache hits." });
+  }
+  if (toolSurface.schemaTotalBytes > 48 * 1024) {
+    decisions.push({ kind: "retrieve", target: "tools:large-schema-surface", priority: "medium", expectedSavingsBytes: Math.round(toolSurface.schemaTotalBytes * 0.25), qualityRisk: "medium", reason: `Tool schema surface is large (${toolSurface.schemaTotalBytes} bytes); move rare capabilities to narrower/on-demand tools or shorten schemas.` });
+  }
+  return decisions;
 };
 
 const cacheEfficiencyRule: PlannerRule = ({ cacheSummary }) => {
@@ -148,6 +176,12 @@ const cacheEfficiencyRule: PlannerRule = ({ cacheSummary }) => {
   if ((cacheSummary.providerPrefixHashChanges ?? 0) > 3) {
     decisions.push({ kind: "monitor", target: "cache-friendly-prompt:provider-prefix-hash", priority: "medium", expectedSavingsBytes: 0, qualityRisk: "low", reason: `Provider prefix hash changed ${cacheSummary.providerPrefixHashChanges} times; group analysis by providerPrefixHash and requestRole.` });
   }
+  if ((cacheSummary.toolSetHashChanges ?? 0) > 0) {
+    decisions.push({ kind: "monitor", target: "cache-friendly-prompt:tool-set-hash", priority: "medium", expectedSavingsBytes: 0, qualityRisk: "low", reason: `Selected tool set hash changed ${cacheSummary.toolSetHashChanges} times; keep normal-task tool surfaces stable for provider prefix cache reuse.` });
+  }
+  if ((cacheSummary.toolOrderHashChanges ?? 0) > (cacheSummary.toolSetHashChanges ?? 0)) {
+    decisions.push({ kind: "monitor", target: "cache-friendly-prompt:tool-order-hash", priority: "medium", expectedSavingsBytes: 0, qualityRisk: "low", reason: `Tool order hash changed ${cacheSummary.toolOrderHashChanges} times; canonical ordering would reduce cache churn without changing behavior.` });
+  }
   if ((cacheSummary.providerModelSwitches ?? 0) > 3) {
     decisions.push({ kind: "monitor", target: "provider-model-routing", priority: "medium", expectedSavingsBytes: 0, qualityRisk: "low", reason: `Provider/model switched ${cacheSummary.providerModelSwitches} times; cache reuse may be healthy per model but poor globally.` });
   }
@@ -157,7 +191,7 @@ const cacheEfficiencyRule: PlannerRule = ({ cacheSummary }) => {
   return decisions;
 };
 
-const plannerRules: PlannerRule[] = [messageInlineBudgetRule, toolOutputBudgetRule, pressureRule, cacheableContextRule, systemPromptRule, cacheEfficiencyRule];
+const plannerRules: PlannerRule[] = [messageInlineBudgetRule, toolOutputBudgetRule, pressureRule, cacheableContextRule, systemPromptRule, toolSurfaceCacheRule, cacheEfficiencyRule];
 
 export function buildContextBudgetPlan(samples: ContextMonitorSample[], scope: ContextScope = {}, cacheSummary?: ContextCacheEfficiencySummary): ContextBudgetPlan {
   const rawPercent = Number(latestValue(samples, "contextPercent"));

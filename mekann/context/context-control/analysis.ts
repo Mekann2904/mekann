@@ -2,6 +2,7 @@ import type { ContextScope as ContextMonitorScope, MessageBreakdownItem } from "
 import { fmtBytes } from "./format.js";
 import { currentContextScope, latestSampleWith, scopedContextSamples } from "./query.js";
 import type { ContextMonitorSample } from "./state.js";
+import { getToolSchemaSnapshot } from "./tool-schemas.js";
 
 export interface Contributor {
   label: string;
@@ -35,6 +36,16 @@ export interface TopMessageItem {
   reason: string;
 }
 
+export interface ToolSurfaceAnalysis {
+  latestToolCount: number;
+  latestToolSetHash?: string;
+  latestToolOrderHash?: string;
+  toolSetHashChanges: number;
+  toolOrderHashChanges: number;
+  toolOrderStable: boolean | null;
+  schemaTotalBytes: number;
+}
+
 export interface ContextAnalysis {
   scope: ContextMonitorScope;
   samples: ContextMonitorSample[];
@@ -46,6 +57,7 @@ export interface ContextAnalysis {
   payloadBreakdown: Contributor[];
   toolOutputBreakdown: Contributor[];
   topMessages: TopMessageItem[];
+  toolSurface: ToolSurfaceAnalysis;
 }
 
 function latestValue(samples: ContextMonitorSample[], key: string): unknown {
@@ -188,6 +200,25 @@ export function computeHealthScore(scope: ContextMonitorScope = currentContextSc
   return { score, risk, reasons };
 }
 
+export function toolSurfaceAnalysis(scope: ContextMonitorScope = currentContextScope()): ToolSurfaceAnalysis {
+  const promptSamples = scopedContextSamples(scope).filter((sample) => sample.phase === "prompt");
+  const hashes = promptSamples.map((sample) => ({
+    toolSetHash: typeof sample.summary?.toolSetHash === "string" ? sample.summary.toolSetHash : undefined,
+    toolOrderHash: typeof sample.summary?.toolOrderHash === "string" ? sample.summary.toolOrderHash : undefined,
+  }));
+  const latest = promptSamples.at(-1);
+  const changes = (key: "toolSetHash" | "toolOrderHash") => hashes.reduce((count, item, index) => index > 0 && item[key] && hashes[index - 1][key] && item[key] !== hashes[index - 1][key] ? count + 1 : count, 0);
+  return {
+    latestToolCount: Number(latest?.summary?.toolCount ?? 0),
+    latestToolSetHash: typeof latest?.summary?.toolSetHash === "string" ? latest.summary.toolSetHash : undefined,
+    latestToolOrderHash: typeof latest?.summary?.toolOrderHash === "string" ? latest.summary.toolOrderHash : undefined,
+    toolSetHashChanges: changes("toolSetHash"),
+    toolOrderHashChanges: changes("toolOrderHash"),
+    toolOrderStable: typeof latest?.summary?.toolOrderStable === "boolean" ? latest.summary.toolOrderStable : null,
+    schemaTotalBytes: getToolSchemaSnapshot().totalBytes,
+  };
+}
+
 export function computeAlerts(scope: ContextMonitorScope = currentContextScope()): Alert[] {
   const alerts: Alert[] = [];
   const tokens = numLatest("contextTokens", scope);
@@ -203,6 +234,10 @@ export function computeAlerts(scope: ContextMonitorScope = currentContextScope()
   if (prevPayload > 0 && payload > prevPayload * 1.3) alerts.push({ level: "info", text: `Payload grew ${Math.round((payload / prevPayload - 1) * 100)}% this turn` });
   if (prevTokens > 0 && tokens > prevTokens * 1.2) alerts.push({ level: "info", text: `Token estimate grew ${Math.round((tokens / prevTokens - 1) * 100)}%` });
   if (pendingResults > 5) alerts.push({ level: "warn", text: `${pendingResults} pending subagent results` });
+  const toolSurface = toolSurfaceAnalysis(scope);
+  if (toolSurface.toolSetHashChanges > 0) alerts.push({ level: "info", text: `Selected tool set changed ${toolSurface.toolSetHashChanges} times; prompt cache prefix may churn` });
+  if (toolSurface.toolOrderHashChanges > toolSurface.toolSetHashChanges) alerts.push({ level: "info", text: "Tool order changed without an equivalent tool-set change; canonical ordering would improve cache reuse" });
+  if (toolSurface.toolOrderStable === false) alerts.push({ level: "info", text: "Selected tools are not in canonical name order" });
   return alerts;
 }
 
@@ -219,5 +254,6 @@ export function buildContextAnalysis(scope: ContextMonitorScope = currentContext
     payloadBreakdown: payloadBreakdown(scope),
     toolOutputBreakdown: toolOutputBreakdown(scope),
     topMessages: topMessageItems(topMessageLimit, scope),
+    toolSurface: toolSurfaceAnalysis(scope),
   };
 }

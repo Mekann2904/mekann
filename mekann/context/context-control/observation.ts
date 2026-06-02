@@ -38,6 +38,9 @@ export interface PromptObservation extends ContextObservationBase {
     systemPromptParts?: Array<Record<string, unknown>>;
     toolCount?: number;
     tools?: string[];
+    toolSetHash?: string;
+    toolOrderHash?: string;
+    toolOrderStable?: boolean;
     contextFileCount?: number;
     skillCount?: number;
     contextTokens?: number;

@@ -52,6 +52,8 @@ export type CacheFriendlySummary = {
   stablePrefixHashChanges: number;
   featureCacheablePrefixHashChanges: number;
   providerPrefixHashChanges: number;
+  toolSetHashChanges: number;
+  toolOrderHashChanges: number;
   providerModelSwitches: number;
   providerSwitches: number;
   modelSwitchesWithinProvider: number;
@@ -83,6 +85,8 @@ export type CacheFriendlySummary = {
   actualByProviderModel: Record<string, ActualProviderSummary>;
   actualByRequestRole: Record<string, ActualProviderSummary>;
   actualByProviderPrefixHash: Record<string, ActualProviderSummary>;
+  actualByToolSetHash: Record<string, ActualProviderSummary>;
+  actualByToolOrderHash: Record<string, ActualProviderSummary>;
   actualByBaseSystemHash: Record<string, ActualProviderSummary>;
 };
 

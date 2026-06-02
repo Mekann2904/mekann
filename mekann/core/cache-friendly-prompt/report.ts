@@ -38,6 +38,14 @@ function actualProviderPrefixHashKey(row: ParsedActualUsageLog): string {
   return hash ? shortHash(hash) : "missing";
 }
 
+function actualToolSetHashKey(row: ParsedActualUsageLog): string {
+  return row.toolSetHash ? shortHash(row.toolSetHash) : "missing";
+}
+
+function actualToolOrderHashKey(row: ParsedActualUsageLog): string {
+  return row.toolOrderHash ? shortHash(row.toolOrderHash) : "missing";
+}
+
 function actualBaseSystemHashKey(row: ParsedActualUsageLog): string {
   return row.baseSystemHash ? shortHash(row.baseSystemHash) : "missing";
 }
@@ -236,6 +244,8 @@ function summarizeActual(actualRows: ParsedActualUsageLog[]) {
     actualByProviderModel: groupActualRows(actualRows, actualProviderModelKey),
     actualByRequestRole: groupActualRows(actualRows, actualRequestRoleKey),
     actualByProviderPrefixHash: groupActualRows(actualRows, actualProviderPrefixHashKey),
+    actualByToolSetHash: groupActualRows(actualRows, actualToolSetHashKey),
+    actualByToolOrderHash: groupActualRows(actualRows, actualToolOrderHashKey),
     actualByBaseSystemHash: groupActualRows(actualRows, actualBaseSystemHashKey),
   };
 }
@@ -294,6 +304,8 @@ function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], genera
     stablePrefixHashChanges: countChanges(rows, (r) => r.stablePrefixHash),
     featureCacheablePrefixHashChanges: countChanges(rows, (r) => r.featureCacheablePrefixHash),
     providerPrefixHashChanges: countChanges(rows, (r) => r.providerPrefixHash),
+    toolSetHashChanges: countChanges(rows, (r) => r.toolSetHash),
+    toolOrderHashChanges: countChanges(rows, (r) => r.toolOrderHash),
     providerModelSwitches: countChanges(rows, providerKey),
     providerSwitches: countChanges(rows, (r) => r.provider),
     modelSwitchesWithinProvider: rows.reduce((n, row, i) => i > 0 && (row.provider ?? "") === (rows[i - 1].provider ?? "") && (row.model ?? "") !== (rows[i - 1].model ?? "") ? n + 1 : n, 0),
