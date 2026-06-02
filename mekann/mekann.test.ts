@@ -12,7 +12,7 @@ const EXPECTED_TOOLS_BY_MODULE: Record<string, string[]> = {
 	"autonomy/subagent/index.ts": [
 		"spawn_agent", "message_agent", "wait_agent", "list_agents", "agent_results", "close_agent",
 	],
-	"autonomy/autoresearch/index.ts": [
+	"autonomy/autoresearch/toolsRegistration.ts": [
 		"autoresearch_evaluate_query", "autoresearch_init", "autoresearch_run", "autoresearch_log",
 		"autoresearch_plan", "autoresearch_approve", "autoresearch_candidate_escrow",
 		"autoresearch_list_candidates", "autoresearch_show_candidate", "autoresearch_reject_candidate",
@@ -26,7 +26,7 @@ const EXPECTED_COMMANDS_BY_MODULE: Record<string, string[]> = {
 	"safety/sandbox/index.ts": ["sandbox"],
 	"autonomy/goal/command.ts": ["goal"],
 	"autonomy/subagent/index.ts": ["agents", "wait-agent", "focus-agent", "close-agent"],
-	"autonomy/autoresearch/index.ts": ["autoresearch"],
+	"autonomy/autoresearch/commands.ts": ["autoresearch"],
 	"utils/zip-repo/index.ts": ["zip"],
 	"utils/codex-limits/index.ts": ["codex-status"],
 	"context/output-gate/index.ts": ["output-gate"],

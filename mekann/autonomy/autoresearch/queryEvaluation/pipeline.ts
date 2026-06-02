@@ -7,6 +7,16 @@ import type {
   StaticNumericScores,
 } from "./evaluate.js";
 import { applyTextRules, BROAD_QUERY_PATTERNS, firstMetricInference, RISK_RULES, SCOPE_RULES } from "./rules.js";
+import {
+  CHECKS_COMMAND_PATTERNS,
+  COMMAND_PATTERNS,
+  detectChecksPolicyText,
+  detectInternalLatency,
+  detectReportFile,
+  detectStdoutMetric,
+  detectWallClock,
+  UNKNOWN_MEASUREMENT,
+} from "./measurementRules.js";
 
 // ─── 内部ヘルパー ─────────────────────────────────────────────
 
@@ -174,80 +184,11 @@ export function detectMeasurementMethod(
   query: string,
   metricName: string | null
 ): MeasurementInfo {
-  const q = query.toLowerCase();
-
-  // 1. Stdout metric: METRIC name=value パターン、または stdout/標準出力 + metric の同時言及
-  const hasMetricLinePattern = /\bmetric\s+[\w.-]+\s*=/i.test(query);
-  const hasStdoutMetricMention =
-    /(stdout|標準出力)/i.test(query) && /\bmetric\b/i.test(query);
-
-  if (hasMetricLinePattern || hasStdoutMetricMention) {
-    return {
-      measurementMethod: "stdout_metric",
-      extractionRule: metricName
-        ? `stdout に METRIC ${metricName}=<value> を出力する`
-        : "stdout から METRIC 行をパースする",
-      extractionConfidence: 0.9,
-      metricExtractionReady: true,
-    };
-  }
-
-  // 2. Internal latency metric: p95/p99/latency 系は wall-clock ではない
-  const hasInternalLatencyMetric =
-    metricName != null && /(latency|p50|p90|p95|p99)/i.test(metricName);
-
-  if (hasInternalLatencyMetric) {
-    return {
-      measurementMethod: "unknown",
-      extractionRule: null,
-      extractionConfidence: 0.4,
-      metricExtractionReady: false,
-    };
-  }
-
-  // 3. Wall-clock: 速度・時間系キーワード（command 全体の実行時間を指す語）
-  const hasWallClockLanguage =
-    /(wall[-\s]?clock|実行時間|全体時間|elapsed|runtime|duration|秒|短縮|速く|高速化)/i.test(q);
-
-  if (hasWallClockLanguage) {
-    return {
-      measurementMethod: "wall_clock",
-      extractionRule: "autoresearch_run の durationSeconds を primary metric として使う",
-      extractionConfidence: 1.0,
-      metricExtractionReady: true,
-    };
-  }
-
-  // 3. Wall-clock: metricName に時間系パターンが含まれる場合
-  if (
-    metricName &&
-    /(duration|latency|time|seconds|sec|_ms$|\bms\b|total_ms)/i.test(metricName)
-  ) {
-    return {
-      measurementMethod: "wall_clock",
-      extractionRule: "autoresearch_run の durationSeconds を primary metric として使う",
-      extractionConfidence: 0.9,
-      metricExtractionReady: true,
-    };
-  }
-
-  // 3. Report file: coverage report / lcov / json report / test-report 等
-  if (/(coverage\s*report|lcov|json\s*report|test-report|coverage-final\.json|report\s*file)/.test(q)) {
-    return {
-      measurementMethod: "report_file",
-      extractionRule: null,
-      extractionConfidence: 0.6,
-      metricExtractionReady: false,
-    };
-  }
-
-  // 4. Unknown: 上記いずれにも該当しない
-  return {
-    measurementMethod: "unknown",
-    extractionRule: null,
-    extractionConfidence: 0.3,
-    metricExtractionReady: false,
-  };
+  return detectStdoutMetric(query, metricName)
+    ?? detectInternalLatency(metricName)
+    ?? detectWallClock(query, metricName)
+    ?? detectReportFile(query)
+    ?? UNKNOWN_MEASUREMENT;
 }
 
 // ── Command extraction ────────────────────────────────────────
@@ -257,31 +198,16 @@ export function extractCommands(
 ): { benchmarkCommand: string | null; checksCommand: string | null } {
   const backtickCommands = [...query.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
 
-  const commandPatterns = [
-    /((?:npm\s+run|pnpm|yarn|bun)\s+[^\s,，。、]+)/g,
-    /((?:pytest)\s+[^\s,，。、]+)/g,
-    /((?:cargo)\s+[^\s,，。、]+)/g,
-    /((?:go\s+test)\s*[^\s,，。、]*)/g,
-    /((?:make)\s+[^\s,，。、]+)/g,
-    /(\.\/[^\s,，。、]+\.sh)/g,
-  ];
-
   const additionalCommands: string[] = [];
-  for (const pat of commandPatterns) {
+  for (const pat of COMMAND_PATTERNS) {
     const matches = [...query.matchAll(pat)];
     for (const m of matches) {
       additionalCommands.push(m[1].trim());
     }
   }
 
-  // checksCommand 用: check/checks/検証/成功すること に続く command
-  const checksPatterns = [
-    /(?:check|checks|検証|成功すること)[\sは:：]*`([^`]+)`/gi,
-    /(?:check|checks|検証|成功すること)[\sは:：]+(npm\s+run\s+[^\s,，。、]+|pnpm\s+[^\s,，。、]+|yarn\s+[^\s,，。、]+|pytest\s+[^\s,，。、]+|cargo\s+[^\s,，。、]+|go\s+test\s*[^\s,，。、]*|make\s+[^\s,，。、]+|\.\/[^\s,，。、]+\.sh)/gi,
-  ];
-
   const checksCandidates: string[] = [];
-  for (const pat of checksPatterns) {
+  for (const pat of CHECKS_COMMAND_PATTERNS) {
     const matches = [...query.matchAll(pat)];
     for (const m of matches) {
       checksCandidates.push((m[1] || m[0]).trim());
@@ -319,19 +245,7 @@ export function detectChecksPolicy(
   query: string,
   checksCommand: string | null
 ): ChecksPolicy {
-  // 1. checks command が query から明示的に抽出された
-  if (checksCommand) return "explicit_command";
-
-  // 2. autoresearch.checks.sh または「既存 checks」等の表現
-  const q = query.toLowerCase();
-  if (
-    /(autoresearch\.checks\.sh|既存\s*check|既存チェッ|既存のチェッ|既存チェック|checks?\s*として\s*prepush|prepush\s*を\s*checks?\s*と|checks?\s*として\s*test|test\s*を\s*checks?\s*と)/.test(q)
-  ) {
-    return "autoresearch_checks_sh";
-  }
-
-  // 3. 未指定
-  return "not_specified";
+  return detectChecksPolicyText(query, checksCommand);
 }
 
 // ── Broad query detection ─────────────────────────────────────

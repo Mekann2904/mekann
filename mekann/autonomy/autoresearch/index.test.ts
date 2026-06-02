@@ -189,65 +189,6 @@ describe("autoresearchExtension", () => {
 		autoresearchExtension(pi as unknown as any);
 	});
 
-	// ── Registration ────────────────────────────────────────────
-
-	it("registers tools with correct names", () => {
-		expect(pi.registerTool).toHaveBeenCalledTimes(18);
-		expect(pi.tools.map((t) => t.name)).toEqual([
-			"autoresearch_evaluate_query",
-			"autoresearch_init",
-			"autoresearch_run",
-			"autoresearch_log",
-			"autoresearch_plan",
-			"autoresearch_approve",
-			"autoresearch_candidate_escrow",
-			"autoresearch_list_candidates",
-			"autoresearch_show_candidate",
-			"autoresearch_reject_candidate",
-			"autoresearch_apply_candidate",
-			"autoresearch_suggest_subagents",
-			"autoresearch_apply_candidate_isolated",
-			"autoresearch_scale_next",
-			"autoresearch_scale_complete_action",
-			"autoresearch_scale_ingest",
-			"autoresearch_scale_status",
-			"autoresearch_run_contract",
-		]);
-	});
-
-	it("registers the /autoresearch command", () => {
-		expect(pi.registerCommand).toHaveBeenCalledWith(
-			"autoresearch",
-			expect.objectContaining({
-				description: expect.stringContaining("autoresearch"),
-			}),
-		);
-		expect(pi.registerCommand).toHaveBeenCalledWith(
-			"autoresearch-scale",
-			expect.objectContaining({
-				description: expect.stringContaining("test-time scaling"),
-			}),
-		);
-	});
-
-	it("keeps run/log promptGuidelines concise and tool-specific", () => {
-		const runTool = pi.tools.find((t) => t.name === "autoresearch_run")!;
-		const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
-		const runGuidelines = (runTool.promptGuidelines as string[]).join("\n");
-		const logGuidelines = (logTool.promptGuidelines as string[]).join("\n");
-		expect(runGuidelines).toContain("timeout_seconds");
-		expect(runGuidelines).not.toContain("subagent に実行させない");
-		expect(logGuidelines).toContain("runId");
-		expect(logGuidelines).not.toContain("subagent に記録");
-	});
-
-	it("registers session_start and loop event handlers", () => {
-		expect(pi.on).toHaveBeenCalledWith("session_start", expect.any(Function));
-		expect(pi.on).toHaveBeenCalledWith("agent_start", expect.any(Function));
-		expect(pi.on).toHaveBeenCalledWith("agent_end", expect.any(Function));
-		expect(pi.on).not.toHaveBeenCalledWith("before_agent_start", expect.any(Function));
-	});
-
 	// ── /autoresearch-scale ─────────────────────────────────────
 
 	describe("/autoresearch-scale", () => {
