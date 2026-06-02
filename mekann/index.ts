@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { profileStartupStep } from "./startupProfile.js";
 import { isFeatureEnabled } from "./settings/enabled.js";
-import { observeToolRegistrations } from "./context/observations.js";
+import { observeToolRegistrations } from "./context/tool-registration-observer.js";
 
 export default async function mekannExtension(pi: ExtensionAPI): Promise<void> {
 	if (isFeatureEnabled("context-tracker")) observeToolRegistrations(pi);

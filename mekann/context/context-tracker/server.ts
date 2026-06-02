@@ -68,8 +68,8 @@ function scopedSamples(scope: ContextMonitorScope = currentScope()): ContextMoni
 // ─── data access ─────────────────────────────────────────────────
 
 /** Walk backwards to find the most recent known value for key. */
-function latestVal(key: string): unknown {
-  const samples = scopedSamples();
+function latestVal(key: string, scope: ContextMonitorScope = currentScope()): unknown {
+  const samples = scopedSamples(scope);
   for (let i = samples.length - 1; i >= 0; i--) {
     const v = samples[i].summary?.[key];
     if (v !== undefined) return v;
@@ -77,9 +77,9 @@ function latestVal(key: string): unknown {
   return undefined;
 }
 
-function prevVal(key: string): unknown {
+function prevVal(key: string, scope: ContextMonitorScope = currentScope()): unknown {
   let seen = false;
-  const samples = scopedSamples();
+  const samples = scopedSamples(scope);
   for (let i = samples.length - 1; i >= 0; i--) {
     const v = samples[i].summary?.[key];
     if (v !== undefined) {
@@ -90,13 +90,13 @@ function prevVal(key: string): unknown {
   return undefined;
 }
 
-function numLatest(key: string): number {
-  const v = latestVal(key);
+function numLatest(key: string, scope: ContextMonitorScope = currentScope()): number {
+  const v = latestVal(key, scope);
   return Number.isFinite(Number(v)) ? Number(v) : 0;
 }
 
-function numPrev(key: string): number {
-  const v = prevVal(key);
+function numPrev(key: string, scope: ContextMonitorScope = currentScope()): number {
+  const v = prevVal(key, scope);
   return Number.isFinite(Number(v)) ? Number(v) : 0;
 }
 
@@ -108,11 +108,11 @@ interface Contributor {
   pct: number;
 }
 
-function payloadBreakdown(): Contributor[] {
-  const sys = numLatest("systemPromptBytes");
-  const msg = numLatest("messageBytes");
-  const lastResult = numLatest("resultBytes");
-  const payload = numLatest("payloadBytes");
+function payloadBreakdown(scope: ContextMonitorScope = currentScope()): Contributor[] {
+  const sys = numLatest("systemPromptBytes", scope);
+  const msg = numLatest("messageBytes", scope);
+  const lastResult = numLatest("resultBytes", scope);
+  const payload = numLatest("payloadBytes", scope);
   const overhead = payload - sys - msg;
   const items: Contributor[] = [
     { label: "System prompt", bytes: sys, pct: 0 },
@@ -125,9 +125,9 @@ function payloadBreakdown(): Contributor[] {
   return items;
 }
 
-function toolOutputBreakdown(): Contributor[] {
+function toolOutputBreakdown(scope: ContextMonitorScope = currentScope()): Contributor[] {
   const map = new Map<string, number>();
-  for (const s of scopedSamples()) {
+  for (const s of scopedSamples(scope)) {
     if (s.phase !== "tool_end") continue;
     const name = String(s.summary?.toolName ?? "?");
     const bytes = Number(s.summary?.resultBytes ?? 0);
@@ -157,23 +157,23 @@ interface OptimizationRecommendation {
   reason: string;
 }
 
-function latestSampleWith(key: string): ContextMonitorSample | undefined {
-  const samples = scopedSamples();
+function latestSampleWith(key: string, scope: ContextMonitorScope = currentScope()): ContextMonitorSample | undefined {
+  const samples = scopedSamples(scope);
   for (let i = samples.length - 1; i >= 0; i--) {
     if (samples[i].summary?.[key] !== undefined) return samples[i];
   }
   return undefined;
 }
 
-function contextWindowEstimate(): number | null {
-  const tokens = Number(latestVal("contextTokens"));
-  const percent = Number(latestVal("contextPercent"));
+function contextWindowEstimate(scope: ContextMonitorScope = currentScope()): number | null {
+  const tokens = Number(latestVal("contextTokens", scope));
+  const percent = Number(latestVal("contextPercent", scope));
   if (!Number.isFinite(tokens) || !Number.isFinite(percent) || percent <= 0) return null;
   return Math.round(tokens / (percent / 100));
 }
 
-function growthRate() {
-  const provider = scopedSamples().filter((s) => s.phase === "provider_request").slice(-8);
+function growthRate(scope: ContextMonitorScope = currentScope()) {
+  const provider = scopedSamples(scope).filter((s) => s.phase === "provider_request").slice(-8);
   if (provider.length < 2) return { tokensPerRequest: 0, payloadBytesPerRequest: 0 };
   const first = provider[0];
   const last = provider.at(-1)!;
@@ -184,8 +184,8 @@ function growthRate() {
   };
 }
 
-function topMessageItems(limit = 20) {
-  const sample = latestSampleWith("messageBreakdown");
+function topMessageItems(limit = 20, scope: ContextMonitorScope = currentScope()) {
+  const sample = latestSampleWith("messageBreakdown", scope);
   const items = Array.isArray(sample?.summary?.messageBreakdown) ? sample!.summary.messageBreakdown as any[] : [];
   return items.slice(0, limit).map((m, index) => ({
     rank: index + 1,
@@ -198,22 +198,22 @@ function topMessageItems(limit = 20) {
   }));
 }
 
-function topContributors(limit = 12) {
-  const payloadItems = payloadBreakdown().map((c) => ({
+function topContributors(limit = 12, scope: ContextMonitorScope = currentScope()) {
+  const payloadItems = payloadBreakdown(scope).map((c) => ({
     type: "payload_component",
     source: c.label,
     bytes: c.bytes,
     percent: c.pct,
     action: c.label === "Messages" && c.pct > 60 ? "classify_recent_messages_and_summarize_low_value_items" : c.label === "System prompt" && c.pct > 25 ? "audit_system_prompt_and_lazy_load_optional_guidance" : "watch",
   }));
-  const toolItems = toolOutputBreakdown().map((c) => ({
+  const toolItems = toolOutputBreakdown(scope).map((c) => ({
     type: "tool_output_cumulative",
     source: c.label,
     bytes: c.bytes,
     percent: c.pct,
     action: c.bytes > 48 * 1024 ? "store_raw_output_externally_and_retrieve_snippets" : "watch",
   }));
-  const messageItems = topMessageItems(limit).map((m) => ({
+  const messageItems = topMessageItems(limit, scope).map((m) => ({
     type: "message_item",
     source: m.source,
     bytes: m.bytes,
@@ -226,15 +226,15 @@ function topContributors(limit = 12) {
     .map((c, i) => ({ rank: i + 1, ...c }));
 }
 
-function computeHealthScore(): { score: number; risk: "low" | "medium" | "high" | "critical"; reasons: string[] } {
+function computeHealthScore(scope: ContextMonitorScope = currentScope()): { score: number; risk: "low" | "medium" | "high" | "critical"; reasons: string[] } {
   let score = 100;
   const reasons: string[] = [];
-  const percent = Number(latestVal("contextPercent"));
-  const breakdown = payloadBreakdown();
+  const percent = Number(latestVal("contextPercent", scope));
+  const breakdown = payloadBreakdown(scope);
   const msgPct = breakdown.find((c) => c.label === "Messages")?.pct ?? 0;
   const sysPct = breakdown.find((c) => c.label === "System prompt")?.pct ?? 0;
-  const growth = growthRate();
-  const lastResultBytes = numLatest("resultBytes");
+  const growth = growthRate(scope);
+  const lastResultBytes = numLatest("resultBytes", scope);
 
   if (Number.isFinite(percent)) {
     if (percent > 85) { score -= 45; reasons.push("Context is near overflow."); }
@@ -251,51 +251,51 @@ function computeHealthScore(): { score: number; risk: "low" | "medium" | "high" 
   return { score, risk, reasons };
 }
 
-function recommendations(): OptimizationRecommendation[] {
+function recommendations(scope: ContextMonitorScope = currentScope()): OptimizationRecommendation[] {
   const recs: OptimizationRecommendation[] = [];
-  const breakdown = payloadBreakdown();
+  const breakdown = payloadBreakdown(scope);
   const msg = breakdown.find((c) => c.label === "Messages");
   const sys = breakdown.find((c) => c.label === "System prompt");
-  const largestMessage = topMessageItems(1)[0];
-  const toolTotal = toolOutputBreakdown().reduce((s, c) => s + c.bytes, 0);
-  const health = computeHealthScore();
+  const largestMessage = topMessageItems(1, scope)[0];
+  const toolTotal = toolOutputBreakdown(scope).reduce((s, c) => s + c.bytes, 0);
+  const health = computeHealthScore(scope);
 
   if (largestMessage && largestMessage.bytes > 24 * 1024) recs.push({ priority: "high", action: "summarize_largest_message_item", expectedSavingsBytes: Math.round(largestMessage.bytes * 0.75), qualityRisk: "low", reason: `Largest message item is ${fmtBytes(largestMessage.bytes)}.` });
   if (msg && msg.pct > 65) recs.push({ priority: "medium", action: "classify_message_retention", expectedSavingsBytes: Math.round(msg.bytes * 0.25), qualityRisk: "medium", reason: `Messages are ${msg.pct}% of payload.` });
   if (toolTotal > 64 * 1024) recs.push({ priority: "medium", action: "externalize_tool_outputs", expectedSavingsBytes: Math.round(toolTotal * 0.5), qualityRisk: "low", reason: `Cumulative tool output is ${fmtBytes(toolTotal)}.` });
   if (sys && sys.pct > 25) recs.push({ priority: "low", action: "audit_system_prompt", expectedSavingsBytes: Math.round(sys.bytes * 0.15), qualityRisk: "medium", reason: `System prompt is ${sys.pct}% of payload.` });
-  if (health.risk === "high" || health.risk === "critical") recs.push({ priority: "high", action: "trigger_targeted_compaction", expectedSavingsBytes: Math.round(numLatest("messageBytes") * 0.45), qualityRisk: "medium", reason: `Health risk is ${health.risk}.` });
+  if (health.risk === "high" || health.risk === "critical") recs.push({ priority: "high", action: "trigger_targeted_compaction", expectedSavingsBytes: Math.round(numLatest("messageBytes", scope) * 0.45), qualityRisk: "medium", reason: `Health risk is ${health.risk}.` });
   if (recs.length === 0) recs.push({ priority: "low", action: "no_action_monitor_only", expectedSavingsBytes: 0, qualityRisk: "low", reason: "Context pressure is low; keep monitoring." });
   return recs;
 }
 
 export function getContextIntelligenceReport(action = "report", limit = 20, scope: ContextMonitorScope = currentScope()) {
   const latest = scopedSamples(scope).at(-1) ?? null;
-  const health = computeHealthScore();
-  const growth = growthRate();
+  const health = computeHealthScore(scope);
+  const growth = growthRate(scope);
   const base = {
     generatedAt: Date.now(),
     action,
     server: { port: state.port, url: state.port ? `http://127.0.0.1:${state.port}` : undefined },
     health,
     context: {
-      tokens: latestVal("contextTokens") ?? null,
-      window: contextWindowEstimate(),
-      percent: latestVal("contextPercent") ?? null,
-      payloadBytes: numLatest("payloadBytes"),
-      messageBytes: numLatest("messageBytes"),
-      systemPromptBytes: numLatest("systemPromptBytes"),
+      tokens: latestVal("contextTokens", scope) ?? null,
+      window: contextWindowEstimate(scope),
+      percent: latestVal("contextPercent", scope) ?? null,
+      payloadBytes: numLatest("payloadBytes", scope),
+      messageBytes: numLatest("messageBytes", scope),
+      systemPromptBytes: numLatest("systemPromptBytes", scope),
     },
     growth,
-    alerts: computeAlerts(),
+    alerts: computeAlerts(scope),
     compactions: { count: state.compactionCount, lastAt: state.lastCompactionAt ?? null },
   };
   if (action === "health") return base;
-  if (action === "top_contributors") return { ...base, topContributors: topContributors(limit), topMessages: topMessageItems(limit) };
+  if (action === "top_contributors") return { ...base, topContributors: topContributors(limit, scope), topMessages: topMessageItems(limit, scope) };
   if (action === "timeline") return { ...base, timeline: scopedSamples(scope).slice(-limit) };
-  if (action === "recommendations") return { ...base, recommendations: recommendations() };
-  if (action === "budget") return { ...base, budget: { systemPromptPctTarget: 15, recentMessagesPctTarget: 35, summariesPctTarget: 15, toolResultsPctTarget: 20, retrievedContextPctTarget: 10, reservePctTarget: 5 }, actualBreakdown: payloadBreakdown() };
-  return { ...base, topContributors: topContributors(limit), recommendations: recommendations(), payloadBreakdown: payloadBreakdown(), toolOutputBreakdown: toolOutputBreakdown(), topMessages: topMessageItems(limit) };
+  if (action === "recommendations") return { ...base, recommendations: recommendations(scope) };
+  if (action === "budget") return { ...base, budget: { systemPromptPctTarget: 15, recentMessagesPctTarget: 35, summariesPctTarget: 15, toolResultsPctTarget: 20, retrievedContextPctTarget: 10, reservePctTarget: 5 }, actualBreakdown: payloadBreakdown(scope) };
+  return { ...base, topContributors: topContributors(limit, scope), recommendations: recommendations(scope), payloadBreakdown: payloadBreakdown(scope), toolOutputBreakdown: toolOutputBreakdown(scope), topMessages: topMessageItems(limit, scope) };
 }
 
 export function recordContextDecision(decision: unknown): void {
@@ -303,15 +303,15 @@ export function recordContextDecision(decision: unknown): void {
   if (state.decisions.length > 100) state.decisions.splice(0, state.decisions.length - 100);
 }
 
-function computeAlerts(): Alert[] {
+function computeAlerts(scope: ContextMonitorScope = currentScope()): Alert[] {
   const a: Alert[] = [];
-  const tokens = numLatest("contextTokens");
-  const percent = Number(latestVal("contextPercent"));
-  const prevTokens = numPrev("contextTokens");
-  const payload = numLatest("payloadBytes");
-  const prevPayload = numPrev("payloadBytes");
-  const resultBytes = numLatest("resultBytes");
-  const pendingResults = numLatest("pendingResults");
+  const tokens = numLatest("contextTokens", scope);
+  const percent = Number(latestVal("contextPercent", scope));
+  const prevTokens = numPrev("contextTokens", scope);
+  const payload = numLatest("payloadBytes", scope);
+  const prevPayload = numPrev("payloadBytes", scope);
+  const resultBytes = numLatest("resultBytes", scope);
+  const pendingResults = numLatest("pendingResults", scope);
 
   if (Number.isFinite(percent) && percent > 80) a.push({ level: "warn", text: `Tokens at ${percent}% of context window` });
   if (resultBytes > 50 * 1024) a.push({ level: "warn", text: `Last tool result ${fmtBytes(resultBytes)} exceeds 50 KB` });
@@ -324,8 +324,8 @@ function computeAlerts(): Alert[] {
 
 // ─── HTML dashboard ──────────────────────────────────────────────
 
-function payloadTrendBars(): string {
-  const last20 = scopedSamples().filter((s) => s.phase === "provider_request").slice(-20);
+function payloadTrendBars(scope: ContextMonitorScope = currentScope()): string {
+  const last20 = scopedSamples(scope).filter((s) => s.phase === "provider_request").slice(-20);
   if (last20.length === 0) return '<span class="dim">No data</span>';
   const max = Math.max(...last20.map((s) => Number(s.summary?.payloadBytes ?? 0)), 1);
   return last20
@@ -347,16 +347,16 @@ function toolSchemaTable(): string {
     .join("")}</tbody></table>`;
 }
 
-function latestCacheableContextSample(): ContextMonitorSample | undefined {
-  const samples = scopedSamples();
+function latestCacheableContextSample(scope: ContextMonitorScope = currentScope()): ContextMonitorSample | undefined {
+  const samples = scopedSamples(scope);
   for (let i = samples.length - 1; i >= 0; i--) {
     if (samples[i].phase === "cacheable_context") return samples[i];
   }
   return undefined;
 }
 
-function cacheableContextTable(): string {
-  const sample = latestCacheableContextSample();
+function cacheableContextTable(scope: ContextMonitorScope = currentScope()): string {
+  const sample = latestCacheableContextSample(scope);
   if (!sample) return '<span class="dim">No cacheable-context sample yet</span>';
   const s = sample.summary;
   const fragments = Array.isArray(s.fragments) ? s.fragments as any[] : [];
@@ -522,19 +522,19 @@ ${webNav()}
 
 function renderDashboard(scope: ContextMonitorScope = currentScope()): string {
   const latest = scopedSamples(scope).at(-1);
-  const tokens = latestVal("contextTokens");
-  const percent = latestVal("contextPercent");
-  const payload = numLatest("payloadBytes");
-  const msgCount = latestVal("messageCount");
-  const msgBytes = numLatest("messageBytes");
-  const toolCount = latestVal("toolCount");
-  const toolNames = latestVal("tools");
+  const tokens = latestVal("contextTokens", scope);
+  const percent = latestVal("contextPercent", scope);
+  const payload = numLatest("payloadBytes", scope);
+  const msgCount = latestVal("messageCount", scope);
+  const msgBytes = numLatest("messageBytes", scope);
+  const toolCount = latestVal("toolCount", scope);
+  const toolNames = latestVal("tools", scope);
   const names: string[] = Array.isArray(toolNames) ? toolNames : [];
-  const sysBytes = numLatest("systemPromptBytes");
-  const breakdown = payloadBreakdown();
-  const outputBreakdown = toolOutputBreakdown();
-  const alerts = computeAlerts();
-  const samples = scopedSamples().slice(-50).reverse();
+  const sysBytes = numLatest("systemPromptBytes", scope);
+  const breakdown = payloadBreakdown(scope);
+  const outputBreakdown = toolOutputBreakdown(scope);
+  const alerts = computeAlerts(scope);
+  const samples = scopedSamples(scope).slice(-50).reverse();
   const totalTools = state.tools.size;
   const schemaTotal = state.toolSchemaTotalBytes;
   const compactions = state.compactionCount;
@@ -542,12 +542,12 @@ function renderDashboard(scope: ContextMonitorScope = currentScope()): string {
   return `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Context Monitor — Mekann</title><style>${dashboardStyle()}</style></head><body><main>
 ${webNav()}
 <h1>Context Monitor</h1>
-<div class="sub">live context pressure — live update 2s — samples ${scopedSamples().length} — tools ${totalTools} — compactions ${compactions}</div>
+<div class="sub">live context pressure — live update 2s — samples ${scopedSamples(scope).length} — tools ${totalTools} — compactions ${compactions}</div>
 
 <h2>Realtime metrics</h2>
 <div class="grid4">
-<div class="panel"><div class="label">Context tokens</div><div class="metric">${esc(tokens ?? "—")}${fmtDelta(numPrev("contextTokens"), Number(tokens)) ? `<span class="delta">${fmtDelta(numPrev("contextTokens"), Number(tokens))}</span>` : ""}</div><div class="sub">${percent !== undefined ? `${esc(percent)}%` : "estimate"}</div></div>
-<div class="panel"><div class="label">Payload size</div><div class="metric">${fmtBytes(payload)}${fmtDelta(numPrev("payloadBytes"), payload) ? `<span class="delta">${fmtDelta(numPrev("payloadBytes"), payload)}</span>` : ""}</div><div class="sub">latest provider request</div></div>
+<div class="panel"><div class="label">Context tokens</div><div class="metric">${esc(tokens ?? "—")}${fmtDelta(numPrev("contextTokens", scope), Number(tokens)) ? `<span class="delta">${fmtDelta(numPrev("contextTokens", scope), Number(tokens))}</span>` : ""}</div><div class="sub">${percent !== undefined ? `${esc(percent)}%` : "estimate"}</div></div>
+<div class="panel"><div class="label">Payload size</div><div class="metric">${fmtBytes(payload)}${fmtDelta(numPrev("payloadBytes", scope), payload) ? `<span class="delta">${fmtDelta(numPrev("payloadBytes", scope), payload)}</span>` : ""}</div><div class="sub">latest provider request</div></div>
 <div class="panel"><div class="label">Messages</div><div class="metric">${esc(msgCount ?? "—")}</div><div class="sub">${fmtBytes(msgBytes)} total</div></div>
 <div class="panel"><div class="label">Active tools</div><div class="metric">${esc((toolCount ?? names.length) || "—")}</div><div class="sub">schema ${fmtBytes(schemaTotal)}</div></div>
 </div>
@@ -574,7 +574,7 @@ ${breakdown.map((c, i) => {
 
 <h2>Cacheable context</h2>
 <div class="panel">
-${cacheableContextTable()}
+${cacheableContextTable(scope)}
 </div>
 
 <h2>Tool impact</h2>
@@ -594,7 +594,7 @@ ${outputBreakdown.length === 0 ? '<span class="dim">No tool output data</span>' 
 <h2>Payload trend (last 20 provider requests)</h2>
 <div class="panel">
 <div style="display:flex;align-items:flex-end;height:90px;gap:1px;padding:4px 0">
-${payloadTrendBars()}
+${payloadTrendBars(scope)}
 </div>
 </div>
 
@@ -672,14 +672,14 @@ export function getContextMonitorSnapshot(scope: ContextMonitorScope = currentSc
   return {
     server: { port: state.port, url: state.port ? `http://127.0.0.1:${state.port}` : undefined },
     latest: scopedSamples(scope).at(-1) ?? null,
-    cacheableContext: latestCacheableContextSample()?.summary ?? null,
+    cacheableContext: latestCacheableContextSample(scope)?.summary ?? null,
     sampleCount: scopedSamples(scope).length,
     tools: [...state.tools.values()],
     compactionCount: state.compactionCount,
     lastCompactionAt: state.lastCompactionAt ?? null,
-    alerts: computeAlerts(),
-    payloadBreakdown: payloadBreakdown(),
-    toolOutputBreakdown: toolOutputBreakdown(),
+    alerts: computeAlerts(scope),
+    payloadBreakdown: payloadBreakdown(scope),
+    toolOutputBreakdown: toolOutputBreakdown(scope),
     contextIntelligence: getContextIntelligenceReport("report", 10, scope),
     decisions: state.decisions.slice(-20),
   };
