@@ -354,17 +354,21 @@ export default function goalExtension(pi: ExtensionAPI): void {
     name: "update_goal",
     label: "Update goal",
     description:
-      "Update the current goal. Only status='complete' is allowed via this tool. " +
-      "Use this when the goal's objective has been fully achieved.",
-    promptSnippet: "Mark goal as complete when achieved",
+      "Update the existing goal. Use only to mark the goal achieved or genuinely blocked. " +
+      "Set status='complete' only when the objective has actually been achieved and no required work remains. " +
+      "Set status='blocked' only when the same blocking condition has repeated for at least three consecutive goal turns and no meaningful progress is possible without user input or an external-state change. " +
+      "Pause, resume, budget-limited, and usage-limited status changes are controlled by the user or runtime.",
+    promptSnippet: "Mark goal as complete or strictly blocked",
     promptGuidelines: [
-      "Use update_goal to mark a goal as complete ONLY when the objective is genuinely fully achieved.",
-      "Do NOT mark goals as complete prematurely.",
-      "You cannot pause, resume, clear, or set budget_limited via this tool.",
+      "Use update_goal with status='complete' ONLY when authoritative current-state evidence proves every requirement is satisfied.",
+      "Use update_goal with status='blocked' ONLY after the same blocker recurs for at least three consecutive goal turns and you are truly at an impasse.",
+      "Do NOT use blocked merely because the work is hard, slow, uncertain, incomplete, or would benefit from clarification.",
+      "Do NOT mark goals as complete prematurely or because you are stopping work/budget is nearly exhausted.",
+      "You cannot pause, resume, clear, or set budget_limited/usage_limited via this tool.",
     ],
     parameters: Type.Object({
-      status: StringEnum(["complete"] as const, {
-        description: "Set to 'complete' when the goal is achieved",
+      status: StringEnum(["complete", "blocked"] as const, {
+        description: "Set to 'complete' only when fully achieved; set to 'blocked' only after the strict three-consecutive-goal-turn blocked audit is satisfied",
       }) as any,
       expected_goal_id: Type.Optional(
         Type.String({ description: "Optional: expected goal_id for optimistic concurrency" }),
@@ -373,7 +377,8 @@ export default function goalExtension(pi: ExtensionAPI): void {
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       if (!isEnabled(ctx) || !store || !runtime) return DISABLED_RESPONSE;
       try {
-        const patch: { status: "complete" } = { status: params.status as "complete" };
+        const status = params.status as "complete" | "blocked";
+        const patch: { status: "complete" | "blocked" } = { status };
 
         // Reject if goal status is already complete
         const current = store.getGoal();
@@ -383,10 +388,10 @@ export default function goalExtension(pi: ExtensionAPI): void {
             details: { error: "No goal to update" },
           };
         }
-        if (current.status === "complete") {
+        if (current.status === "complete" || current.status === "blocked") {
           return {
-            content: [{ type: "text" as const, text: "[ERROR] Goal is already complete" }],
-            details: { error: "Goal is already complete" },
+            content: [{ type: "text" as const, text: `[ERROR] Goal is already ${current.status}` }],
+            details: { error: `Goal is already ${current.status}` },
           };
         }
 
@@ -396,16 +401,17 @@ export default function goalExtension(pi: ExtensionAPI): void {
 
         const goal = store.updateGoal(patch, params.expected_goal_id as string | undefined, "tool");
 
-        // Suppress budget steering since we're completing
+        // Suppress budget steering since this is a terminal model-declared status.
         runtime.suppressBudgetSteering();
         // Synchronize runtime state (clears active_goal_id, wall-clock baseline)
         runtime.onExternalSet(goal, previousGoal);
 
-        emitUpdated(ctx, goal, "completed", "tool");
+        emitUpdated(ctx, goal, status === "complete" ? "completed" : "blocked", "tool");
         const usageReport = `Final usage: ${goal.tokens_used} tokens, ${goal.time_used_seconds}s`;
+        const statusText = status === "complete" ? "complete" : "blocked";
 
         return {
-          content: [{ type: "text" as const, text: `Goal marked as complete. ${usageReport}` }],
+          content: [{ type: "text" as const, text: `Goal marked as ${statusText}. ${usageReport}` }],
           details: { goal, final_usage: { tokens: goal.tokens_used, time: goal.time_used_seconds } },
         };
       } catch (e) {

@@ -306,7 +306,7 @@ describe("GoalRuntime", () => {
     // Budget steering should be injected
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
     expect(pi.sendUserMessage).toHaveBeenCalledWith(
-      expect.stringContaining("Token budget limit reached"),
+      expect.stringContaining("has reached its token budget"),
       { deliverAs: "followUp" },
     );
 
@@ -365,26 +365,25 @@ describe("GoalRuntime", () => {
     expect(goal.status).toBe("budget_limited");
   });
 
-  // ─── 11. continuation_count guard pauses at max ────────────
+  // ─── 11. Codex-compatible continuation does not auto-pause at max ────────────
 
-  it("continuation_count guard pauses at max", () => {
+  it("continues instead of auto-pausing when continuation_count is at max", () => {
     const { runtime, pi, ctx, store } = setupRuntimeWithGoal();
 
-    // Set continuation_count to max
-    store.updateGoal({ continuation_count: 5, last_continued_at_ms: Date.now() });
+    store.updateGoal({ continuation_count: 5, last_continued_at_ms: Date.now() - 5000 });
 
     runtime.maybeContinueIfIdle(ctx);
 
-    // Should NOT send continuation — should pause instead
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
     expect(pi.sendUserMessage).toHaveBeenCalledWith(
-      expect.stringContaining("automatically paused after 5 continuations"),
+      expect.stringContaining("Continue working toward the active thread goal"),
       { deliverAs: "followUp" },
     );
 
     const goal = store.getGoal()!;
-    expect(goal.status).toBe("paused");
-    expect(runtime.continuation_active).toBe(false);
+    expect(goal.status).toBe("active");
+    expect(goal.continuation_count).toBe(6);
+    expect(runtime.continuation_active).toBe(true);
   });
 
   // ─── 12. cooldown prevents continuation ──────────────────────
@@ -483,20 +482,18 @@ describe("GoalRuntime", () => {
     expect(goalBAfter.time_used_seconds).toBe(0);
   });
 
-  // ─── 16. continuation counter at max is not reset without explicit action ──
+  // ─── 16. continuation counter is telemetry, not a stop condition ──
 
-  it("continuation at max pauses goal without reset", () => {
-    const { runtime, pi, ctx, store } = setupRuntimeWithGoal();
+  it("continuation counter at max still allows continuation", () => {
+    const { runtime, ctx, store } = setupRuntimeWithGoal();
 
-    // Set continuation_count to max
     store.updateGoal({ continuation_count: 5, last_continued_at_ms: Date.now() - 5000 });
 
     runtime.maybeContinueIfIdle(ctx);
 
-    // Goal should be paused
     const goal = store.getGoal()!;
-    expect(goal.status).toBe("paused");
-    expect(goal.continuation_count).toBe(5); // not reset by auto-pause
+    expect(goal.status).toBe("active");
+    expect(goal.continuation_count).toBe(6);
   });
 
   // ─── 17. getGoal accessor ────────────────────────────────
@@ -555,7 +552,7 @@ describe("GoalRuntime", () => {
     runtime.onExternalSet(newGoal, previousGoal);
 
     expect(pi.sendUserMessage).toHaveBeenCalledWith(
-      expect.stringContaining("Goal objective updated"),
+      expect.stringContaining("objective was edited by the user"),
       { deliverAs: "followUp" },
     );
   });
@@ -603,7 +600,7 @@ describe("GoalRuntime", () => {
     // Should send a second budget limit message for the new goal
     // (First call was budgetLimitPrompt, second should be too)
     const budgetCalls = pi.sendUserMessage.mock.calls.filter(
-      (c: any[]) => typeof c[0] === "string" && c[0].includes("Token budget limit"),
+      (c: any[]) => typeof c[0] === "string" && c[0].includes("has reached its token budget"),
     );
     expect(budgetCalls.length).toBeGreaterThanOrEqual(2);
   });
@@ -854,8 +851,6 @@ describe("GoalRuntime", () => {
     // Trigger idle continuation check
     runtime.maybeContinueIfIdle(ctx);
 
-    expect(onGoalEvent).toHaveBeenCalledWith("continuation_limit", expect.objectContaining({
-      status: "paused",
-    }));
+    expect(onGoalEvent).not.toHaveBeenCalledWith("continuation_limit", expect.anything());
   });
 });

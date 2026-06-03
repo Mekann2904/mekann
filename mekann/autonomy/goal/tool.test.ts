@@ -164,6 +164,29 @@ describe("goal tools", () => {
     expect(result.details.goal.status).toBe("complete");
   });
 
+  it("update_goal accepts status='blocked' for Codex-compatible terminal blockers", async () => {
+    const createTool = getTool(mockPi, "create_goal");
+    await createTool.execute(
+      "tc-1",
+      { objective: "Wait for API credentials" },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    const updateTool = getTool(mockPi, "update_goal");
+    const result = await updateTool.execute(
+      "tc-2",
+      { status: "blocked" },
+      undefined,
+      undefined,
+      ctx,
+    );
+
+    expect(result.content[0].text).toContain("Goal marked as blocked");
+    expect(result.details.goal.status).toBe("blocked");
+  });
+
   // 5. update_goal reports final budget usage when complete
   it("update_goal reports final budget usage when complete", async () => {
     const createTool = getTool(mockPi, "create_goal");

@@ -426,6 +426,23 @@ describe("accountGoalUsage", () => {
 		expect(result!.goal.time_used_seconds).toBe(5);
 	});
 
+	it("uses Codex-compatible accounting modes for budget-limited and stopped goals", () => {
+		const { store } = makeStore();
+		store.createGoal("t1", "Obj", 100);
+		store.accountGoalUsage(0, 100, "uuid-1", "any");
+		expect(store.getGoal()!.status).toBe("budget_limited");
+
+		const activeOnly = store.accountGoalUsage(1, 10, "uuid-1", "active_only");
+		expect(activeOnly).not.toBeNull();
+		expect(activeOnly!.goal.tokens_used).toBe(110);
+
+		store.updateGoal({ status: "blocked" });
+		expect(store.accountGoalUsage(1, 10, "uuid-1", "active_only")).toBeNull();
+		const stopped = store.accountGoalUsage(1, 10, "uuid-1", "active_or_stopped");
+		expect(stopped).not.toBeNull();
+		expect(stopped!.goal.status).toBe("blocked");
+	});
+
 	it("clamps negative deltas to 0", () => {
 		const { store } = makeStore();
 		store.createGoal("t1", "Obj", 1000);

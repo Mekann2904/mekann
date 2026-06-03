@@ -10,7 +10,7 @@
 // ---------------------------------------------------------------------------
 
 /** Goal status values. */
-export type GoalStatus = "active" | "paused" | "budget_limited" | "complete";
+export type GoalStatus = "active" | "paused" | "blocked" | "usage_limited" | "budget_limited" | "complete";
 
 /** Default maximum number of automatic continuations. */
 export const DEFAULT_MAX_CONTINUATIONS = 5;
@@ -119,6 +119,30 @@ function normalizeGoal(goal: Goal | Record<string, unknown>): Goal {
         ? (goal as any).last_continued_at_ms
         : null,
   } as Goal;
+}
+
+// ---------------------------------------------------------------------------
+// Accounting mode compatibility
+// ---------------------------------------------------------------------------
+
+function shouldAccountGoalStatus(
+  status: GoalStatus,
+  mode: "active_status_only" | "active_only" | "active_or_complete" | "active_or_stopped" | "any",
+): boolean {
+  switch (mode) {
+    case "active_status_only":
+      return status === "active";
+    case "active_only":
+      // Codex-compatible: continue final accounting for a goal that just became
+      // budget-limited, but do not account paused/blocked/usage-limited/complete.
+      return status === "active" || status === "budget_limited";
+    case "active_or_complete":
+      return status === "active" || status === "budget_limited" || status === "complete";
+    case "active_or_stopped":
+      return status !== "complete";
+    case "any":
+      return true;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -341,10 +365,15 @@ export class GoalStore {
     timeDeltaSeconds: number,
     tokenDelta: number,
     expectedGoalId?: string,
-    mode: "active_only" | "any" = "active_only",
+    mode:
+      | "active_status_only"
+      | "active_only"
+      | "active_or_complete"
+      | "active_or_stopped"
+      | "any" = "active_only",
   ): { goal: Goal; budgetLimited: boolean } | null {
     if (!this.goal) return null;
-    if (mode === "active_only" && this.goal.status !== "active") return null;
+    if (!shouldAccountGoalStatus(this.goal.status, mode)) return null;
     if (expectedGoalId !== undefined && this.goal.goal_id !== expectedGoalId) return null;
 
     const clampedTime = Math.max(0, Math.round(timeDeltaSeconds));

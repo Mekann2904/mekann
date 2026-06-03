@@ -29,6 +29,7 @@ export type GoalAction =
 	| "paused"
 	| "resumed"
 	| "completed"
+	| "blocked"
 	| "cleared"
 	| "budget_exhausted"
 	| "continuation_limit";
@@ -54,6 +55,7 @@ export function goalPriority(action: GoalAction): 0 | 1 | 2 | 3 | 4 {
 			return 1;
 		case "paused":
 		case "completed":
+		case "blocked":
 		case "cleared":
 			return 2;
 	}

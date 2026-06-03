@@ -232,26 +232,10 @@ export class GoalRuntime {
     if (!goal.objective.trim()) return;
     if (this.active_goal_id !== null && this.active_goal_id !== goal.goal_id) return;
 
-    // Continuation guard: max count
-    if (goal.continuation_count >= goal.max_continuations) {
-      // Pause the goal and notify
-      try {
-        const updated = this.store.updateGoal(
-          { status: "paused" },
-          goal.goal_id,
-          "runtime",
-        );
-        this.active_goal_id = null;
-        this.goalEventCallback?.("continuation_limit", updated);
-        this.pi.sendUserMessage(
-          `Goal automatically paused after ${goal.max_continuations} continuations. Use /goal resume to continue or /goal edit to adjust the objective.`,
-          { deliverAs: "followUp" },
-        );
-      } catch {
-        // Best effort
-      }
-      return;
-    }
+    // Codex-compatible behavior: do not auto-pause after a fixed number of
+    // continuations. An active goal should keep launching continuation turns
+    // whenever the thread is idle until it becomes complete, blocked,
+    // usage-limited, budget-limited, paused by the user, or cleared.
 
     // Continuation guard: cooldown
     if (goal.last_continued_at_ms !== null) {

@@ -75,20 +75,20 @@ describe("goal/prompts", () => {
   });
 
   describe("continuationPrompt", () => {
-    it("includes objective and continuation count", () => {
+    it("includes objective and usage without a continuation stop counter", () => {
       const goal = createMockGoal();
       const prompt = continuationPrompt(goal);
       expect(prompt).toContain("Test objective");
-      expect(prompt).toContain("2 / 5");
+      expect(prompt).not.toContain("2 / 5");
       expect(prompt).toContain("Tokens used: 100");
-      expect(prompt).toContain("Time used: 45s");
+      expect(prompt).toContain("Time spent pursuing goal: 45 seconds");
     });
 
     it("includes budget when set", () => {
       const goal = createMockGoal({ token_budget: 5000 });
       const prompt = continuationPrompt(goal);
       expect(prompt).toContain("Token budget: 5000");
-      expect(prompt).toContain("Remaining tokens: 4900");
+      expect(prompt).toContain("Tokens remaining: 4900");
     });
 
     it("escapes XML in objective", () => {
@@ -103,31 +103,31 @@ describe("goal/prompts", () => {
     it("includes budget info and instructions", () => {
       const goal = createMockGoal({ tokens_used: 5000, token_budget: 5000 });
       const prompt = budgetLimitPrompt(goal);
-      expect(prompt).toContain("Token budget limit reached");
-      expect(prompt).toContain("5000 / 5000");
-      expect(prompt).toContain("Time used:");
+      expect(prompt).toContain("has reached its token budget");
+      expect(prompt).toContain("Tokens used: 5000");
+      expect(prompt).toContain("Time spent pursuing goal:");
       expect(prompt).toContain("update_goal");
     });
 
     it("shows remaining tokens", () => {
       const goal = createMockGoal({ tokens_used: 4500, token_budget: 5000 });
       const prompt = budgetLimitPrompt(goal);
-      expect(prompt).toContain("Remaining: 500");
+      expect(prompt).toContain("Token budget: 5000");
     });
   });
 
   describe("objectiveUpdatedPrompt", () => {
     it("includes old and new objectives", () => {
       const prompt = objectiveUpdatedPrompt("Old goal", "New goal");
-      expect(prompt).toContain("Previous objective: Old goal");
-      expect(prompt).toContain("New objective: New goal");
-      expect(prompt).toContain("Goal objective updated");
+      expect(prompt).toContain("supersedes any previous thread goal objective");
+      expect(prompt).toContain("<untrusted_objective>");
+      expect(prompt).toContain("objective was edited by the user");
     });
 
     it("escapes XML in objectives", () => {
       const prompt = objectiveUpdatedPrompt("a <b>", "c & d");
-      expect(prompt).toContain("&lt;b&gt;");
-      expect(prompt).toContain("&amp;");
+      expect(prompt).not.toContain("&lt;b&gt;");
+      expect(prompt).toContain("c &amp; d");
     });
   });
 
@@ -135,7 +135,7 @@ describe("goal/prompts", () => {
     it("renderGoalPolicy contains fixed instructions", () => {
       const policy = renderGoalPolicy();
       expect(policy).toContain("[Goal Policy]");
-      expect(policy).toContain("update_goal");
+      expect(policy).toContain("strict blocked audit");
     });
 
     it("renderGoalObjectiveContext contains objective/status/bounds but not runtime counters", () => {
@@ -144,7 +144,7 @@ describe("goal/prompts", () => {
       expect(text).toContain("Test objective");
       expect(text).toContain("Status: active");
       expect(text).toContain("Token budget upper bound: 5000");
-      expect(text).toContain("Max continuations upper bound: 5");
+      expect(text).not.toContain("Max continuations upper bound");
       expect(text).not.toContain("Tokens used");
       expect(text).not.toContain("Time used");
       expect(text).not.toContain("Continuation: 2");
@@ -157,7 +157,7 @@ describe("goal/prompts", () => {
       expect(text).toContain("Tokens used: 100");
       expect(text).toContain("Remaining tokens: 4900");
       expect(text).toContain("Time used: 45s");
-      expect(text).toContain("Continuation: 2 / 5");
+      expect(text).not.toContain("Continuation:");
     });
   });
 

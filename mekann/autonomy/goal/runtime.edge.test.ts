@@ -149,55 +149,26 @@ describe("GL-02-T2: budget exhaustion and user budget increase", () => {
 });
 
 // ---------------------------------------------------------------------------
-// GL-02-T3: max continuations → auto pause → resume resets count
+// GL-02-T3: Codex-compatible continuations do not auto-pause
 // ---------------------------------------------------------------------------
 
-describe("GL-02-T3: max continuations auto-pause and resume reset", () => {
-	it("auto-pauses when continuation_count >= max_continuations", () => {
+describe("GL-02-T3: Codex-compatible continuation", () => {
+	it("continues when continuation_count >= max_continuations", () => {
 		const { store } = createStoreWithGoal("obj", null, DEFAULT_MAX_CONTINUATIONS);
 		const pi = createMockPi();
 		const runtime = new GoalRuntime(store, pi as any);
 		const ctx = createMockCtx();
 
 		runtime.onSessionStart(ctx as any);
-
-		// Trigger continuation check
 		runtime.maybeContinueIfIdle(ctx as any);
 
-		// Goal should be paused
 		const goal = store.getGoal();
-		expect(goal!.status).toBe("paused");
+		expect(goal!.status).toBe("active");
+		expect(goal!.continuation_count).toBe(DEFAULT_MAX_CONTINUATIONS + 1);
 		expect(pi.sendUserMessage).toHaveBeenCalledWith(
-			expect.stringContaining("automatically paused"),
+			expect.stringContaining("Continue working toward the active thread goal"),
 			expect.any(Object),
 		);
-	});
-
-	it("resume after max-continuations pause resets continuation_count", () => {
-		const { store } = createStoreWithGoal("obj", null, DEFAULT_MAX_CONTINUATIONS);
-		const pi = createMockPi();
-		const runtime = new GoalRuntime(store, pi as any);
-
-		// Simulate auto-pause from continuation limit
-		store.updateGoal({ status: "paused" });
-
-		// Resume with count reset (mimicking /goal resume behavior)
-		const goal = store.getGoal();
-		expect(goal!.continuation_count).toBe(DEFAULT_MAX_CONTINUATIONS);
-
-		// The /goal resume handler checks: if continuation_count >= max_continuations → reset
-		const shouldReset = goal!.continuation_count >= goal!.max_continuations;
-		expect(shouldReset).toBe(true);
-
-		store.updateGoal({
-			status: "active",
-			continuation_count: 0,
-			last_continued_at_ms: null,
-		});
-
-		const resumed = store.getGoal();
-		expect(resumed!.status).toBe("active");
-		expect(resumed!.continuation_count).toBe(0);
 	});
 });
 
