@@ -17,6 +17,7 @@ Mekann の skill は、Pi coding agent が特定作業のために読む workflo
 | TDD で実装したい | [`tdd`](../mekann/skills/tdd/SKILL.md) | `diagnose`, `improve-codebase-architecture` |
 | コードベースの構造を改善したい | [`improve-codebase-architecture`](../mekann/skills/improve-codebase-architecture/SKILL.md) | `grill-with-docs`, `to-issues`, `tdd` |
 | 変更差分を厳しく maintainability review したい | [`thermo-nuclear-code-quality-review`](../mekann/skills/thermo-nuclear-code-quality-review/SKILL.md) | `improve-codebase-architecture`, `tdd` |
+| GSAP animation を実装・レビューしたい | [`gsap-core`](../mekann/skills/gsap-core/SKILL.md) | `gsap-react`, `gsap-scrolltrigger`, `gsap-timeline`, `gsap-performance` |
 | 知らないコード領域の全体像が欲しい | [`zoom-out`](../mekann/skills/zoom-out/SKILL.md) | 目的に応じて任意の skill |
 | engineering skills の初期設定をしたい | [`setup-matt-pocock-skills`](../mekann/skills/setup-matt-pocock-skills/SKILL.md) | `triage`, `to-prd`, `to-issues` |
 | 反復実験で最適化したい | [`autoresearch-create`](../mekann/skills/autoresearch-create/SKILL.md) | 通常は目的整理後に使う |
@@ -254,6 +255,21 @@ Sub mode は main mode と同じ挙動になりました。implementation-delega
   - 「指標を決めて反復実験ループを始めて」
 
 ### 初期設定 skill
+
+#### GSAP skills
+
+- 詳細:
+  - [`mekann/skills/gsap-core/SKILL.md`](../mekann/skills/gsap-core/SKILL.md)
+  - [`mekann/skills/gsap-react/SKILL.md`](../mekann/skills/gsap-react/SKILL.md)
+  - [`mekann/skills/gsap-scrolltrigger/SKILL.md`](../mekann/skills/gsap-scrolltrigger/SKILL.md)
+  - [`mekann/skills/gsap-timeline/SKILL.md`](../mekann/skills/gsap-timeline/SKILL.md)
+  - [`mekann/skills/gsap-plugins/SKILL.md`](../mekann/skills/gsap-plugins/SKILL.md)
+  - [`mekann/skills/gsap-utils/SKILL.md`](../mekann/skills/gsap-utils/SKILL.md)
+  - [`mekann/skills/gsap-frameworks/SKILL.md`](../mekann/skills/gsap-frameworks/SKILL.md)
+  - [`mekann/skills/gsap-performance/SKILL.md`](../mekann/skills/gsap-performance/SKILL.md)
+- できること: GSAP の core tweens、timelines、ScrollTrigger、React integration、plugins、utils、performance best practices を使って animation を実装・レビューする。
+- 使うタイミング: DOM/SVG animation、scroll-driven animation、React/Vue/Svelte/vanilla JS での GSAP 実装、既存 animation の不具合調査や性能改善。
+- 出力: framework に合った GSAP code、cleanup / context handling、ScrollTrigger 設定、performance-oriented review。
 
 #### setup-matt-pocock-skills
 

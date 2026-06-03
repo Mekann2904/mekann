@@ -39,7 +39,8 @@ mekann
 - [docs/adr](./adr/): 長く残る設計判断。
 - Feature README: feature 固有の使い方、境界、tool / command。
 - [docs/terminal-ui.md](./terminal-ui.md): terminal UI placement の設計整理。
-- [docs/vendor/mattpocock-skills.md](./vendor/mattpocock-skills.md): upstream skill mirror と Pi-maintained skill の関係。
+- [docs/vendor/mattpocock-skills.md](./vendor/mattpocock-skills.md): upstream engineering skill mirror と Pi-maintained skill の関係。
+- [docs/vendor/greensock-gsap-skills.md](./vendor/greensock-gsap-skills.md): upstream GSAP skill mirror と Pi-maintained skill の関係。
 
 ## Settings architecture
 

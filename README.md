@@ -80,14 +80,22 @@ npm run typecheck
 ## Skills
 
 Pi coding agent が読む Pi-maintained skill は [`mekann/skills`](./mekann/skills/) 配下に置きます。
-`vendor/mattpocock-skills` と `vendor/cursor-plugins` は upstream skill mirror であり、直接編集しません。
+`vendor/mattpocock-skills`、`vendor/cursor-plugins`、`vendor/greensock-gsap-skills` は upstream skill mirror であり、直接編集しません。
 
 Skill の使い分け、代表 workflow、組み合わせパターンは [Skills Guide](./docs/skills.md) を参照してください。
 
-現在、`mattpocock/skills` の engineering skills と `cursor/plugins` の一部 skill を Pi 向けに取り込んでいます。
+現在、`mattpocock/skills` の engineering skills、`cursor/plugins` の一部 skill、`greensock/gsap-skills` の GSAP skills を Pi 向けに取り込んでいます。
 
 - `diagnose`
 - `grill-with-docs`
+- `gsap-core`
+- `gsap-frameworks`
+- `gsap-performance`
+- `gsap-plugins`
+- `gsap-react`
+- `gsap-scrolltrigger`
+- `gsap-timeline`
+- `gsap-utils`
 - `improve-codebase-architecture`
 - `prototype`
 - `setup-matt-pocock-skills`
@@ -103,5 +111,7 @@ Skill の使い分け、代表 workflow、組み合わせパターンは [Skills
 Engineering skills の多くは [mattpocock/skills](https://github.com/mattpocock/skills) に由来します。元の発想・構成・ワークフローは Matt Pocock 氏によるものです。
 
 `thermo-nuclear-code-quality-review` は [cursor/plugins](https://github.com/cursor/plugins) の `cursor-team-kit` に由来します。厳格な code quality review の観点とワークフローを公開してくださった Cursor team に感謝します。
+
+GSAP skills は [greensock/gsap-skills](https://github.com/greensock/gsap-skills) に由来します。GSAP の core API、React、ScrollTrigger、plugins、performance などの実践的なガイドを公開してくださった GreenSock team に感謝します。
 
 Mekann では、それらを Pi coding agent 向けに翻案・調整して利用しています。これらの skills と、その背後にあるワークフローの考え方を公開してくださった upstream maintainers に感謝します。
