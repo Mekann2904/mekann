@@ -1,6 +1,7 @@
 ---
 name: to-prd
 description: Turn the current conversation context into a PRD and publish it to the project issue tracker. Use when user wants to create a PRD from the current context.
+disable-model-invocation: true
 ---
 
 > 謝辞: この skill は [mattpocock/skills](https://github.com/mattpocock/skills) をもとに Pi / Mekann 向けに翻案したものです。元の発想・構成・ワークフローは Matt Pocock 氏によるものです。

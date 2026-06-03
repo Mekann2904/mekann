@@ -6,12 +6,13 @@ import { observeToolRegistrations } from "./context/tool-registration-observer.j
 export default async function mekannExtension(pi: ExtensionAPI): Promise<void> {
 	if (isFeatureEnabled("context-tracker")) observeToolRegistrations(pi);
 
-	const [{ default: core }, { default: safety }, { default: autonomy }, { default: utils }, { default: context }] = await profileStartupStep("suite-imports", () => Promise.all([
+	const [{ default: core }, { default: safety }, { default: autonomy }, { default: utils }, { default: context }, { default: skillSurface }] = await profileStartupStep("suite-imports", () => Promise.all([
 		import("./core/index.js"),
 		import("./safety/index.js"),
 		import("./autonomy/index.js"),
 		import("./utils/index.js"),
 		import("./context/index.js"),
+		import("./skill-surface/index.js"),
 	]));
 
 	await core(pi);
@@ -19,4 +20,5 @@ export default async function mekannExtension(pi: ExtensionAPI): Promise<void> {
 	await autonomy(pi);
 	await utils(pi);
 	await context(pi);
+	skillSurface();
 }

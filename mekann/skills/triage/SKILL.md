@@ -1,6 +1,7 @@
 ---
 name: triage
 description: Triage issues through a state machine driven by triage roles. Use when user wants to create an issue, triage issues, review incoming bugs or feature requests, prepare issues for a coding agent, or manage issue workflow.
+disable-model-invocation: true
 ---
 
 > 謝辞: この skill は [mattpocock/skills](https://github.com/mattpocock/skills) をもとに Pi / Mekann 向けに翻案したものです。元の発想・構成・ワークフローは Matt Pocock 氏によるものです。

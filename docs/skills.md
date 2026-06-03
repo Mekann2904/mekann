@@ -4,6 +4,16 @@ Mekann の skill は、Pi coding agent が特定作業のために読む workflo
 
 この guide は、`mekann/skills/` 配下の skill について、何ができるか、いつ使うか、どの順序で組み合わせるかを説明します。詳細な手順は各 `SKILL.md` を正とし、この guide は入口・順序・組み合わせ・注意点に集中します。
 
+## Context surface
+
+Skill はすべてを常時 system prompt に出すと context を圧迫するため、Mekann はデフォルトを `minimal` にしています。
+
+- Pi 本体の skill 自動表示は全 skill で無効化し、Mekann の `skill-surface` が表示対象を制御します。
+- `mekann-settings` の `Mekann Skills` で skill ごとに表示 on/off を切り替えられます。
+- デフォルト on: Matt Pocock 由来の engineering skill と cursor 由来の `thermo-nuclear-code-quality-review`
+- デフォルト off: `mekann-pi-skill-dev`, `autoresearch-create`, GSAP 系 skill
+- off でも `/skill:<name>` で明示起動できます。
+
 ## まずどの skill を使うか
 
 | 状況 | 最初に使う skill | 次に使いやすい skill |

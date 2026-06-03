@@ -1,6 +1,7 @@
 ---
 name: to-issues
 description: Break a plan, spec, or PRD into independently-grabbable issues on the project issue tracker using tracer-bullet vertical slices. Use when user wants to convert a plan into issues, create implementation tickets, or break down work into issues.
+disable-model-invocation: true
 ---
 
 > 謝辞: この skill は [mattpocock/skills](https://github.com/mattpocock/skills) をもとに Pi / Mekann 向けに翻案したものです。元の発想・構成・ワークフローは Matt Pocock 氏によるものです。

@@ -1,6 +1,7 @@
 ---
 name: mekann-pi-skill-dev
 description: Mekann の Pi 向け skill を開発・更新・導入する。mattpocock/skills 由来の skill 更新、Pi 向け編集、新規 skill 導入を行うときに使う。
+disable-model-invocation: true
 ---
 
 # mekann-pi-skill-dev

@@ -18,8 +18,9 @@ import { dashboardSettingsSchema } from "../utils/dashboard/settingsSchema.js";
 import { zipRepoSettingsSchema } from "../utils/zip-repo/settingsSchema.js";
 import { terminalShortcutsSettingsSchema } from "../utils/terminal-shortcuts/settingsSchema.js";
 import { settingsEditorSettingsSchema } from "../utils/settings-editor/settingsSchema.js";
+import { skillSurfaceSettingsSchema } from "../skill-surface/settingsSchema.js";
 
-export const mekannSettingsSchemas: FeatureSettingsSchema[] = [modesSettingsSchema, sandboxSettingsSchema, goalSettingsSchema, subagentSettingsSchema, autoresearchSettingsSchema, commandNormalizationSettingsSchema, outputGateSettingsSchema, contextLedgerSettingsSchema, contextTrackerSettingsSchema, cacheableContextSettingsSchema, codexSharedSettingsSchema, codexWebSearchSettingsSchema, codexLimitsSettingsSchema, dashboardSettingsSchema, zipRepoSettingsSchema, terminalShortcutsSettingsSchema, settingsEditorSettingsSchema, modelOptimizerSettingsSchema, terminalSettingsSchema];
+export const mekannSettingsSchemas: FeatureSettingsSchema[] = [modesSettingsSchema, sandboxSettingsSchema, goalSettingsSchema, subagentSettingsSchema, autoresearchSettingsSchema, commandNormalizationSettingsSchema, outputGateSettingsSchema, contextLedgerSettingsSchema, contextTrackerSettingsSchema, cacheableContextSettingsSchema, codexSharedSettingsSchema, codexWebSearchSettingsSchema, codexLimitsSettingsSchema, dashboardSettingsSchema, zipRepoSettingsSchema, terminalShortcutsSettingsSchema, settingsEditorSettingsSchema, skillSurfaceSettingsSchema, modelOptimizerSettingsSchema, terminalSettingsSchema];
 export function findSettingSchema(feature: string, key: string) {
   return mekannSettingsSchemas.find((s) => s.feature === feature)?.settings.find((s) => s.key === key);
 }
