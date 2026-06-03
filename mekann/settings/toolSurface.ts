@@ -1,10 +1,10 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+type ToolSurfaceAPI = {
+	getActiveTools?: () => string[];
+	setActiveTools?: (toolNames: string[]) => void;
+};
 
-export function setToolsActive(pi: ExtensionAPI, toolNames: readonly string[], active: boolean): void {
-	const api = pi as ExtensionAPI & {
-		getActiveTools?: () => string[];
-		setActiveTools?: (toolNames: string[]) => void;
-	};
+export function setToolsActive(pi: ToolSurfaceAPI, toolNames: readonly string[], active: boolean): void {
+	const api = pi;
 	if (typeof api.getActiveTools !== "function" || typeof api.setActiveTools !== "function") return;
 	const wanted = new Set(toolNames);
 	const current = api.getActiveTools();

@@ -1,9 +1,8 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { featureStringValue } from "./enabled.js";
 import { setToolsActive } from "./toolSurface.js";
 
 export function projectFeatureToolSurface(
-	pi: ExtensionAPI,
+	pi: Parameters<typeof setToolsActive>[0],
 	feature: string,
 	toolNames: readonly string[],
 	defaultSurface: string,
