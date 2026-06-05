@@ -37,9 +37,7 @@ autoresearch.checks.sh
 /evaluate_maintenance.sh
 /results.tsv
 
-# OSS reference library
-/vendor/oss/
-
-# Upstream skill mirrors that are fetched on demand
-/vendor/alchaincyf-darwin-skill/
+# Upstream mirrors are local cache only; keep only the vendor index tracked.
+/vendor/*
+!/vendor/README.md
 /.mekann/command-normalization
