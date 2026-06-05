@@ -62,7 +62,9 @@ For any genre, distinguish what the author knows from what the scene needs.
 - Use official terms sparingly; contrast them with slang, misremembered names, forms, receipts, warning labels, family nicknames, workplace shortcuts, or everyday workarounds.
 - Avoid explanatory inventories that list every source, rule, category, symptom, or mechanism only to prove the premise. Choose the one or two items that matter to the scene, and let the rest remain implied or disputed.
 - Let important systems have maintenance, exceptions, cheap versions, old habits, local misuse, and people who misunderstand them.
+- When a system optimizes, corrects, beautifies, standardizes, or purifies something, ask what personal awkwardness, error, roughness, or imbalance it removes. The removed imperfection may be what matters to someone.
 - For invented jobs, rituals, schools, gangs, courts, guilds, families, or services, include working vocabulary and small procedures, but do not front-load a full manual. A local nickname, checklist, repeated bodily strain, repair decision, lunch habit, complaint, or shortcut can make the institution felt.
+- Let professionals keep professional distance when appropriate. They can notice, infer, repair, decline tea, move to the next job, or admit they do not know, without becoming the emotional center of the client's story.
 - Avoid making the setting a pure allegory; include petty incentives, mundane inconveniences, and social details that do not announce the theme.
 - Make the premise destabilize an existing relation rather than merely demonstrate a concept. Ask whose words, memory, responsibility, body, labor, desire, loyalty, status, or consent the premise makes uncertain.
 - Let the center of gravity move away from the premise when appropriate. The device, crime, secret, curse, journey, or system may start the story, but the lasting force can come from labor, local time, unrecorded habits, material traces, a living person's response, or a practical chore after the main choice.
@@ -86,7 +88,7 @@ For any genre, distinguish what the author knows from what the scene needs.
 - When dialogue fails, use the failure as action: who fills the gap, who lets it remain, who pretends not to notice, and what cost that choice has.
 - For former lovers, estranged family, or old friends, avoid making the past relationship exist only to power the twist. Include at least one memory that is not obviously diagnostic and does not later become a clue.
 - Let a relationship contain unprocessed residue: a petty irritation, boring routine, private joke, recurring chore, disliked food, unfinished repair, or habit that does not resolve into the central theme.
-- When writing grief, loss, farewell, or reconciliation, avoid making the decisive act the ending by default. Consider continuing into later weather, work, travel, cleaning, shopping, repairs, or another person's ordinary sentence, so the change becomes part of life rather than a solved plot.
+- When writing grief, loss, farewell, or reconciliation, avoid making the decisive act the ending by default. Consider continuing into later weather, work, travel, cleaning, shopping, repairs, another person's ordinary sentence, or the next unrelated assignment, so the change becomes part of life rather than a solved plot.
 - Let one person's private scene be answered by another person's later bodily imitation, altered routine, or near-repetition. This can show delayed understanding without stating that the character understands.
 
 ## Revision checklist for fiction
@@ -99,11 +101,13 @@ Before returning a fiction draft or revision, check:
 - Does at least one concrete object or title carry layered meaning without being explained in full?
 - Does at least one detail refuse the central theme instead of reinforcing it?
 - Do material traces matter on their own terms: smell, weight, paper, cloth, food, tools, handwriting, temperature, dust, wear, fatigue, or maintenance, rather than only as symbols?
+- Use non-visual senses when they fit the story, especially when the subject is hard to explain directly. Smell, humidity, taste, texture, pressure, or sound can hold memory without turning it into an argument.
 - Is there place-specific texture that is not interchangeable: a street, stairwell, shop smell, local light, transit rhythm, room noise, weather pattern, shoreline, closed school, vacant lot, or interrupted construction?
 - Are comparisons and contrasts left embodied when possible? If two kinds of fatigue, love, fear, or loneliness differ, consider showing them through posture, timing, temperature, or an unfinished errand rather than naming the contrast.
 - Are there motivated irregularities: a detour, failed attempt, unresolved contradiction, specific inconvenience, or evidence that does not clarify anything?
 - If there is a diary, prophecy, confession, hidden file, report, log, letter, record, or recording, does it complicate interpretation rather than solve the story's meaning?
 - Does an apparently meaningless fragment remain hard to classify rather than being converted into a clue or symbol?
+- Does the story preserve the difference between technically better, socially acceptable, commercially useful, and personally true?
 - Does the piece allow personal time and collective/local time to overlap without making one merely a metaphor for the other?
 - If the ending uses a small mismatch in appearance, voice, object, or memory, has that mismatch been allowed to remain strange instead of becoming a solved clue?
 - Does the ending change the reader's understanding without explaining the theme in full, over-recovering every symbol, or closing with a thesis-like final sentence?
