@@ -1,6 +1,6 @@
 ---
 name: self-evolving-skill
-description: Improve Pi agent skills through a self-evolving loop: choose one target SKILL.md, evaluate it with test prompts and a 9-dimension rubric, make only bounded edits, validate with independent review / dry-run / checks, and keep only clearly improved changes. Use when the user asks for "self-evolving skill", "improve this skill", "skill review", "skill evaluation", or "make SKILL.md better".
+description: "Improve Pi agent skills through a self-evolving loop: choose one target SKILL.md, evaluate it with test prompts and a 9-dimension rubric, make only bounded edits, validate with independent review / dry-run / checks, and keep only clearly improved changes. Use when the user asks for 'self-evolving skill', 'improve this skill', 'skill review', 'skill evaluation', or 'make SKILL.md better'."
 ---
 
 # Self-Evolving Skill
