@@ -54,6 +54,12 @@ export interface ProviderOptimizerModule {
 	 */
 	buildPostCompactionHint(ctx: { model: OptimizerModel }): string | undefined;
 
+	/**
+	 * Build a system-prompt hint injected on every agent start when this
+	 * module is active.  Return `undefined` to skip.
+	 */
+	buildSystemPromptHint?(ctx: { model: OptimizerModel }): string | undefined;
+
 	/** Settings contributed by this module. */
 	settings: SettingSchema<boolean>[];
 }

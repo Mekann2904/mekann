@@ -35,5 +35,9 @@ export const deepseekModule: ProviderOptimizerModule = {
 		return DEEPSEEK_POST_COMPACTION_HINT;
 	},
 
+	buildSystemPromptHint(_ctx: { model: OptimizerModel }): string {
+		return "请用中文进行内部推理和思考，然后再用对话语言输出。";
+	},
+
 	settings: deepseekOptimizerSettings,
 };

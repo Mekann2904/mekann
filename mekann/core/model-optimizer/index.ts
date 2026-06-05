@@ -11,7 +11,7 @@
  * This root only handles model tracking, settings, and hook dispatch.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createActiveOptimizationState, registerActiveProfileTracking } from "./activeProfile.js";
 import { registerOverflowRecovery } from "./overflow.js";
 import { registerMetrics } from "./metrics.js";
@@ -76,6 +76,30 @@ export default function modelOptimizer(pi: ExtensionAPI): void {
 
 	// Compaction lifecycle observer + post-compaction hints
 	registerCompactionObserver(pi, state);
+
+	// System-prompt hint injection (every agent start when active module has one)
+	pi.on("before_agent_start", (event, ctx: ExtensionContext) => {
+		if (!state.enabled) return;
+		const module = state.activeModule;
+		if (!module?.buildSystemPromptHint) return;
+
+		const modelStub = { provider: state.provider!, id: state.modelId!, api: state.api } as any;
+		const hint = module.buildSystemPromptHint({ model: modelStub });
+		if (!hint) return;
+
+		const current = (event as { systemPrompt?: string }).systemPrompt ?? "";
+
+		if (state.enableDebugLogging) {
+			ctx.ui.notify(
+				`model-optimizer: system-prompt hint injected (api=${state.api ?? "?"}, module=${module.id})`,
+				"info",
+			);
+		}
+
+		return {
+			systemPrompt: current ? `${current}\n\n${hint}` : hint,
+		};
+	});
 
 	// Slash command: /model-optimizer status | stats
 	registerCommands(pi, state);
