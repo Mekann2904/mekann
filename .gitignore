@@ -26,10 +26,12 @@ Thumbs.db
 
 # Mekann generated cache artifacts
 .mekann/cacheable-context/
+.mekann/output-budget/
 /memo.md
 autoresearch.contract.json
 autoresearch.jsonl
 autoresearch.md
+autoresearch.plan.md
 autoresearch.sh
 autoresearch.checks.sh
 
