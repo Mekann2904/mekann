@@ -12,7 +12,7 @@ import { truncateToWidth } from "@earendil-works/pi-tui";
 
 // ─── Constants ────────────────────────────────────────────────
 
-export const DEFAULT_MAX_LOOP_ITERATIONS = 100;
+export const DEFAULT_MAX_LOOP_ITERATIONS: number | null = null;
 export const NO_PROGRESS_LIMIT = 10;
 export const DEFAULT_TIMEOUT_SECONDS = 600;
 

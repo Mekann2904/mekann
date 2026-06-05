@@ -322,11 +322,8 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			store.noProgressAgentEnds = 0;
 		} else {
 			store.noProgressAgentEnds++;
-			if (store.noProgressAgentEnds >= NO_PROGRESS_LIMIT) {
-				store.autoLoop = false;
-				store.updateWidget(ctx);
-				ctx.ui.notify(`autoresearch loop を停止しました: ${NO_PROGRESS_LIMIT}回連続で進捗なし。\n/autoresearch loop on で再開、/autoresearch loop max none で上限解除できます。`, "warning");
-				return;
+			if (store.noProgressAgentEnds === NO_PROGRESS_LIMIT) {
+				ctx.ui.notify(`autoresearch loop は ${NO_PROGRESS_LIMIT}回連続で benchmark/log 進捗がありません。subagent 待ち・調査・候補評価中なら継続します。停止するには <autoresearch>COMPLETE</autoresearch> または /autoresearch off を使ってください。`, "warning");
 			}
 		}
 

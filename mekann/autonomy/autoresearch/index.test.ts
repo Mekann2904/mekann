@@ -451,25 +451,28 @@ describe("autoresearchExtension", () => {
 			expect(pi.sentMessages).toHaveLength(0);
 		});
 
-		it("stops after repeated no-progress agent ends", async () => {
+		it("continues after repeated no-progress agent ends and only warns once", async () => {
 			const ctx = createMockCtx();
 			await pi.commands.get("autoresearch")!.handler("on", ctx);
 			pi.sentMessages.length = 0;
 
-			// NO_PROGRESS_LIMIT=10: iterations 0-8 send followUp, iteration 9 (10th) stops.
-			for (let i = 0; i < 10; i++) {
+			// NO_PROGRESS_LIMIT=10: warn at the threshold, but keep looping because
+			// subagent waits / research notes / candidate review can be real progress
+			// without incrementing runCount.
+			for (let i = 0; i < 11; i++) {
 				await pi.eventHandlers.get("agent_start")!({}, ctx);
 				await pi.eventHandlers.get("agent_end")!({ messages: [] }, ctx);
 			}
 
 			expect(ctx.ui.notify).toHaveBeenCalledWith(
-				expect.stringContaining("停止しました"),
+				expect.stringContaining("benchmark/log 進捗がありません"),
 				"warning",
 			);
 			expect(ctx.ui.notify).toHaveBeenCalledWith(
-				expect.stringContaining("loop on で再開"),
+				expect.stringContaining("停止するには"),
 				"warning",
 			);
+			expect(pi.sentMessages.length).toBeGreaterThanOrEqual(11);
 		});
 
 		it("stops at max loop iterations", async () => {

@@ -5,7 +5,7 @@ import { featureBooleanValue } from "../settings/enabled.js";
 import { registerPromptProvider } from "../core/prompt-core/index.js";
 import { SKILL_SURFACE_DEFINITIONS, skillSettingKey } from "./skills.js";
 
-type SkillMeta = { name: string; description: string };
+type SkillMeta = { name: string; description: string; filePath: string };
 
 function parseFrontmatter(text: string): Record<string, string> {
 	const match = text.match(/^---\n([\s\S]*?)\n---\n/);
@@ -25,8 +25,9 @@ function discoverSkills(): SkillMeta[] {
 	return readdirSync(skillsDir, { withFileTypes: true })
 		.filter((entry) => entry.isDirectory())
 		.map((entry) => {
-			const fm = parseFrontmatter(readFileSync(join(skillsDir, entry.name, "SKILL.md"), "utf8"));
-			return { name: fm.name || entry.name, description: fm.description || "" };
+			const filePath = join(skillsDir, entry.name, "SKILL.md");
+			const fm = parseFrontmatter(readFileSync(filePath, "utf8"));
+			return { name: fm.name || entry.name, description: fm.description || "", filePath };
 		})
 		.filter((skill) => skill.description.length > 0)
 		.sort((a, b) => a.name.localeCompare(b.name));
@@ -37,11 +38,34 @@ function visibleSkills(cwd: string, skills: SkillMeta[]): SkillMeta[] {
 	return skills.filter((skill) => featureBooleanValue("skills", skillSettingKey(skill.name), defaults.get(skill.name) ?? false, cwd));
 }
 
+function escapeXml(str: string): string {
+	return str
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/\"/g, "&quot;")
+		.replace(/'/g, "&apos;");
+}
+
 function renderSkillSurface(skills: SkillMeta[]): string {
 	if (skills.length === 0) return "";
-	return `<available_mekann_skills>\n${skills
-		.map((skill) => `<skill name="${skill.name}">${skill.description}</skill>`)
-		.join("\n")}\n</available_mekann_skills>\n\nIf a task matches one of these Mekann skills, load it with the read tool from mekann/skills/<name>/SKILL.md before following it. Users can also force it with /skill:<name>.`;
+	return [
+		"The following Mekann skills are enabled for model use by Mekann settings.",
+		"Use the read tool to load a skill's file when the task matches its description.",
+		"When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+		"",
+		"<available_mekann_skills>",
+		...skills.flatMap((skill) => [
+			"  <skill>",
+			`    <name>${escapeXml(skill.name)}</name>`,
+			`    <description>${escapeXml(skill.description)}</description>`,
+			`    <location>${escapeXml(skill.filePath)}</location>`,
+			"  </skill>",
+		]),
+		"</available_mekann_skills>",
+		"",
+		"Users can force a loaded skill with /skill:<name>; Pi resolves the command through its standard skill registry.",
+	].join("\n");
 }
 
 export default function skillSurface(): void {
