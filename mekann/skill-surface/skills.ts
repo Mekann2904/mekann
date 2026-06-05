@@ -7,7 +7,6 @@ export type SkillSurfaceDefinition = {
 
 export const SKILL_SURFACE_DEFINITIONS: SkillSurfaceDefinition[] = [
 	{ name: "autoresearch-create", defaultSurface: "off" },
-	{ name: "self-evolving-skill", defaultSurface: "off" },
 	{ name: "diagnose", defaultSurface: "on" },
 	{ name: "grill-with-docs", defaultSurface: "on" },
 	{ name: "gsap-core", defaultSurface: "off" },

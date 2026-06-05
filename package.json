@@ -49,7 +49,6 @@
     "update:mattpocock-skills": "bash scripts/update-mattpocock-skills.sh",
     "update:cursor-plugins-skills": "bash scripts/update-cursor-plugins-skills.sh",
     "update:gsap-skills": "bash scripts/update-gsap-skills.sh",
-    "update:self-evolving-skill": "bash scripts/update-self-evolving-skill.sh",
     "clone:oss": "bash scripts/clone-oss.sh",
     "update:oss": "bash scripts/update-oss.sh"
   },
