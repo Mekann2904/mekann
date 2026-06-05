@@ -1,6 +1,6 @@
 ---
 name: writing-assistant
-description: Use for creating and improving Japanese technical documents, academic papers, and research writing. Draft the structure and initial text in the LLM's strongest working language, then translate and edit into Japanese with attention to technical accuracy, logical structure, Japanese style, and academic writing conventions.
+description: Use for creating and improving Japanese technical documents, academic papers, and research writing. Reason in English (or Chinese when the model is stronger in it) for planning, analysis, and drafting logic, then compose the final output directly in Japanese with attention to technical accuracy, logical structure, Japanese style, and academic writing conventions.
 ---
 
 # writing-assistant
@@ -28,17 +28,19 @@ Use this skill when the user's primary goal is a written deliverable. Prioritize
 
 ## Core principle
 
-Even when the final output is Japanese, do not default to composing directly in Japanese.
+The final output is Japanese, but the reasoning itself should run in a language where the model thinks best. Separating reasoning language from output language improves logical quality and reduces translationese.
 
-1. Clarify the requirements in Japanese.
-2. Internally generate the structure and first draft in the language the LLM writes best.
-   - Default to English.
-   - Use another language, such as Chinese, if the model or task is clearly stronger in that language.
-3. Translate the draft into Japanese.
-4. Edit it as a Japanese technical document or academic paper.
-5. Apply the source-integrity rules for uncertain facts, numbers, citations, and proper nouns.
+1. Clarify the requirements with the user in Japanese.
+2. Run the reasoning in English by default:
+   - understanding the task, decomposing the question, planning structure
+   - analyzing sources, comparing options, checking logical consistency
+   - drafting the internal argument and evidence chain
+3. Switch to Chinese instead of English only when the model or task is clearly stronger in Chinese.
+4. Compose the final Japanese output directly from the reasoning, rather than mechanically translating an English/Chinese draft. Treat the internal reasoning as a thinking aid, not as the source text to translate.
+5. Edit the Japanese text as a technical document or academic paper.
+6. Apply the source-integrity rules for uncertain facts, numbers, citations, and proper nouns.
 
-Do not normally show the internal draft to the user. Include it only if the user asks for it.
+Do not normally show the internal reasoning or its language to the user. Disclose it only if the user asks.
 
 ## Initial questions
 
@@ -58,9 +60,20 @@ If the user asks for a first proposal immediately, state assumptions and provide
 
 ## Reference units
 
-Read the following reference files as needed. Do not read all of them every time.
+The references below are an essential part of this skill, not optional background. **In practice agents skip them and produce noticeably worse output**, so treat loading them as the default, not the exception.
 
-- `references/multilingual-drafting.md`: drafting in a strong working language, then finishing in Japanese
+Recommended defaults:
+
+- For any new draft or substantial revision longer than a few paragraphs, load `references/japanese-technical-style.md` and `references/expression-rewrite-rules.md` before composing.
+- For academic papers, theses, abstracts, or proposals, also load `references/academic-writing-checklist.md`.
+- For figures, tables, formulas, citations, or any plagiarism-adjacent work, also load `references/figures-formulas-citations.md`.
+- For decisions about reasoning language vs. output language, also load `references/multilingual-drafting.md`.
+
+You do not need to load files whose topic is clearly irrelevant to the request, but when in doubt, load. Loading a reference is much cheaper than producing a draft that violates the style rules and then fixing it.
+
+Reference index:
+
+- `references/multilingual-drafting.md`: reasoning in English/Chinese and composing Japanese directly
 - `references/japanese-technical-style.md`: Japanese notation, punctuation, character types, and wording
 - `references/academic-writing-checklist.md`: paper structure, chapters, sections, paragraphs, and abstracts
 - `references/figures-formulas-citations.md`: figures, tables, formulas, references, citations, and plagiarism prevention
@@ -69,14 +82,10 @@ Read the following reference files as needed. Do not read all of them every time
 ## Workflow
 
 1. Identify the purpose, audience, document type, and constraints.
-2. Read only the relevant reference unit files:
-   - style / notation issues: `japanese-technical-style.md` or `expression-rewrite-rules.md`
-   - academic structure: `academic-writing-checklist.md`
-   - figures, formulas, citations, or plagiarism risk: `figures-formulas-citations.md`
-   - multilingual drafting decisions: `multilingual-drafting.md`
+2. Load the reference unit files proactively (see Reference units). Default to loading style/notation references for any non-trivial draft; add structure, citation, or multilingual references when the topic matches. Do not skip this step just because the request looks short.
 3. Create an outline if needed.
-4. Internally generate the logical structure and initial draft in the strongest working language.
-5. Translate into Japanese and remove translationese.
+4. Reason through structure, analysis, and evidence in English (or Chinese when stronger).
+5. Compose the final Japanese text directly from that reasoning, then remove translationese.
 6. Review the result as a technical document or academic paper: structure, notation, citations, figures, tables, formulas, and expression.
 7. List unverifiable facts, citations, numbers, and proper nouns separately as `要確認` items.
 
