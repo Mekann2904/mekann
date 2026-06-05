@@ -1,11 +1,11 @@
 ---
 name: writing-assistant
-description: Use for creating and improving Japanese technical documents, academic papers, and research writing. Reason in English (or Chinese when the model is stronger in it) for planning, analysis, and drafting logic, then compose the final output directly in Japanese with attention to technical accuracy, logical structure, Japanese style, and academic writing conventions.
+description: "Use for creating and improving Japanese written deliverables: technical documents, academic papers, research writing, and clearly requested creative prose such as fiction or essays. Reason in English (or Chinese when the model is stronger in it) for planning and analysis, then compose the final output directly in Japanese with the style rules appropriate to the document type."
 ---
 
 # writing-assistant
 
-A Pi-oriented skill for creating and improving Japanese technical documents, academic papers, and research writing.
+A Pi-oriented skill for creating and improving Japanese written deliverables: technical documents, academic papers, research writing, and clearly requested creative prose such as fiction or essays.
 
 ## When to use
 
@@ -16,6 +16,7 @@ Use this skill when the user's primary goal is a written deliverable. Prioritize
 - Related work, proposed methods, experimental results, discussion, conclusions, and future work
 - Revising, summarizing, translating, tone adjustment, and structural editing of existing text
 - Figure and table captions, reference-related text, and paper review checklists
+- Creative prose when the user explicitly asks for fiction, essays, scenes, or literary revision
 
 ## When not to use
 
@@ -25,6 +26,7 @@ Use this skill when the user's primary goal is a written deliverable. Prioritize
 - The required conference, university, or lab formatting rules are unknown and strongly affect the deliverable and the user does not allow assumptions.
 - The request would support plagiarism, self-plagiarism, unattributed reuse, or false authorship/contribution claims.
 - The request asks the agent to substitute for high-risk legal, medical, or financial judgment.
+- Creative-writing requests that require imitating a living author's style, falsely claiming human authorship, or fabricating real-world evidence.
 
 ## Core principle
 
@@ -37,7 +39,7 @@ The final output is Japanese, but the reasoning itself should run in a language 
    - drafting the internal argument and evidence chain
 3. Switch to Chinese instead of English only when the model or task is clearly stronger in Chinese.
 4. Compose the final Japanese output directly from the reasoning, rather than mechanically translating an English/Chinese draft. Treat the internal reasoning as a thinking aid, not as the source text to translate.
-5. Edit the Japanese text as a technical document or academic paper.
+5. Edit the Japanese text according to the document type: technical/academic rules for technical or research writing, and creative-writing rules for fiction or essays.
 6. Apply the source-integrity rules for uncertain facts, numbers, citations, and proper nouns.
 
 Do not normally show the internal reasoning or its language to the user. Disclose it only if the user asks.
@@ -46,8 +48,8 @@ Do not normally show the internal reasoning or its language to the user. Disclos
 
 Ask brief questions only when missing information would significantly affect the quality of the deliverable. If the user provides text and asks for revision, usually revise first and put non-blocking uncertainties in `要確認`.
 
-- Document type: technical article, README, undergraduate thesis, master's thesis, paper, abstract, proposal, etc.
-- Audience: general developers, specialists, reviewers, supervisors, or reviewers outside the field
+- Document type: technical article, README, undergraduate thesis, master's thesis, paper, abstract, proposal, fiction, essay, scene, etc.
+- Audience: general developers, specialists, reviewers, supervisors, readers of a genre, or reviewers outside the field
 - Medium and format: conference template, lab rules, punctuation style, length, LaTeX / Word
 - Style: academic Japanese usually uses direct style; general-audience writing may use polite style
 - Required elements: background, objective, method, results, discussion, contribution, limitations, references
@@ -68,11 +70,15 @@ Recommended defaults:
 - For academic papers, theses, abstracts, or proposals, also load `references/academic-writing-checklist.md`.
 - For figures, tables, formulas, citations, or any plagiarism-adjacent work, also load `references/figures-formulas-citations.md`.
 - For decisions about reasoning language vs. output language, also load `references/multilingual-drafting.md`.
+- For fiction, essays, scenes, or literary revision, load `references/creative-writing.md`. Do not apply technical/academic reference units to creative prose unless the user explicitly asks for a technical style, research context, citations, or factual grounding.
+
+The anti-AI writing rules apply across document types, but genre-specific structure rules do not: do not force academic chains, citation blocks, or reproducibility language into fiction.
 
 You do not need to load files whose topic is clearly irrelevant to the request, but when in doubt, load. Loading a reference is much cheaper than producing a draft that violates the style rules and then fixing it.
 
 Reference index:
 
+- `references/creative-writing.md`: Japanese fiction, essays, scene drafting, literary revision, and avoiding template-perfect prose
 - `references/multilingual-drafting.md`: reasoning in English/Chinese and composing Japanese directly
 - `references/japanese-technical-style.md`: Japanese notation, punctuation, character types, and wording
 - `references/academic-writing-checklist.md`: paper structure, chapters, sections, paragraphs, and abstracts
@@ -82,14 +88,16 @@ Reference index:
 ## Workflow
 
 1. Identify the purpose, audience, document type, and constraints.
-2. Load the reference unit files proactively (see Reference units). Default to loading style/notation references for any non-trivial draft; add structure, citation, or multilingual references when the topic matches. Do not skip this step just because the request looks short.
+2. Load the reference unit files proactively (see Reference units). Default to style/notation references for technical or academic drafts; load the creative-writing reference for fiction or essays. Do not mix technical/academic and creative reference units unless the user requests a hybrid deliverable.
 3. Create an outline if needed.
 4. Reason through structure, analysis, and evidence in English (or Chinese when stronger).
 5. Compose the final Japanese text directly from that reasoning, then remove translationese.
-6. Review the result as a technical document or academic paper: structure, notation, citations, figures, tables, formulas, and expression.
-7. List unverifiable facts, citations, numbers, and proper nouns separately as `要確認` items.
+6. Review the result against the active document type: technical/academic structure for research writing, or scene, voice, specificity, and non-template texture for creative writing.
+7. List unverifiable facts, citations, numbers, and proper nouns separately as `要確認` items when factual claims or real-world references remain uncertain.
 
 ## Quality priorities for technical and academic writing
+
+Use this section for technical documents, research writing, theses, papers, abstracts, proposals, and related explanatory documents. For fiction or essays, use `references/creative-writing.md` instead.
 
 - For abstracts and introductions, make the chain explicit: background → problem → objective → method → result or expected contribution → conclusion.
 - The problem statement, proposal, results, and conclusion correspond to each other.
@@ -101,6 +109,7 @@ Reference index:
 - Qualitative statements are made quantitative and objective where possible.
 - Figures, tables, formulas, and references are explained in the body text.
 - The writing is specific to the research content, not generic AI-sounding boilerplate.
+- Increase individualized information where appropriate: concrete situations, constraints, observations, decisions, failed attempts, exceptions, numbers, and why the author judged as they did.
 - In related-work sections, classify prior work and state the difference from the user's work; do not merely list papers.
 - Avoid AI-like hype, decorative formatting, and generic filler; replace them with concrete mechanisms, conditions, numbers, and evidence.
 
@@ -118,11 +127,13 @@ Reference index:
 - Use only the output blocks relevant to the request; omit empty or unnecessary sections.
 - Do not provide a full sentence-by-sentence explanation unless the user asks for review comments or teaching-oriented feedback.
 
-Choose one concise response shape:
+Choose one concise response shape appropriate to the document type:
 
-- Revision: `改稿` → `主な修正` → `要確認` when needed.
-- Sparse new draft: `前提` → `構成案` → `本文案` → `要確認`.
-- Unsafe request: `対応できません` → `代替案` with a source-based rewrite, citation-free placeholder, or search plan.
+- Technical/academic revision: `改稿` → `主な修正` → `要確認` when needed.
+- Technical/academic new draft: `前提` → `構成案` → `本文案` → `要確認`.
+- Creative new draft: `前提` → `本文案` → `調整できる方向`.
+- Creative revision: `改稿` → `狙い` → `さらに調整できる点`.
+- Unsafe request: `対応できません` → `代替案` with a source-based rewrite, citation-free placeholder, search plan, or safer creative direction.
 
 ## Anti-AI writing rules
 
@@ -136,6 +147,8 @@ When drafting or revising, reduce AI-like style:
 - Prefer active, specific verbs: `実行する`, `処理する`, `変更する`, `実装する`; avoid vague forms such as `行われる`, `変更を行う`, or `実装を実施する`.
 - Keep terminology, page names, and style consistent within the same document; do not mix `です・ます` and `だ・である` without a reason.
 - Avoid repeated `また、` and bullet fragments immediately after connective phrases like `例えば。` or `具体的には。`.
+- Do not make text look human by adding meaningless errors, casual fillers, random rhythm changes, or artificial emotion. Prefer genuine specificity: what happened, under what condition, what trade-off existed, what was tried, and why the judgment followed.
+- Treat “AI-like” and “human-like” as text properties, not proof of authorship. Do not claim that a text was generated by AI or written by a human from style alone; say only that it contains features common in AI-generated text when relevant.
 
 ## Source integrity
 
