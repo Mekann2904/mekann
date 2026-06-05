@@ -82,10 +82,12 @@ For any genre, distinguish what the author knows from what the scene needs.
 - Preserve silence and omission; not every motivation needs to be named.
 - Use dialect, register, and verbal tics as lived speech, not as decoration or emotional amplification. A single plain line may carry more weight than an explained feeling.
 - Let repeated small exchanges change in pressure. A phrase such as `まあ、ぼちぼち` can mean routine, avoidance, decline, tenderness, or loss depending on what surrounds it.
+- A repeated phrase can change meaning through one particle, tense, addressee, or situation. Do not explain the difference if the altered wording and surrounding action already carry it.
 - When dialogue fails, use the failure as action: who fills the gap, who lets it remain, who pretends not to notice, and what cost that choice has.
 - For former lovers, estranged family, or old friends, avoid making the past relationship exist only to power the twist. Include at least one memory that is not obviously diagnostic and does not later become a clue.
 - Let a relationship contain unprocessed residue: a petty irritation, boring routine, private joke, recurring chore, disliked food, unfinished repair, or habit that does not resolve into the central theme.
 - When writing grief, loss, farewell, or reconciliation, avoid making the decisive act the ending by default. Consider continuing into later weather, work, travel, cleaning, shopping, repairs, or another person's ordinary sentence, so the change becomes part of life rather than a solved plot.
+- Let one person's private scene be answered by another person's later bodily imitation, altered routine, or near-repetition. This can show delayed understanding without stating that the character understands.
 
 ## Revision checklist for fiction
 
@@ -98,12 +100,14 @@ Before returning a fiction draft or revision, check:
 - Does at least one detail refuse the central theme instead of reinforcing it?
 - Do material traces matter on their own terms: smell, weight, paper, cloth, food, tools, handwriting, temperature, dust, wear, fatigue, or maintenance, rather than only as symbols?
 - Is there place-specific texture that is not interchangeable: a street, stairwell, shop smell, local light, transit rhythm, room noise, weather pattern, shoreline, closed school, vacant lot, or interrupted construction?
+- Are comparisons and contrasts left embodied when possible? If two kinds of fatigue, love, fear, or loneliness differ, consider showing them through posture, timing, temperature, or an unfinished errand rather than naming the contrast.
 - Are there motivated irregularities: a detour, failed attempt, unresolved contradiction, specific inconvenience, or evidence that does not clarify anything?
 - If there is a diary, prophecy, confession, hidden file, report, log, letter, record, or recording, does it complicate interpretation rather than solve the story's meaning?
 - Does an apparently meaningless fragment remain hard to classify rather than being converted into a clue or symbol?
 - Does the piece allow personal time and collective/local time to overlap without making one merely a metaphor for the other?
 - If the ending uses a small mismatch in appearance, voice, object, or memory, has that mismatch been allowed to remain strange instead of becoming a solved clue?
 - Does the ending change the reader's understanding without explaining the theme in full, over-recovering every symbol, or closing with a thesis-like final sentence?
+- If the ending repeats an earlier line, object, or gesture, does the repetition contain a small change rather than a direct echo?
 - Is the viewpoint disciplined? Avoid reporting what the viewpoint character did not notice unless the narration has clearly established an external or omniscient stance.
 - Are safety and source-integrity constraints respected, especially when using real people, real incidents, or identifiable groups?
 
