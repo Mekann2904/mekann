@@ -156,6 +156,10 @@ export interface WaitAgentParams {
   timeout_ms?: number;
 }
 
+export interface DelegateAgentParams extends SpawnParams {
+  timeout_ms?: number;
+}
+
 export interface ListAgentsParams {
   path_prefix?: string;
 }
@@ -180,6 +184,17 @@ export interface WaitResult {
   timed_out: boolean;
   events: LifecycleEvent[];
   mailbox: MailboxItem[];
+}
+
+export interface DelegateAgentResult {
+  agent_id: string;
+  task_name: string;
+  status: AgentStatus | "timed_out";
+  timed_out: boolean;
+  final_result?: string;
+  events: LifecycleEvent[];
+  mailbox: MailboxItem[];
+  spawn: SpawnResult;
 }
 
 export interface ListResult {

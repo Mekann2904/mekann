@@ -243,7 +243,7 @@ export class SubagentSpawner {
 
       const volatileContextBlock = this.buildVolatileContextBlock({ params, ctx, callerPath, canonicalPath, forkTurns });
 
-      if (parentActiveTools && parentActiveTools.length > 0) {
+      if (parentActiveTools && parentActiveTools.length > 0 && (session as any).agent?.state?.tools) {
         const activeSet = new Set(parentActiveTools.map((t: any) => typeof t === "string" ? t : t.name));
         session.agent.state.tools = session.agent.state.tools.filter((t: any) => activeSet.has(t.name));
       }

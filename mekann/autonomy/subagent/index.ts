@@ -1,15 +1,16 @@
 /**
  * Subagent Extension — Multi-agent execution system for pi.
  *
- * Allows a parent agent to spawn subagents that run asynchronously,
- * communicate via mailboxes/events, and are managed through a registry
- * with resource limits.
+ * Allows a parent agent to delegate work to subagents. The default tool is
+ * synchronous; advanced tools can still spawn asynchronously, communicate via
+ * mailboxes/events, and manage a registry with resource limits.
  *
- * Tools: spawn_agent, message_agent, wait_agent,
+ * Tools: delegate_agent, spawn_agent, message_agent, wait_agent,
  *        list_agents, close_agent, agent_results
  * Commands: /agents, /wait-agent, /close-agent
  *
  * Usage:
+ *   delegate_agent({ task_name:"research/api_scan", message:"API 層を調査して" })
  *   spawn_agent({ task_name:"research/api_scan", message:"API 層を調査して" })
  *   list_agents()
  *   wait_agent({ timeout_ms: 30000 })
@@ -22,26 +23,33 @@ import { fileURLToPath } from "node:url";
 import { AgentControl } from "./agentControl.js";
 import { SubagentClient } from "./ipc.js";
 import { formatAgentList, formatWaitResult } from "./types.js";
-import type { SpawnParams, SpawnResult } from "./types.js";
+import type { DelegateAgentParams, DelegateAgentResult, SpawnParams, SpawnResult } from "./types.js";
 import { extractLastAssistantText } from "./contextFork.js";
 import type { ForkTurns } from "./contextFork.js";
 import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
-import { isFeatureEnabled } from "../../settings/enabled.js";
+import { featureStringValue, isFeatureEnabled } from "../../settings/enabled.js";
 import { setToolsActive } from "../../settings/toolSurface.js";
 import { projectFeatureToolSurface } from "../../settings/toolSurfaceProjection.js";
 import { registerSubagentFlags } from "./flags.js";
 import { registerSubagentPromptProvider } from "./promptProvider.js";
-import { AgentResultsSchema, CloseAgentSchema, ListAgentsSchema, MessageAgentSchema, SpawnSchema, WaitAgentSchema } from "./schemas.js";
+import { AgentResultsSchema, CloseAgentSchema, DelegateAgentSchema, ListAgentsSchema, MessageAgentSchema, SpawnSchema, WaitAgentSchema } from "./schemas.js";
 import { createSubagentControl } from "./controlFactory.js";
 
 let sharedSpawnAgent: ((params: SpawnParams, ctx: ExtensionContext) => Promise<SpawnResult>) | undefined;
+let sharedDelegateAgent: ((params: DelegateAgentParams, ctx: ExtensionContext) => Promise<DelegateAgentResult>) | undefined;
 
-const SUBAGENT_MANAGEMENT_TOOL_NAMES = ["message_agent", "wait_agent", "list_agents", "close_agent"] as const;
+const SUBAGENT_DELEGATE_TOOL_NAMES = ["delegate_agent"] as const;
+const SUBAGENT_MANAGEMENT_TOOL_NAMES = ["spawn_agent", "message_agent", "wait_agent", "list_agents", "close_agent"] as const;
 const SUBAGENT_RESULT_TOOL_NAMES = ["agent_results"] as const;
 
 export async function spawnAgentFromFeature(params: SpawnParams, ctx: ExtensionContext): Promise<SpawnResult> {
   if (!sharedSpawnAgent) throw new Error("subagent feature is not initialized");
   return sharedSpawnAgent(params, ctx);
+}
+
+export async function delegateAgentFromFeature(params: DelegateAgentParams, ctx: ExtensionContext): Promise<DelegateAgentResult> {
+  if (!sharedDelegateAgent) throw new Error("subagent feature is not initialized");
+  return sharedDelegateAgent(params, ctx);
 }
 
 // ─── Extension entry point ───────────────────────────────────────
@@ -63,6 +71,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   }
 
   let control: AgentControl | null = null;
+  const asyncToolsEnabled = featureStringValue("subagent", "toolSurface", MEKANN_SUBAGENT_DEFAULTS.toolSurface) === "async-tools";
 
   // ─── Flags ────────────────────────────────────────────────────
 
@@ -118,12 +127,19 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   function syncSubagentToolSurface(ctx?: ExtensionContext): void {
     const ctrl = control;
     if (!ctrl) return;
-    projectFeatureToolSurface(pi, "subagent", SUBAGENT_MANAGEMENT_TOOL_NAMES, MEKANN_SUBAGENT_DEFAULTS.toolSurface, () => hasInteractiveSubagentState(ctrl));
-    projectFeatureToolSurface(pi, "subagent", SUBAGENT_RESULT_TOOL_NAMES, MEKANN_SUBAGENT_DEFAULTS.toolSurface, () => hasPendingAgentResults(ctrl, ctx));
+    projectFeatureToolSurface(pi, "subagent", SUBAGENT_DELEGATE_TOOL_NAMES, "always", () => true);
+    if (asyncToolsEnabled) {
+      projectFeatureToolSurface(pi, "subagent", SUBAGENT_MANAGEMENT_TOOL_NAMES, "always", () => hasInteractiveSubagentState(ctrl));
+      projectFeatureToolSurface(pi, "subagent", SUBAGENT_RESULT_TOOL_NAMES, "always", () => hasPendingAgentResults(ctrl, ctx));
+    }
   }
 
   sharedSpawnAgent = async (params, ctx) => {
     try { return await ensureControl().spawn(params, ctx); }
+    finally { syncSubagentToolSurface(ctx); }
+  };
+  sharedDelegateAgent = async (params, ctx) => {
+    try { return await ensureControl().delegate(params, ctx); }
     finally { syncSubagentToolSurface(ctx); }
   };
 
@@ -138,28 +154,61 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   // ─── Tools ────────────────────────────────────────────────────
 
   pi.registerTool({
+    name: "delegate_agent",
+    label: "Delegate to subagent",
+    description:
+      `Spawn a subagent and wait synchronously for its final result. Use this by default instead of spawn_agent so subagent results cannot be forgotten. Timeout defaults to 300000ms and is capped at ${MEKANN_SUBAGENT_DEFAULTS.maxWaitTimeoutMs}ms.`,
+    promptSnippet: "Run an independent subagent task and return its final result synchronously",
+    promptGuidelines: [
+      "Prefer delegate_agent over async subagent tools. It returns only after final_result or timeout.",
+      "Use it only for independent exploration, candidate diversity, fresh review, verification, or large-context isolation; prefer direct tools for small/tightly coupled work.",
+      "Write a self-contained English task brief and request compact, evidence-oriented output from the subagent itself; final results are not truncated by delegate_agent."
+    ],
+    parameters: DelegateAgentSchema,
+    prepareArguments(args: unknown) {
+      if (typeof args !== "object" || args === null) return args as any;
+      const a = args as Record<string, unknown>;
+      if ("fork_context" in a && !("fork_turns" in a)) {
+        a.fork_turns = a.fork_context ? "all" : "none";
+      }
+      return a as any;
+    },
+    execute: withCtrl(async (ctrl, params, ctx) => {
+      const result = await ctrl.delegate(
+        {
+          task_name: params.task_name,
+          message: params.message,
+          model: params.model,
+          reasoning_effort: params.reasoning_effort,
+          role: params.role,
+          nickname: params.nickname,
+          fork_turns: parseForkTurns(params.fork_turns),
+          authority: params.authority,
+          result_contract: params.result_contract,
+          roi_category: params.roi_category,
+          justification: params.justification,
+          cost_intent: params.cost_intent,
+          type: params.type,
+          timeout_ms: params.timeout_ms,
+        },
+        ctx,
+      );
+      const text = result.final_result ?? JSON.stringify({ timed_out: result.timed_out, task_name: result.task_name, status: result.status }, null, 2);
+      return toolResult(text, result);
+    }),
+  });
+
+  if (asyncToolsEnabled) {
+  pi.registerTool({
     name: "spawn_agent",
     label: "Spawn subagent",
     description:
       `Spawn a new subagent that runs asynchronously. Returns immediately with the agent ID and path. Up to ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents} subagents run concurrently by default; excess spawns are queued FIFO up to ${MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents} queued subagents. Use wait_agent to get results.`,
     promptSnippet: "Run an independent task in a background subagent and later collect its result",
     promptGuidelines: [
-      "Subagents are expensive child loops. Prefer direct tools; use spawn_agent only when it buys independent exploration, candidate diversity, fresh review, verification, or large-context isolation.",
-      "Good subagent use cases: repo-wide research across distinct components, fault localization with multiple independent hypotheses, comparing patch candidates, fresh review of a concrete risk, or high-value research with separable branches.",
-      "Do not use subagents for small single-step tasks, one-file edits, simple questions, 1-3 file cross-references, single grep/read, tightly coupled implementation, ambiguous requirements, verifier-less debate, or work that requires tight step-by-step coordination with the parent. Direct tool use is better for those cases.",
-      "Before spawning, check that at least 3 ROI conditions hold: natural decomposition, independent evidence, parent-verifiable result, high failure cost, too many local reads/tool calls, comparable candidates, or explicit user request for parallel/multi-agent work.",
-      "For genuinely independent tasks, spawn all relevant subagents first, then wait for results. Avoid spawn→wait→spawn serialization unless later tasks depend on earlier results.",
-      "Default workflow: spawn_agent for each independent task → continue useful parent work or spawn more agents → wait_agent to collect updates/results → summarize/merge results → message_agent(mode=task) if more work is needed.",
-      "Subagents are cleaned up automatically after successful completion. Do not call close_agent as routine cleanup after final_result; use close_agent only for cancellation, aborting, or stuck/abnormal agents.",
-      "spawn_agent returns immediately; it does not mean the child has finished. Never claim subagent results until wait_agent returns mailbox content or a final_result.",
-      "Give each subagent a stable, descriptive task_name such as research/api, research/db, fix/tests, review/security. Relative paths are resolved under /root.",
-      "Write the message as a self-contained task brief in English: include goal, relevant files/commands, constraints, expected output format, and what not to change. Subagents may not know unstated parent context. English is required even if the user-facing conversation is in another language.",
-      "Use fork_turns only when the recent conversation is genuinely needed by the child; otherwise include the necessary context directly in message.",
-      "Set roi_category to exactly one enum value: parallel_search | fault_localization | candidate_generation | fresh_review | verification | large_context_isolation | other. Put natural-language reasoning in justification, not roi_category. Use type=explore for wide read-only investigation, verify for narrow checks, review for fresh review, and patch for bounded patch proposals.",
-      `Respect resource limits. By default, max running subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents} and max queued subagents = ${MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents}; excess accepted spawns return status=\"queued\" with queue_position/queued_ahead and start automatically when a slot opens.`,
-      "Use list_agents or wait_agent to observe queued/running/completed status. close_agent can cancel queued agents. message_agent(mode=note) can add pre-start context; message_agent(mode=task) requires a running or idle agent.",
-      "If a duplicate task_name is rejected, list_agents to inspect whether an agent with that path is still open/running before choosing a different path or aborting it with close_agent.",
-      "Subagent output is for the parent agent, not for humans. Request compact structured results: findings, file paths, key decisions, risks, next actions. Avoid greetings, apologies, narrative summaries, or polished prose in subagent responses. For result_contract=subagent_result_v1 the child emits only raw JSON; put any desired report shape, language, or bullet sections inside JSON fields such as summary/evidence/validation. Use outcome=observation for read-only research/review, no_change only for verified no-op, patch only for concrete patch proposals, blocked for authority/environment blockers, and needs_decision only for explicit parent decisions. For free_text results, ask the child to use terse bullet sections.",
+      "Advanced async tool. Prefer delegate_agent unless the parent can do useful work while children run or must manage multiple children.",
+      "After spawning, call wait_agent until every needed final_result is received; never answer from an uncollected subagent.",
+      "Use stable task_name values; write task briefs in English and request compact structured results for the parent agent, not for humans."
     ],
     parameters: SpawnSchema,
     prepareArguments(args: unknown) {
@@ -305,6 +354,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     }),
   });
 
+  }
+
   // ─── Commands ─────────────────────────────────────────────────
 
   pi.registerCommand("agents", {
@@ -392,7 +443,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   });
 
   pi.on("session_shutdown", async () => {
-    setToolsActive(pi, [...SUBAGENT_MANAGEMENT_TOOL_NAMES, ...SUBAGENT_RESULT_TOOL_NAMES], false);
+    setToolsActive(pi, [...SUBAGENT_DELEGATE_TOOL_NAMES, ...SUBAGENT_MANAGEMENT_TOOL_NAMES, ...SUBAGENT_RESULT_TOOL_NAMES], false);
     await shutdownControl();
   });
 }

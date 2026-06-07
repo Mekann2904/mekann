@@ -20,6 +20,8 @@ import type {
   AgentMetadata,
   AgentStatus,
   CloseAgentParams,
+  DelegateAgentParams,
+  DelegateAgentResult,
   FollowupTaskParams,
   ListAgentsParams,
   ListResult,
@@ -50,6 +52,11 @@ const DEFAULT_MAX_QUEUED_SUBAGENTS = MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents
 const DEFAULT_WAIT_TIMEOUT_MS = MEKANN_SUBAGENT_DEFAULTS.defaultWaitTimeoutMs;
 const MAX_WAIT_TIMEOUT_MS = MEKANN_SUBAGENT_DEFAULTS.maxWaitTimeoutMs;
 const MIN_WAIT_TIMEOUT_MS = MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs;
+
+function clampDelegateTimeout(value: number): number {
+  if (!Number.isFinite(value)) return 300_000;
+  return Math.max(MIN_WAIT_TIMEOUT_MS, Math.min(MAX_WAIT_TIMEOUT_MS, Math.trunc(value)));
+}
 
 export const DEFAULT_AUTHORITY: SubagentAuthority = { mode: "propose_patch", require_base_hash: true, max_patch_bytes: MEKANN_SUBAGENT_DEFAULTS.maxPatchBytes };
 
@@ -338,6 +345,34 @@ export class AgentControl {
       result.cost_advice = { level: advice.level, message: advice.message, reasons: advice.reasons };
     }
     return result;
+  }
+
+  async delegate(params: DelegateAgentParams, ctx: ExtensionContext): Promise<DelegateAgentResult> {
+    const { timeout_ms: timeoutMs, ...spawnParams } = params;
+    const spawn = await this.spawn(spawnParams, ctx);
+    const deadline = Date.now() + clampDelegateTimeout(timeoutMs ?? 300_000);
+    const events: DelegateAgentResult["events"] = [];
+    const mailbox: DelegateAgentResult["mailbox"] = [];
+
+    while (Date.now() < deadline) {
+      const remaining = Math.max(MIN_WAIT_TIMEOUT_MS, Math.min(DEFAULT_WAIT_TIMEOUT_MS, deadline - Date.now()));
+      const update = await this.wait({ timeout_ms: remaining }, ctx);
+      events.push(...update.events);
+      mailbox.push(...update.mailbox);
+      const finalItem = update.mailbox.find((m) => m.kind === "final_result" && m.fromAgentPath === spawn.task_name);
+      if (finalItem) {
+        const agent = this.registry.get(spawn.task_name);
+        return { agent_id: spawn.agent_id, task_name: spawn.task_name, status: agent?.status ?? "completed", timed_out: false, final_result: finalItem.content, events, mailbox, spawn };
+      }
+      const finalEvent = update.events.find((e: any) => e.type === "agent_final_message" && e.agentPath === spawn.task_name) as any;
+      if (finalEvent) {
+        const agent = this.registry.get(spawn.task_name);
+        return { agent_id: spawn.agent_id, task_name: spawn.task_name, status: agent?.status ?? finalEvent.status ?? "completed", timed_out: false, final_result: finalEvent.message, events, mailbox, spawn };
+      }
+      if (update.timed_out && !this.registry.get(spawn.task_name)?.open) break;
+    }
+
+    return { agent_id: spawn.agent_id, task_name: spawn.task_name, status: "timed_out", timed_out: true, events, mailbox, spawn };
   }
 
   private getCallerAgentId(callerPath: string): string {

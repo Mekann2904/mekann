@@ -166,11 +166,12 @@ describe("render", () => {
 // ─── Extension entry point ───────────────────────────────────────
 
 describe("extension entry point", () => {
-  it("registers 6 tools", async () => {
+  it("registers 7 tools", async () => {
     const mock = createMockApi();
     await loadExtension(mock);
-    expect(mock._registeredTools).toHaveLength(6);
+    expect(mock._registeredTools).toHaveLength(7);
     const names = mock._registeredTools.map((t) => t.name);
+    expect(names).toContain("delegate_agent");
     expect(names).toContain("spawn_agent");
     expect(names).toContain("message_agent");
     expect(names).toContain("wait_agent");
@@ -179,10 +180,12 @@ describe("extension entry point", () => {
     expect(names).toContain("agent_results");
   });
 
-  it("keeps only spawn_agent active for subagent surface at session start", async () => {
+  it("keeps only delegate_agent active for subagent surface at session start", async () => {
     const mock = createMockApi();
     await loadExtension(mock);
     await mock._hooks["session_start"]({}, { cwd: "/tmp/test" });
+    expect(mock._activeTools).toContain("delegate_agent");
+    expect(mock._activeTools).not.toContain("spawn_agent");
     expect(mock._activeTools).not.toContain("message_agent");
     expect(mock._activeTools).not.toContain("wait_agent");
     expect(mock._activeTools).not.toContain("list_agents");

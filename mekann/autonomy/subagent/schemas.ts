@@ -60,6 +60,13 @@ export const SpawnSchema = Type.Object({
   type: Type.Optional(SubagentTypeSchema),
 });
 
+export const DelegateAgentSchema = Type.Intersect([
+  SpawnSchema,
+  Type.Object({
+    timeout_ms: Type.Optional(Type.Number({ description: "Total timeout in milliseconds for the synchronous delegation. Default: 300000. Max: 600000." })),
+  }),
+], { description: "Spawn a subagent and wait synchronously for its final result." });
+
 export const MessageAgentSchema = Type.Object({
   target: Type.String({ description: 'Target agent path (e.g. "research/api_scan" or "/root/research/api_scan").' }),
   message: Type.String({ description: "Message to send to the target agent." }),

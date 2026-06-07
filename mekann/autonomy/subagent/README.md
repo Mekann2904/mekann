@@ -19,7 +19,11 @@
 
 ## 主な tool
 
-- `spawn_agent`: subagent を開始
+- `delegate_agent`: subagent を開始し、final result まで同期的に待って返す（既定ではこの tool だけを root LLM context に登録する）
+
+`subagent.toolSurface=async-tools` のときだけ、advanced/debug 用に以下も登録します。
+
+- `spawn_agent`: subagent を非同期に開始（advanced / 並列管理用）
 - `wait_agent`: lifecycle event / mailbox / final result を待つ
 - `message_agent`: `mode=note` で文脈追加、`mode=task` で追加作業を依頼
 - `list_agents`: 状態を確認
