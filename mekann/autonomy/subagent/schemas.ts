@@ -30,7 +30,7 @@ const RoiCategorySchema = Type.Union([
 const CostIntentSchema = Type.Union([Type.Literal("cheap"), Type.Literal("standard"), Type.Literal("expensive")]);
 const SubagentTypeSchema = Type.Union([Type.Literal("explore"), Type.Literal("verify"), Type.Literal("review"), Type.Literal("patch")]);
 
-export const SpawnSchema = Type.Object({
+const SpawnProperties = {
   task_name: Type.String({
     description:
       'Task name / path for the subagent. Relative to current agent path (e.g. "research/api_scan") or absolute (e.g. "/root/research/api_scan").',
@@ -58,14 +58,14 @@ export const SpawnSchema = Type.Object({
   justification: Type.Optional(Type.String({ description: "Why this subagent is worth the extra child-loop cost." })),
   cost_intent: Type.Optional(CostIntentSchema),
   type: Type.Optional(SubagentTypeSchema),
-});
+};
 
-export const DelegateAgentSchema = Type.Intersect([
-  SpawnSchema,
-  Type.Object({
-    timeout_ms: Type.Optional(Type.Number({ description: "Total timeout in milliseconds for the synchronous delegation. Default: 300000. Max: 600000." })),
-  }),
-], { description: "Spawn a subagent and wait synchronously for its final result." });
+export const SpawnSchema = Type.Object(SpawnProperties);
+
+export const DelegateAgentSchema = Type.Object({
+  ...SpawnProperties,
+  timeout_ms: Type.Optional(Type.Number({ description: "Total timeout in milliseconds for the synchronous delegation. Default: 300000. Max: 600000." })),
+}, { description: "Spawn a subagent and wait synchronously for its final result." });
 
 export const MessageAgentSchema = Type.Object({
   target: Type.String({ description: 'Target agent path (e.g. "research/api_scan" or "/root/research/api_scan").' }),
