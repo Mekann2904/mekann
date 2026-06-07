@@ -27,7 +27,7 @@ import type { DelegateAgentParams, DelegateAgentResult, SpawnParams, SpawnResult
 import { extractLastAssistantText } from "./contextFork.js";
 import type { ForkTurns } from "./contextFork.js";
 import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
-import { featureStringValue, isFeatureEnabled } from "../../settings/enabled.js";
+import { isFeatureEnabled } from "../../settings/enabled.js";
 import { setToolsActive } from "../../settings/toolSurface.js";
 import { projectFeatureToolSurface } from "../../settings/toolSurfaceProjection.js";
 import { registerSubagentFlags } from "./flags.js";
@@ -71,8 +71,6 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   }
 
   let control: AgentControl | null = null;
-  const asyncToolsEnabled = featureStringValue("subagent", "toolSurface", MEKANN_SUBAGENT_DEFAULTS.toolSurface) === "async-tools";
-
   // ─── Flags ────────────────────────────────────────────────────
 
   const extensionPathDefault = fileURLToPath(import.meta.url);
@@ -128,10 +126,8 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     const ctrl = control;
     if (!ctrl) return;
     projectFeatureToolSurface(pi, "subagent", SUBAGENT_DELEGATE_TOOL_NAMES, "always", () => true);
-    if (asyncToolsEnabled) {
-      projectFeatureToolSurface(pi, "subagent", SUBAGENT_MANAGEMENT_TOOL_NAMES, "always", () => hasInteractiveSubagentState(ctrl));
-      projectFeatureToolSurface(pi, "subagent", SUBAGENT_RESULT_TOOL_NAMES, "always", () => hasPendingAgentResults(ctrl, ctx));
-    }
+    projectFeatureToolSurface(pi, "subagent", SUBAGENT_MANAGEMENT_TOOL_NAMES, "active", () => hasInteractiveSubagentState(ctrl));
+    projectFeatureToolSurface(pi, "subagent", SUBAGENT_RESULT_TOOL_NAMES, "active", () => hasPendingAgentResults(ctrl, ctx));
   }
 
   sharedSpawnAgent = async (params, ctx) => {
@@ -198,7 +194,6 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     }),
   });
 
-  if (asyncToolsEnabled) {
   pi.registerTool({
     name: "spawn_agent",
     label: "Spawn subagent",
@@ -353,8 +348,6 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       return toolResult(`Closed: ${result.closed.join(", ")}`, result);
     }),
   });
-
-  }
 
   // ─── Commands ─────────────────────────────────────────────────
 
