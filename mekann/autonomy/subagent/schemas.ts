@@ -28,7 +28,15 @@ const RoiCategorySchema = Type.Union([
     'ROI category for spawning. Must be exactly one of: "parallel_search", "fault_localization", "candidate_generation", "fresh_review", "verification", "large_context_isolation", "other". Do not put prose here; put prose in justification.',
 });
 const CostIntentSchema = Type.Union([Type.Literal("cheap"), Type.Literal("standard"), Type.Literal("expensive")]);
-const SubagentTypeSchema = Type.Union([Type.Literal("explore"), Type.Literal("verify"), Type.Literal("review"), Type.Literal("patch")]);
+const SubagentTypeSchema = Type.Union([
+  Type.Literal("scout"),
+  Type.Literal("implement"),
+  Type.Literal("verify"),
+  Type.Literal("review"),
+  // Legacy aliases kept for compatibility.
+  Type.Literal("explore"),
+  Type.Literal("patch"),
+]);
 
 const SpawnProperties = {
   task_name: Type.String({

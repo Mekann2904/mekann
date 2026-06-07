@@ -244,7 +244,7 @@ export class AgentControl {
       "Return exactly one JSON object conforming to subagent.result.v1. Output ONLY the raw JSON — no markdown fences, no explanation text.",
       "Outcome selection: use outcome=\"observation\" for research/review findings without a patch; outcome=\"no_change\" only when you verified no action is needed; outcome=\"patch\" only for a concrete patch proposal; outcome=\"blocked\" when authority/environment prevents completion; outcome=\"needs_decision\" only when a parent decision is explicitly required.",
       "If the parent asks for bullets, sections, or a specific language, put that content inside JSON fields such as summary, evidence, assumptions, or validation.suggested while keeping the outer response raw JSON.",
-      "Minimal observation example: {\"schema\":\"subagent.result.v1\",\"outcome\":\"observation\",\"summary\":\"findings...\",\"evidence\":[\"path:line\"]}",
+      "Minimal observation example: {\"schema\":\"subagent.result.v1\",\"outcome\":\"observation\",\"summary\":\"one-sentence result...\",\"findings\":[{\"path\":\"path:line\",\"message\":\"verification pointer or decision-relevant finding\"}]}",
       "Minimal blocked example: {\"schema\":\"subagent.result.v1\",\"outcome\":\"blocked\",\"summary\":\"blocked reason...\",\"evidence\":[]}",
     ];
     if (authority.mode === "propose_patch") lines.push(
@@ -307,18 +307,35 @@ export class AgentControl {
 
   private applySubagentTypeDefaults(params: SpawnParams): SpawnParams {
     if (!params.type) return params;
-    const mode = params.type === "patch" ? "propose_patch" : "read_only";
+    const effectiveType = params.type === "explore" ? "scout" : params.type === "patch" ? "implement" : params.type;
+    const mode = effectiveType === "implement" ? "edit" : "read_only";
     const typeInstruction: Record<string, string> = {
-      explore: "Subagent type: explore. Wide-net read-only investigation; return one distilled answer with path/line evidence. Stop as soon as you can answer.",
-      verify: "Subagent type: verify. Narrow check; return VERIFIED / NOT VERIFIED / INCONCLUSIVE with evidence. Do not expand scope.",
-      review: "Subagent type: review. Fresh review; look for concrete risks, missed cases, or evidence gaps. Do not make changes.",
-      patch: "Subagent type: patch. Produce a bounded patch proposal only within the requested scope; include validation suggestions.",
+      scout: [
+        "Subagent type: scout. You are a low-cost scout, not the final decision maker.",
+        "Goal: reduce the parent agent's search space without polluting parent context.",
+        "Do not ask the parent to trust your conclusion. Return the smallest verification pointer set the parent should inspect.",
+        "Output as subagent.result.v1 observation JSON. Put a one-sentence hypothesis in summary. In findings, include only decision-relevant verification pointers: path/ref, what the parent should check, why it matters, and what to do if rejected. No exploration logs.",
+      ].join("\n"),
+      verify: [
+        "Subagent type: verify. Narrow check only; do not expand scope.",
+        "Return subagent.result.v1 observation JSON with verdict VERIFIED / NOT_VERIFIED / INCONCLUSIVE in summary and minimal evidence/verification pointers in findings.",
+      ].join("\n"),
+      review: [
+        "Subagent type: review. Fresh read-only review; look for concrete risks, missed cases, or evidence gaps. Do not make changes.",
+        "Return subagent.result.v1 observation JSON with only decision-relevant findings and parent verification pointers.",
+      ].join("\n"),
+      implement: [
+        "Subagent type: implement. You are a bounded implementer, not the final decision maker.",
+        "The parent owns requirements, tests, scope, and final verification. Prefer making the parent-provided failing test pass with the smallest diff.",
+        "Respect granted write_scope/allowed_paths strictly. Do not edit tests unless explicitly allowed. Avoid unrelated refactors and public-surface changes.",
+        "Run only requested/allowed validation commands when practical. Return subagent.result.v1 observation JSON with: changed_files, scope_compliance, tests run/results, risks, and exact root_should_verify steps. Do not include large diffs or exploration logs.",
+      ].join("\n"),
     };
     return {
       ...params,
       authority: params.authority ?? { mode },
-      result_contract: params.result_contract ?? (params.type === "patch" ? "subagent_result_v1" : params.result_contract),
-      message: `${typeInstruction[params.type]}\n\n${params.message}`,
+      result_contract: params.result_contract ?? "subagent_result_v1",
+      message: `${typeInstruction[effectiveType]}\n\n${params.message}`,
     };
   }
 

@@ -161,8 +161,9 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     promptSnippet: "Run an independent subagent task and return its final result synchronously",
     promptGuidelines: [
       "Prefer delegate_agent over async subagent tools. It returns only after final_result or timeout.",
-      "Use it only for independent exploration, candidate diversity, fresh review, verification, or large-context isolation; prefer direct tools for small/tightly coupled work.",
-      "Write a self-contained English task brief and request compact, evidence-oriented output from the subagent itself; final results are not truncated by delegate_agent."
+      "Use type=scout to offload broad search into minimal verification pointers; root must verify pointers before trusting conclusions.",
+      "Use type=implement to delegate bounded file-scope implementation, ideally after root has written failing TDD tests; root must verify changed files, tests, and diff.",
+      "Write a self-contained English task brief with scope, constraints, expected output, and verification commands; request compact, evidence-oriented output from the subagent itself."
     ],
     parameters: DelegateAgentSchema,
     prepareArguments(args: unknown) {

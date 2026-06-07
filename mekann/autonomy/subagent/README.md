@@ -4,15 +4,19 @@
 
 ## 使う場面
 
-- repo-wide 調査を複数領域に分けたい
-- 親 agent の先入観から離れた fresh review が欲しい
+- repo-wide 調査を subagent に押し出し、root は最小 verification pointer だけを検証したい（`type=scout`）
+- root が TDD/境界/acceptance を定義し、限定 file scope の実装を委任したい（`type=implement`）
+- 親 agent の先入観から離れた fresh review が欲しい（`type=review`）
+- narrow な検証を別 context で行いたい（`type=verify`）
 - patch proposal を生成させ、trust transition を通して扱いたい
-- 長い探索を parent の context window から切り離したい
+- 長い探索や実装試行錯誤を parent の context window から切り離したい
 
 ## 主な概念
 
 - **Subagent delegation**: coherent で bounded な task を別 agent に任せること
 - **Minimal sufficient context**: goal・制約・期待出力・開始点だけを渡す原則
+- **Scout result**: root が信用する結論ではなく、root が最小 read で検証するための verification pointer 集合
+- **Implement result**: root-owned tests/scope を満たす bounded implementation の manifest。changed files・scope compliance・tests・root_should_verify を返す
 - **Subagent result**: subagent の structured outcome。生成された時点では信頼しない
 - **Patch proposal**: diff と metadata を含む patch 型の subagent result
 - **Trust transition**: patch proposal を escrow や workspace apply に進める判断点

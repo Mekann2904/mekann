@@ -142,7 +142,7 @@ export interface SpawnParams {
   roi_category?: "parallel_search" | "fault_localization" | "candidate_generation" | "fresh_review" | "verification" | "large_context_isolation" | "other";
   justification?: string;
   cost_intent?: "cheap" | "standard" | "expensive";
-  type?: "explore" | "verify" | "review" | "patch";
+  type?: "scout" | "implement" | "verify" | "review" | "explore" | "patch";
 }
 
 export interface SendMessageParams {
