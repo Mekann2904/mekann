@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { featureBooleanValue } from "../settings/enabled.js";
 import { registerPromptProvider } from "../core/prompt-core/index.js";
@@ -46,13 +46,18 @@ function compactDescription(description: string): string {
 	return `${normalized.slice(0, MAX_DESCRIPTION_CHARS - 1).trimEnd()}…`;
 }
 
-function renderSkillSurface(skills: SkillMeta[]): string {
+function displaySkillPath(cwd: string, filePath: string): string {
+	const rel = relative(cwd, filePath);
+	return rel && !rel.startsWith("..") && !rel.startsWith("/") ? rel : filePath;
+}
+
+function renderSkillSurface(cwd: string, skills: SkillMeta[]): string {
 	if (skills.length === 0) return "";
 	return [
 		"Enabled Mekann skills. Load the listed SKILL.md with read when the task matches; resolve relative references from that skill directory. /skill:<name> can force-load.",
 		"",
 		...skills.map((skill) =>
-			`- ${skill.name}: ${compactDescription(skill.description)} (${skill.filePath})`,
+			`- ${skill.name}: ${compactDescription(skill.description)} (${displaySkillPath(cwd, skill.filePath)})`,
 		),
 	].join("\n");
 }
@@ -62,7 +67,7 @@ export default function skillSurface(): void {
 	registerPromptProvider({
 		id: "skill-surface",
 		getFragments(ctx) {
-			const prompt = renderSkillSurface(visibleSkills(ctx.cwd, skills));
+			const prompt = renderSkillSurface(ctx.cwd, visibleSkills(ctx.cwd, skills));
 			return prompt ? [{
 				id: "skill-surface:visible-skills",
 				source: "mekann/skill-surface",
