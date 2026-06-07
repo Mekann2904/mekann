@@ -19,6 +19,7 @@ import { registerCompactionObserver } from "./compaction.js";
 import { registerCommands } from "./command.js";
 import { optimizerModules } from "./modules.js";
 import { featureBooleanValue } from "../../settings/enabled.js";
+import { registerPromptProvider } from "../prompt-core/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -77,29 +78,31 @@ export default function modelOptimizer(pi: ExtensionAPI): void {
 	// Compaction lifecycle observer + post-compaction hints
 	registerCompactionObserver(pi, state);
 
-	// System-prompt hint injection (every agent start when active module has one)
-	pi.on("before_agent_start", (event, ctx: ExtensionContext) => {
-		if (!state.enabled) return;
-		const module = state.activeModule;
-		if (!module?.buildSystemPromptHint) return;
+	// System-prompt hint fragments (collected by cache-friendly-prompt).
+	registerPromptProvider({
+		id: "model-optimizer",
+		getFragments() {
+			if (!state.enabled) return [];
+			const module = state.activeModule;
+			if (!module?.buildSystemPromptHint) return [];
 
-		const modelStub = { provider: state.provider!, id: state.modelId!, api: state.api } as any;
-		const hint = module.buildSystemPromptHint({ model: modelStub });
-		if (!hint) return;
+			const modelStub = { provider: state.provider!, id: state.modelId!, api: state.api } as any;
+			const hint = module.buildSystemPromptHint({ model: modelStub });
+			if (!hint) return [];
 
-		const current = (event as { systemPrompt?: string }).systemPrompt ?? "";
-		if (current.includes(hint)) return;
-
-		if (state.enableDebugLogging) {
-			ctx.ui.notify(
-				`model-optimizer: system-prompt hint injected (api=${state.api ?? "?"}, module=${module.id})`,
-				"info",
-			);
-		}
-
-		return {
-			systemPrompt: current ? `${current}\n\n${hint}` : hint,
-		};
+			return [{
+				id: `model-optimizer:system-prompt-hint:${module.id}`,
+				source: "model-optimizer",
+				kind: "coding_guidelines",
+				stability: "stable",
+				scope: "global",
+				priority: 180,
+				version: "v1",
+				cacheIntent: "prefer_cache",
+				metadata: { volatileTermsArePolicyReferences: true },
+				content: hint,
+			}];
+		},
 	});
 
 	// Slash command: /model-optimizer status | stats

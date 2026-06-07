@@ -38,33 +38,22 @@ function visibleSkills(cwd: string, skills: SkillMeta[]): SkillMeta[] {
 	return skills.filter((skill) => featureBooleanValue("skills", skillSettingKey(skill.name), defaults.get(skill.name) ?? false, cwd));
 }
 
-function escapeXml(str: string): string {
-	return str
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;")
-		.replace(/\"/g, "&quot;")
-		.replace(/'/g, "&apos;");
+const MAX_DESCRIPTION_CHARS = 160;
+
+function compactDescription(description: string): string {
+	const normalized = description.replace(/\s+/g, " ").trim();
+	if (normalized.length <= MAX_DESCRIPTION_CHARS) return normalized;
+	return `${normalized.slice(0, MAX_DESCRIPTION_CHARS - 1).trimEnd()}…`;
 }
 
 function renderSkillSurface(skills: SkillMeta[]): string {
 	if (skills.length === 0) return "";
 	return [
-		"The following Mekann skills are enabled for model use by Mekann settings.",
-		"Use the read tool to load a skill's file when the task matches its description.",
-		"When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+		"Enabled Mekann skills. Load the listed SKILL.md with read when the task matches; resolve relative references from that skill directory. /skill:<name> can force-load.",
 		"",
-		"<available_mekann_skills>",
-		...skills.flatMap((skill) => [
-			"  <skill>",
-			`    <name>${escapeXml(skill.name)}</name>`,
-			`    <description>${escapeXml(skill.description)}</description>`,
-			`    <location>${escapeXml(skill.filePath)}</location>`,
-			"  </skill>",
-		]),
-		"</available_mekann_skills>",
-		"",
-		"Users can force a loaded skill with /skill:<name>; Pi resolves the command through its standard skill registry.",
+		...skills.map((skill) =>
+			`- ${skill.name}: ${compactDescription(skill.description)} (${skill.filePath})`,
+		),
 	].join("\n");
 }
 
