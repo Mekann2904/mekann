@@ -70,10 +70,7 @@ const SpawnProperties = {
 
 export const SpawnSchema = Type.Object(SpawnProperties);
 
-export const DelegateAgentSchema = Type.Object({
-  ...SpawnProperties,
-  timeout_ms: Type.Optional(Type.Number({ description: "Total timeout in milliseconds for the synchronous delegation. Default: 300000. Max: 600000." })),
-}, { description: "Spawn a subagent and wait synchronously for its final result." });
+export const DelegateAgentSchema = Type.Object(SpawnProperties, { description: "Spawn a subagent and wait synchronously until its final result is available. No timeout is applied." });
 
 export const MessageAgentSchema = Type.Object({
   target: Type.String({ description: 'Target agent path (e.g. "research/api_scan" or "/root/research/api_scan").' }),

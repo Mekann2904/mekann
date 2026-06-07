@@ -157,10 +157,10 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     name: "delegate_agent",
     label: "Delegate to subagent",
     description:
-      `Spawn a subagent and wait synchronously for its final result. Use this by default instead of spawn_agent so subagent results cannot be forgotten. Timeout defaults to 300000ms and is capped at ${MEKANN_SUBAGENT_DEFAULTS.maxWaitTimeoutMs}ms.`,
+      "Spawn a subagent and wait synchronously until its final result is available. Use this by default instead of spawn_agent so subagent results cannot be forgotten. No timeout is applied.",
     promptSnippet: "Run an independent subagent task and return its final result synchronously",
     promptGuidelines: [
-      "Prefer delegate_agent over async subagent tools. It returns only after final_result or timeout.",
+      "Prefer delegate_agent over async subagent tools. It returns only after the subagent reaches a final result; no timeout is applied.",
       "Use type=scout to offload broad search into minimal verification pointers; root must verify pointers before trusting conclusions.",
       "Use type=implement to delegate bounded file-scope implementation, ideally after root has written failing TDD tests; root must verify changed files, tests, and diff.",
       "Write a self-contained English task brief with scope, constraints, expected output, and verification commands; request compact, evidence-oriented output from the subagent itself."
@@ -190,11 +190,10 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
           justification: params.justification,
           cost_intent: params.cost_intent,
           type: params.type,
-          timeout_ms: params.timeout_ms,
         },
         ctx,
       );
-      const text = result.final_result ?? JSON.stringify({ timed_out: result.timed_out, task_name: result.task_name, status: result.status }, null, 2);
+      const text = result.final_result ?? JSON.stringify({ task_name: result.task_name, status: result.status }, null, 2);
       return toolResult(text, result);
     }),
   });

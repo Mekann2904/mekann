@@ -115,6 +115,22 @@ export class Mailbox {
     afterSeq: number,
     timeoutMs: number,
   ): Promise<{ events: LifecycleEvent[]; mailbox: MailboxItem[] }> {
+    return this.waitForUpdateInternal(agentPath, afterSeq, timeoutMs);
+  }
+
+  /**
+   * Wait for new items/events without any timeout. Intended for fully
+   * synchronous delegation where the caller must not observe a timeout result.
+   */
+  waitForUpdateIndefinitely(agentPath: string, afterSeq: number): Promise<{ events: LifecycleEvent[]; mailbox: MailboxItem[] }> {
+    return this.waitForUpdateInternal(agentPath, afterSeq);
+  }
+
+  private waitForUpdateInternal(
+    agentPath: string,
+    afterSeq: number,
+    timeoutMs?: number,
+  ): Promise<{ events: LifecycleEvent[]; mailbox: MailboxItem[] }> {
     // Check for immediate results
     const pending = this.pendingFor(agentPath, afterSeq);
     const pendingEvts = this.pendingEventsFor(agentPath, afterSeq);
@@ -125,23 +141,25 @@ export class Mailbox {
     // Wait for notification
     return new Promise((resolve) => {
       let settled = false;
-      let timer: ReturnType<typeof setTimeout>;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const waiter = {
         agentPath,
         afterSeq,
         resolve: (value: { events: LifecycleEvent[]; mailbox: MailboxItem[] }) => {
           if (settled) return;
           settled = true;
-          clearTimeout(timer);
+          if (timer) clearTimeout(timer);
           this.waiters.delete(waiter);
           resolve(value);
         },
       };
-      timer = setTimeout(() => {
-        const mb = this.pendingFor(agentPath, afterSeq);
-        const ev = this.pendingEventsFor(agentPath, afterSeq);
-        waiter.resolve({ events: ev, mailbox: mb });
-      }, timeoutMs);
+      if (timeoutMs !== undefined) {
+        timer = setTimeout(() => {
+          const mb = this.pendingFor(agentPath, afterSeq);
+          const ev = this.pendingEventsFor(agentPath, afterSeq);
+          waiter.resolve({ events: ev, mailbox: mb });
+        }, timeoutMs);
+      }
       this.waiters.add(waiter);
     });
   }

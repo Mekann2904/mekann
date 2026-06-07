@@ -105,11 +105,23 @@ export class AgentSessionControl {
   async wait(params: WaitAgentParams, ctx: ExtensionContext, defaultWaitTimeout: number, minWaitTimeout: number): Promise<WaitResult> {
     const callerPath = this.deps.resolveCallerPath(ctx);
     const timeoutMs = clampTimeout(params.timeout_ms ?? defaultWaitTimeout, minWaitTimeout);
+    const result = await this.waitForMailboxUpdate(callerPath, timeoutMs);
+    return { timed_out: result.events.length === 0 && result.mailbox.length === 0, events: result.events, mailbox: result.mailbox };
+  }
+
+  async waitIndefinitely(ctx: ExtensionContext): Promise<Omit<WaitResult, "timed_out">> {
+    const callerPath = this.deps.resolveCallerPath(ctx);
+    return this.waitForMailboxUpdate(callerPath);
+  }
+
+  private async waitForMailboxUpdate(callerPath: string, timeoutMs?: number): Promise<{ events: LifecycleEvent[]; mailbox: MailboxItem[] }> {
     const beforeSeq = this.lastConsumedSeq.get(callerPath) ?? 0;
-    const result = await this.deps.mailbox.waitForUpdate(callerPath, beforeSeq, timeoutMs);
+    const result = timeoutMs === undefined
+      ? await this.deps.mailbox.waitForUpdateIndefinitely(callerPath, beforeSeq)
+      : await this.deps.mailbox.waitForUpdate(callerPath, beforeSeq, timeoutMs);
     const maxSeq = Math.max(...result.mailbox.map((m: MailboxItem) => m.seq), ...result.events.map((e: LifecycleEvent) => "seq" in e ? (e as any).seq as number : 0), beforeSeq);
     this.lastConsumedSeq.set(callerPath, maxSeq);
-    return { timed_out: result.events.length === 0 && result.mailbox.length === 0, events: result.events, mailbox: result.mailbox };
+    return result;
   }
 
   list(params: ListAgentsParams, ctx?: ExtensionContext): ListResult {
