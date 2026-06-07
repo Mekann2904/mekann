@@ -241,6 +241,14 @@ describe("registerCompactionObserver — before_agent_start hint injection", () 
 		expect(s.pendingPostCompactionHint).toBeUndefined();
 	});
 
+	it("does not append duplicate hint when systemPrompt already contains it", () => {
+		const s = stateWithPendingHint();
+		const result = driveBeforeAgentStart(s, CODEX_POST_COMPACTION_HINT);
+		expect(result).toBeUndefined();
+		expect(s.pendingPostCompactionHint).toBeUndefined();
+		expect(s.metrics.postCompactionHintsInjected).toBe(0);
+	});
+
 	it("consumes hint only once (clears pending)", () => {
 		const s = stateWithPendingHint();
 		driveBeforeAgentStart(s);

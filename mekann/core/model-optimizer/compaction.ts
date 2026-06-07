@@ -62,6 +62,7 @@ export function handleBeforeAgentStart(
 	if (!hint) return undefined;
 
 	const currentPrompt = (event as BeforeAgentStartEvent).systemPrompt ?? "";
+	if (currentPrompt.includes(hint)) return undefined;
 
 	state.metrics.postCompactionHintsInjected++;
 

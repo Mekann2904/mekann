@@ -88,6 +88,7 @@ export default function modelOptimizer(pi: ExtensionAPI): void {
 		if (!hint) return;
 
 		const current = (event as { systemPrompt?: string }).systemPrompt ?? "";
+		if (current.includes(hint)) return;
 
 		if (state.enableDebugLogging) {
 			ctx.ui.notify(

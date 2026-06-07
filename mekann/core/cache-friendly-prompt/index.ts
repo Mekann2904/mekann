@@ -73,6 +73,12 @@ function selectedToolNames(options: any): string[] {
 	return selected.map((tool: any) => String(tool?.name ?? tool)).filter(Boolean);
 }
 
+function hasCacheFriendlyPromptFragments(systemPrompt: string): boolean {
+	return systemPrompt.includes("<!-- prompt-fragments:Stable extension instructions -->") ||
+		systemPrompt.includes("<!-- prompt-fragments:Semi-stable session context -->") ||
+		systemPrompt.includes("<!-- cache-friendly-prompt:Volatile runtime context -->");
+}
+
 // ---------------------------------------------------------------------------
 // Extension entry point
 // ---------------------------------------------------------------------------
@@ -92,14 +98,17 @@ export default function cacheFriendlyPromptExtension(
 	// ── before_agent_start ──────────────────────────────────────────
 
 	pi.on("before_agent_start", async (event: any, ctx: any) => {
+		const incomingSystemPrompt =
+			typeof event.systemPrompt === "string" ? event.systemPrompt : "";
+		if (hasCacheFriendlyPromptFragments(incomingSystemPrompt)) return;
+
 		const fragments = await collectPromptFragments({
 			cwd: contextCwd(event, ctx),
 			provider: modelProvider(ctx),
 			model: modelId(ctx),
 		});
 		const rendered = renderPromptFragments(fragments);
-		const baseSystemText =
-			typeof event.systemPrompt === "string" ? event.systemPrompt : "";
+		const baseSystemText = incomingSystemPrompt;
 		const { stableBaseSystemText, volatileRuntimeText } =
 			splitVolatileRuntimeBlock(baseSystemText);
 
