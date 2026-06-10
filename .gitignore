@@ -39,6 +39,11 @@ autoresearch.checks.sh
 /evaluate_maintenance.sh
 /results.tsv
 
+# Local voice/model artifacts
+/*.onnx
+/*.onnx.ok
+/config.json
+
 # Upstream mirrors are local cache only; keep only the vendor index tracked.
 /vendor/*
 !/vendor/README.md
