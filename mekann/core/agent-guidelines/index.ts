@@ -19,6 +19,15 @@ Proactive code review policy:
 - When you judge that a review would add value, do not wait for the user to ask — suggest it proactively.
 `;
 
+const GITHUB_LINKS_EXTRA = `
+
+GitHub link policy:
+- Whenever you reference a GitHub issue, PR, commit, branch, or release, always include the full URL (e.g. https://github.com/owner/repo/issues/42, https://github.com/owner/repo/pull/13, https://github.com/owner/repo/commit/abc123).
+- Do not write only short identifiers like "#42" or "PR 13" — always provide the clickable URL alongside or instead of the short form.
+- After creating an issue or PR, report the URL immediately so the user can open it directly.
+- After pushing a commit or branch, provide the commit URL or compare URL.
+`;
+
 export default function agentGuidelinesExtension(_pi: ExtensionAPI): void {
 	registerPromptProvider({
 		id: "agent-guidelines",
@@ -51,6 +60,23 @@ export default function agentGuidelinesExtension(_pi: ExtensionAPI): void {
 				version: "v1",
 				cacheIntent: "prefer_cache",
 				content: PROACTIVE_REVIEW_EXTRA,
+			}];
+		},
+	});
+
+	registerPromptProvider({
+		id: "github-links",
+		getFragments() {
+			return [{
+				id: "github-links:coding_guidelines",
+				source: "github-links",
+				kind: "coding_guidelines",
+				stability: "stable",
+				scope: "global",
+				priority: 130,
+				version: "v1",
+				cacheIntent: "prefer_cache",
+				content: GITHUB_LINKS_EXTRA,
 			}];
 		},
 	});
