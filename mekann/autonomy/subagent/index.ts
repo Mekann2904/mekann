@@ -55,7 +55,7 @@ export async function delegateAgentFromFeature(params: DelegateAgentParams, ctx:
 // ─── Extension entry point ───────────────────────────────────────
 
 export default function subagentExtension(pi: ExtensionAPI): void | Promise<void> {
-  if (!isFeatureEnabled("subagent")) return;
+  if (process.env.MEKANN_TEST_ENABLE_SUBAGENT !== "1" && !isFeatureEnabled("subagent")) return;
 
   registerSubagentPromptProvider();
   if (process.env.PI_SUBAGENT_ROLE === "child") {

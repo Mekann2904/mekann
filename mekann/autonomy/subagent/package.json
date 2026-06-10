@@ -4,7 +4,7 @@
   "type": "module",
   "main": "index.ts",
   "scripts": {
-    "test": "vitest run",
+    "test": "MEKANN_TEST_ENABLE_SUBAGENT=1 vitest run",
     "typecheck": "tsc --noEmit --skipLibCheck"
   },
   "peerDependencies": {
