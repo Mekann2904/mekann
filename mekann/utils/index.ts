@@ -13,6 +13,7 @@ export default async function utilsSuite(pi: ExtensionAPI): Promise<void> {
 			isFeatureEnabled("settings-editor") ? profileStartupStep("import:utils/settings-editor", () => import("./settings-editor/index.js")) : undefined,
 			profileStartupStep("import:utils/startup-clear", () => import("./terminal/startup-clear.js")),
 			isFeatureEnabled("issue-worktree") ? profileStartupStep("import:utils/issue", () => import("./issue/extension.js")) : undefined,
+			isFeatureEnabled("voice-notify") ? profileStartupStep("import:utils/voice-notify", () => import("./voice-notify/index.js")) : undefined,
 		]));
 		modules[0]?.default(pi);
 		modules[1]?.default(pi);
@@ -22,5 +23,6 @@ export default async function utilsSuite(pi: ExtensionAPI): Promise<void> {
 		modules[5]?.default(pi);
 		modules[6].default(pi);
 		modules[7]?.default(pi);
+		modules[8]?.default(pi);
 	});
 }
