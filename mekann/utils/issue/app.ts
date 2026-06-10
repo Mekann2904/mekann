@@ -149,9 +149,14 @@ export async function mountIssueList(
 	}) {
 		const bgColor = selected ? C.selectedBg : index % 2 === 0 ? C.rowEvenBg : C.rowOddBg;
 		const numColor = selected ? C.fgBright : C.accent;
-		const titleColor = selected ? C.fgBright : C.fg;
+		const isBlocked = issue.openBlockers.length > 0 || Boolean(issue.error);
+		const titleColor = selected ? C.fgBright : isBlocked ? C.fgDim : C.fg;
 		const cursor = selected ? "▸" : " ";
-		const statusIcon = issue.hasWorktree ? el("text", { fg: C.yellow, content: "●" }) : null;
+		const statusIcon = isBlocked
+			? el("text", { fg: C.red, content: "⛔" })
+			: issue.hasWorktree
+				? el("text", { fg: C.yellow, content: "●" })
+				: null;
 
 		const labelsWidth = Math.max(10, Math.floor((tw || 80) * 0.25));
 		const titleWidth = Math.max(20, (tw || 80) - labelsWidth - 12);
@@ -168,6 +173,14 @@ export async function mountIssueList(
 			labelElements.push(el("text", { fg: C.fgDim, content: ` +${issue.labels.length - 3}` }));
 		}
 
+		const dependencyElements = issue.error
+			? [el("text", { fg: C.red, content: " dependency-error " })]
+			: issue.openBlockers.length > 0
+				? [el("text", { fg: C.red, content: ` blocked by ${issue.openBlockers.slice(0, 3).map((blocker) => `#${blocker.number}`).join(",")}${issue.openBlockers.length > 3 ? ",…" : ""} ` })]
+				: issue.blockedBy.length > 0
+					? [el("text", { fg: C.green, content: " unblocked " })]
+					: [];
+
 		return el("box", {
 			style: {
 				flexDirection: "row",
@@ -183,8 +196,16 @@ export async function mountIssueList(
 			statusIcon,
 			el("text", { fg: titleColor, content: ` ${truncate(issue.title, titleWidth)}` }),
 			el("box", { style: { flexGrow: 1 } }),
+			...dependencyElements,
 			...labelElements,
 		);
+	}
+
+	function selectedIssueSummary(issue: IssueWithStatus | undefined): string {
+		if (!issue) return "";
+		if (issue.error) return `#${issue.number}: dependency check failed`;
+		if (issue.openBlockers.length > 0) return `#${issue.number}: blocked by ${issue.openBlockers.map((blocker) => `#${blocker.number}`).join(", ")}`;
+		return `#${issue.number}: ${truncate(issue.title, 40)}`;
 	}
 
 	function StatusBar({ selected, total }: { selected: number; total: number }) {
@@ -199,7 +220,7 @@ export async function mountIssueList(
 				el("text", { fg: C.fgDim, content: "│" }),
 				el("text", { fg: C.fgDim, content: ` ${selected + 1}/${total} ` }),
 				el("box", { style: { flexGrow: 1 } }),
-				el("text", { fg: C.fgDim, content: total > 0 ? `#${issues[selected].number}: ${truncate(issues[selected].title, 40)}` : "" }),
+				el("text", { fg: C.fgDim, content: selectedIssueSummary(issues[selected]) }),
 			),
 			// Keybinding hints row
 			el("box", {

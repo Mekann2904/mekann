@@ -8,7 +8,7 @@
  */
 
 import { parseIssueArgs } from "./args.js";
-import { listOpenIssues, type IssueWithStatus, getIssueStatus } from "./github.js";
+import { addDependencyStatus, listOpenIssues, type IssueDependencyStatus, type IssueWithStatus, getIssueStatus, getIssueDependencyStatus } from "./github.js";
 import { getRepoInfo, createWorktree, removeWorktree, worktreeDir, listExistingWorktrees, issueBranch, parseIssueNumberFromBranch, type WorktreeInfo } from "./worktree.js";
 import { mountIssueList } from "./app.js";
 import { launchPiSessionInKittySplit } from "../terminal/pi-session.js";
@@ -72,6 +72,9 @@ async function runDirect(issueNumber: number): Promise<void> {
 	const repoInfo = getRepoInfo();
 	if (!repoInfo) { console.error("Not in git repo."); process.exitCode = 1; return; }
 
+	const dependencyStatus = await getIssueDependencyStatus(repoInfo.remote, issueNumber);
+	if (!ensureIssueCanStart(issueNumber, dependencyStatus)) return;
+
 	const branch = issueBranch(issueNumber);
 	const dir = worktreeDir(repoInfo.root, branch);
 	const wt = createWorktree(repoInfo.root, branch, dir);
@@ -93,17 +96,23 @@ async function runInteractive(): Promise<void> {
 	const existing = listExistingWorktrees(repoInfo.root);
 	const existingBranches = new Set(existing.map((wt) => wt.branch));
 
-	const issuesWithStatus: IssueWithStatus[] = issues.map((issue) => ({
-		...issue,
-		hasWorktree: existingBranches.has(issueBranch(issue.number)),
-		worktreePath: existing.find((wt) => wt.branch === issueBranch(issue.number))?.path,
-	}));
+	const issuesWithStatus: IssueWithStatus[] = [];
+	for (const issue of issues) {
+		const issueWithDependencies = await addDependencyStatus(repoInfo.remote, issue);
+		issuesWithStatus.push({
+			...issueWithDependencies,
+			hasWorktree: existingBranches.has(issueBranch(issue.number)),
+			worktreePath: existing.find((wt) => wt.branch === issueBranch(issue.number))?.path,
+		});
+	}
 
 	const { createCliRenderer } = await import("@opentui/core");
 	const renderer = await createCliRenderer({ exitOnCtrlC: false });
 
 	await mountIssueList(renderer, issuesWithStatus, {
 		onSelect: async (issue: IssueWithStatus) => {
+			if (!ensureIssueCanStart(issue.number, issue)) return;
+
 			const branch = issueBranch(issue.number);
 			const dir = worktreeDir(repoInfo.root, branch);
 
@@ -136,6 +145,30 @@ async function runInteractive(): Promise<void> {
 			process.exit(0);
 		},
 	});
+}
+
+function ensureIssueCanStart(issueNumber: number, dependencyStatus: IssueDependencyStatus): boolean {
+	if (dependencyStatus.error) {
+		console.error(`Issue #${issueNumber} cannot be started because dependencies could not be verified.`);
+		console.error(dependencyStatus.error);
+		process.exitCode = 1;
+		return false;
+	}
+
+	if (dependencyStatus.openBlockers.length > 0) {
+		console.error(`Issue #${issueNumber} cannot be started yet.`);
+		console.error("");
+		console.error("Blocked by:");
+		for (const blocker of dependencyStatus.openBlockers) {
+			console.error(`  #${blocker.number} ${blocker.title}`);
+		}
+		console.error("");
+		console.error("Resolve or close the blocking issues first.");
+		process.exitCode = 1;
+		return false;
+	}
+
+	return true;
 }
 
 void main().catch((error) => {

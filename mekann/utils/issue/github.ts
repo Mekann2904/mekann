@@ -6,7 +6,20 @@ export interface GitHubIssue {
 	body: string;
 }
 
-export interface IssueWithStatus extends GitHubIssue {
+export interface IssueDependency {
+	number: number;
+	title: string;
+	state: "open" | "closed" | "unknown";
+	url?: string;
+}
+
+export interface IssueDependencyStatus {
+	blockedBy: IssueDependency[];
+	openBlockers: IssueDependency[];
+	error?: string;
+}
+
+export interface IssueWithStatus extends GitHubIssue, IssueDependencyStatus {
 	hasWorktree: boolean;
 	worktreePath?: string;
 }
@@ -46,6 +59,54 @@ export async function listOpenIssues(remote: string): Promise<GitHubIssue[]> {
  */
 export type IssueCleanupStatus = "closed" | "open" | "error";
 
+export async function getIssueDependencyStatus(remote: string, issueNumber: number): Promise<IssueDependencyStatus> {
+	const { execFile } = await import("node:child_process");
+	const { promisify } = await import("node:util");
+	const execFileAsync = promisify(execFile);
+
+	try {
+		const { stdout } = await execFileAsync("gh", [
+			"api",
+			`/repos/${remote}/issues/${issueNumber}/dependencies/blocked_by`,
+		], { timeout: 10000 });
+
+		const dependencies = JSON.parse(stdout);
+		const blockedBy: IssueDependency[] = (Array.isArray(dependencies) ? dependencies : []).map((issue: any) => ({
+			number: issue.number,
+			title: issue.title ?? "",
+			state: normalizeIssueState(issue.state),
+			url: issue.html_url ?? issue.url,
+		})).filter((issue) => Number.isInteger(issue.number));
+
+		return {
+			blockedBy,
+			openBlockers: blockedBy.filter((issue) => issue.state === "open" || issue.state === "unknown"),
+		};
+	} catch (err) {
+		return {
+			blockedBy: [],
+			openBlockers: [],
+			error: `Failed to read issue dependencies: ${(err as Error).message}`,
+		};
+	}
+}
+
+export async function addDependencyStatus(remote: string, issue: GitHubIssue): Promise<GitHubIssue & IssueDependencyStatus> {
+	const dependencyStatus = await getIssueDependencyStatus(remote, issue.number);
+	return { ...issue, ...dependencyStatus };
+}
+
+function normalizeIssueState(state: unknown): IssueDependency["state"] {
+	if (typeof state !== "string") return "unknown";
+	const lower = state.toLowerCase();
+	if (lower === "open") return "open";
+	if (lower === "closed") return "closed";
+	return "unknown";
+}
+
+/**
+ * Get whether an issue is closed. Cleanup removes worktrees for closed issues.
+ */
 export async function getIssueStatus(remote: string, issueNumber: number): Promise<IssueCleanupStatus> {
 	const { execFile } = await import("node:child_process");
 	const { promisify } = await import("node:util");
