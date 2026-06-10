@@ -9,7 +9,8 @@
   ],
   "license": "MIT",
   "bin": {
-    "mekann-dashboard": "./mekann/utils/dashboard/cli.ts"
+    "mekann-dashboard": "./mekann/utils/dashboard/cli.ts",
+    "mekann-issue": "./mekann/utils/issue/cli.ts"
   },
   "workspaces": [
     "mekann",

@@ -1,0 +1,84 @@
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { execFileSync } from "node:child_process";
+import { launchExternalUi } from "../terminal/launch.js";
+import { getRepoInfo, listExistingWorktrees, parseIssueNumberFromBranch, removeWorktree } from "./worktree.js";
+import { getIssueStatus } from "./github.js";
+
+function checkPrerequisites(ctx: ExtensionContext): string | null {
+	if (!process.env.KITTY_WINDOW_ID) return "Kitty terminal is required for /issue.";
+	try {
+		execFileSync("gh", ["--version"], { encoding: "utf-8", timeout: 3000 });
+	} catch {
+		return "`gh` CLI is required. Install with: brew install gh";
+	}
+	if (!getRepoInfo(ctx.cwd)) return "Not inside a git repository.";
+	return null;
+}
+
+export default function issueWorktree(pi: ExtensionAPI): void {
+	pi.registerCommand("issue", {
+		description: "Manage issue worktrees. /issue to create/open, /issue cleanup to remove merged worktrees.",
+		handler: async (args, ctx) => {
+			const input = (args ?? "").trim();
+
+			if (input === "cleanup") {
+				await handleCleanup(ctx);
+				return;
+			}
+
+			if (input !== "") {
+				ctx.ui.notify("Usage: /issue or /issue cleanup", "warning");
+				return;
+			}
+
+			const error = checkPrerequisites(ctx);
+			if (error) {
+				ctx.ui.notify(error, "error");
+				return;
+			}
+
+			// Launch the interactive issue list CLI in a Kitty split.
+			// The CLI handles: list → select → create worktree → open pi → close list.
+			const cliPath = new URL("./cli.ts", import.meta.url).pathname;
+			// Pass the current Pi runtime so the nested session does not pick up an incompatible node from shell PATH.
+			const envVar = `MEKANN_NODE_BIN=${JSON.stringify(process.execPath)}`;
+			const result = await launchExternalUi({
+				cwd: ctx.cwd,
+				title: "Issues",
+				copyEnv: true,
+				matchCurrentWindow: true,
+				action: { mode: "shell", command: `${envVar} bun ${JSON.stringify(cliPath)}` },
+			});
+
+			if (!result.ok) {
+				ctx.ui.notify(`Failed to open issue list: ${result.reason ?? "unknown"}`, "error");
+			}
+		},
+	});
+}
+
+async function handleCleanup(ctx: ExtensionContext): Promise<void> {
+	const repoInfo = getRepoInfo(ctx.cwd);
+	if (!repoInfo) { ctx.ui.notify("Not inside a git repository.", "error"); return; }
+
+	const existing = listExistingWorktrees(repoInfo.root);
+	if (existing.length === 0) { ctx.ui.notify("No issue worktrees found.", "info"); return; }
+
+	const toRemove = [];
+	for (const wt of existing) {
+		const num = parseIssueNumberFromBranch(wt.branch);
+		if (num === null) continue;
+		if ((await getIssueStatus(repoInfo.remote, num)) === "merged_and_closed") toRemove.push(wt);
+	}
+
+	if (toRemove.length === 0) { ctx.ui.notify("No merged-and-closed issue worktrees to clean up.", "info"); return; }
+
+	const names = toRemove.map((wt) => wt.branch).join(", ");
+	if (!(await ctx.ui.confirm("Remove merged-and-closed worktrees?", `The following worktrees will be removed:\n${names}`))) {
+		ctx.ui.notify("Cleanup canceled.", "info");
+		return;
+	}
+
+	for (const wt of toRemove) removeWorktree(repoInfo.root, wt);
+	ctx.ui.notify(`Removed ${toRemove.length} worktree(s): ${names}`, "info");
+}
