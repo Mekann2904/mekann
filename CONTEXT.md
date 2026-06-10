@@ -419,6 +419,28 @@ _Avoid_: codex-core, codex-base
 **Codex shared dependency rule**:
 `codex-shared` must not depend on Pi tool framework types or on `codex-limits` / `codex-web-search`. Pi-context-aware auth resolution belongs in each tool module or a thin adapter, not in `codex-shared`.
 
+### Issue worktree management
+
+**Issue worktree**:
+A git worktree created for working on a specific GitHub issue, placed in a sibling directory of the main repository. The naming convention is `issue-<number>` for both the branch and the worktree directory. Issue worktrees are managed by the `/issue` command and the `mekann-issue` CLI.
+_Avoid_: feature worktree, autoresearch worktree, candidate worktree
+
+**Issue worktree directory**:
+A sibling directory of the main repository that holds all issue worktrees for a project. The naming convention is `<project>-worktrees/`. Each worktree inside is named `issue-<number>/` matching its branch name.
+_Avoid_: worktree pool, worktree stash, autoresearch-worktrees
+
+**`mekann-issue` CLI**:
+A standalone CLI tool that provides two modes: an interactive OpenTUI issue list (no arguments) and a direct worktree-open mode (`--issue <number>`). It creates issue worktrees, launches pi in a Kitty split, and handles cleanup. Registered as a bin in the root `package.json`.
+_Avoid_: issue command handler, issue extension
+
+**`/issue` command**:
+A Pi extension command registered by the issue worktree feature that validates prerequisites (Kitty terminal, `gh` CLI, git repository) and launches `mekann-issue` in a Kitty split via the Mekann terminal adapter infrastructure. Also provides `/issue cleanup` for batch removal of merged-and-closed issue worktrees.
+_Avoid_: issue tool, issue prompt template
+
+**Issue worktree cleanup**:
+The batch removal of issue worktrees whose branches are merged and whose corresponding GitHub issues are closed. Triggered by `/issue cleanup`, removes both the worktree and the local branch.
+_Avoid_: worktree garbage collection, autoresearch candidate removal
+
 ### Development workflow
 
 **OSS reference library**:
@@ -435,3 +457,12 @@ Domain expert: "That pollutes the context window. Use subagent delegation with m
 
 Developer: "Can this subagent result become an autoresearch candidate?"
 Domain expert: "Only after a trust transition. A patch proposal must pass PatchProposalPolicy, and candidate escrow should preserve it for evaluation without applying it to the main worktree."
+
+Developer: "I want to work on issue #42. Should I use an autoresearch worktree?"
+Domain expert: "No. Autoresearch worktrees are temporary candidate isolation inside `.pi/autoresearch-worktrees/`. For issue work, use `/issue` — it creates an issue worktree in `<project>-worktrees/issue-42/` and opens a fresh pi session in a Kitty split."
+
+Developer: "Can `/issue` work without Kitty?"
+Domain expert: "No. Issue worktree management is Kitty-only because it relies on Kitty split to open a separate pi session. Without Kitty the command is not registered."
+
+Developer: "What happens when the PR is merged?"
+Domain expert: "Run `/issue cleanup`. It removes issue worktrees whose branches are merged and issues are closed, including both the worktree directory and the local branch."
