@@ -10,6 +10,18 @@ import { GoalStore, type Goal, type GoalStateEntry, CONTINUATION_COOLDOWN_MS, DE
 import { continuationPrompt, budgetLimitPrompt, objectiveUpdatedPrompt } from "./prompts.js";
 
 // ---------------------------------------------------------------------------
+// Compaction threshold
+// ---------------------------------------------------------------------------
+
+/**
+ * Reserve tokens threshold for triggering compaction before continuation.
+ * Matches Pi's default CompactionSettings.reserveTokens (16384).
+ * When estimated context tokens exceed contextWindow − COMPACT_RESERVE_TOKENS,
+ * we compact before sending the continuation prompt.
+ */
+const COMPACT_RESERVE_TOKENS = 16384;
+
+// ---------------------------------------------------------------------------
 // GoalRuntime
 // ---------------------------------------------------------------------------
 
@@ -220,11 +232,8 @@ export class GoalRuntime {
     if (this.active_turn_marker) return;
     if (this.continuation_active) return;
 
-    // Defensive: check ctx.isIdle() / ctx.hasPendingMessages()
-    const isIdle = typeof (ctx as any).isIdle === "function" ? (ctx as any).isIdle() : true;
-    const hasPendingMessages = typeof (ctx as any).hasPendingMessages === "function" ? (ctx as any).hasPendingMessages() : false;
-    if (!isIdle) return;
-    if (hasPendingMessages) return;
+    if (!ctx.isIdle()) return;
+    if (ctx.hasPendingMessages()) return;
 
     const goal = this.store.getGoal();
     if (!goal) return;
@@ -243,7 +252,34 @@ export class GoalRuntime {
       if (elapsed < CONTINUATION_COOLDOWN_MS) return;
     }
 
-    // Send continuation prompt
+    // Check if compaction is needed before sending continuation.
+    // During goal continuation, Pi's autocompact may not fire because the
+    // follow-up message is queued without re-checking compaction thresholds.
+    // See issue #13 for details.
+    const contextUsage = ctx.getContextUsage();
+    if (contextUsage?.tokens != null && contextUsage.contextWindow > 0) {
+      if (contextUsage.tokens > contextUsage.contextWindow - COMPACT_RESERVE_TOKENS) {
+        // Defer continuation until after compaction completes.
+        this.sendContinuationAfterCompaction(ctx, goal);
+        return;
+      }
+    }
+
+    // Normal continuation — context has room.
+    this.sendContinuation(goal);
+  }
+
+  // ─── For tool use ──────────────────────────────────────────────
+
+  /** Suppress budget steering for the current turn (e.g., when update_goal sets complete). */
+  suppressBudgetSteering(): void {
+    this.suppress_budget_steering = true;
+  }
+
+  // ─── Continuation dispatch ──────────────────────────────────────
+
+  /** Mark continuation state and bump counter. Shared preamble for all dispatch paths. */
+  private beginContinuation(goal: Goal): void {
     this.continuation_active = true;
     const now = Date.now();
     this.store.updateGoal(
@@ -254,6 +290,11 @@ export class GoalRuntime {
       goal.goal_id,
       "runtime",
     );
+  }
+
+  /** Send a continuation prompt immediately. */
+  private sendContinuation(goal: Goal): void {
+    this.beginContinuation(goal);
 
     this.pi.sendUserMessage(
       continuationPrompt(this.store.getGoal()!),
@@ -261,11 +302,29 @@ export class GoalRuntime {
     );
   }
 
-  // ─── For tool use ──────────────────────────────────────────────
+  /** Trigger compaction and send continuation after it completes. */
+  private sendContinuationAfterCompaction(ctx: ExtensionContext, goal: Goal): void {
+    this.beginContinuation(goal);
 
-  /** Suppress budget steering for the current turn (e.g., when update_goal sets complete). */
-  suppressBudgetSteering(): void {
-    this.suppress_budget_steering = true;
+    ctx.compact({
+      onComplete: () => {
+        const currentGoal = this.store.getGoal();
+        if (currentGoal && currentGoal.status === "active") {
+          this.pi.sendUserMessage(
+            continuationPrompt(currentGoal),
+            { deliverAs: "followUp" },
+          );
+        } else {
+          // Goal no longer active after compaction (e.g., user paused it);
+          // reset continuation flag so we can retry later.
+          this.continuation_active = false;
+        }
+      },
+      onError: () => {
+        // Compaction failed or was aborted; reset flag so we can retry.
+        this.continuation_active = false;
+      },
+    });
   }
 
   // ─── Internal helpers ──────────────────────────────────────────
