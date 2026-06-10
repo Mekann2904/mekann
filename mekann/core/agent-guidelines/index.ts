@@ -26,6 +26,7 @@ GitHub link policy:
 - Do not write only short identifiers like "#42" or "PR 13" — always provide the clickable URL alongside or instead of the short form.
 - After creating an issue or PR, report the URL immediately so the user can open it directly.
 - After pushing a commit or branch, provide the commit URL or compare URL.
+- Before creating a new issue, always check open issues first to avoid duplicates or conflicts. Use \`gh issue list --state open\` or search existing issues. If a similar or overlapping issue already exists, reference it or suggest updating it instead of creating a new one.
 `;
 
 export default function agentGuidelinesExtension(_pi: ExtensionAPI): void {
