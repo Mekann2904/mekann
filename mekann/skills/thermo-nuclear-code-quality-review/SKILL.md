@@ -153,6 +153,10 @@ Good phrases:
 - `i think there's a code-judo move here that makes this much simpler. can we reframe this so these branches disappear?`
 - `this refactor moves complexity around, but doesn't really delete it. is there a way to make the model itself simpler?`
 
+## 出力言語
+
+レビュー結果は **日本語** で出力すること。コードスニペット、ファイルパス、変数名、技術用語は英語のままでよいが、指摘内容・説明・提案・判定理由などの文章はすべて日本語で書くこと。
+
 ## Output Expectations
 
 Prioritize findings in this order:
