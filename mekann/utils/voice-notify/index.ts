@@ -13,6 +13,7 @@ Guidelines:
 - Use the user's language inside <voice> tags.
 - You may include multiple <voice> blocks; they will be concatenated.
 - Do NOT use <voice> for intermediate thinking or tool-use narration, routine progress narration, or tool-use narration.
+- **Always** include a <voice> notification when finishing a long-running task such as a review, audit, or any multi-step workflow that involved significant tool use. The user may be away from the terminal and relies on the voice alert to know the task has completed.
 
 Example:
 <voice>リファクタリングが完了しました。レビューをお願いします。</voice>
