@@ -40,6 +40,10 @@ function createMockCtx(overrides: Record<string, any> = {}) {
 		},
 		hasUI: true,
 		cwd: "/test",
+		isIdle: vi.fn(() => true),
+		hasPendingMessages: vi.fn(() => false),
+		getContextUsage: vi.fn(() => undefined),
+		compact: vi.fn(),
 		...overrides,
 	};
 }
