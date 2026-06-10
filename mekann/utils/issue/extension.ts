@@ -17,17 +17,12 @@ function checkPrerequisites(ctx: ExtensionContext): string | null {
 
 export default function issueWorktree(pi: ExtensionAPI): void {
 	pi.registerCommand("issue", {
-		description: "Manage issue worktrees. /issue to create/open, /issue cleanup to remove merged worktrees.",
+		description: "Open a GitHub issue worktree in a new Pi split.",
 		handler: async (args, ctx) => {
 			const input = (args ?? "").trim();
 
-			if (input === "cleanup") {
-				await handleCleanup(ctx);
-				return;
-			}
-
 			if (input !== "") {
-				ctx.ui.notify("Usage: /issue or /issue cleanup", "warning");
+				ctx.ui.notify("Usage: /issue. Use /clean-issue-worktrees to remove closed issue worktrees.", "warning");
 				return;
 			}
 
@@ -55,6 +50,13 @@ export default function issueWorktree(pi: ExtensionAPI): void {
 			}
 		},
 	});
+
+	pi.registerCommand("clean-issue-worktrees", {
+		description: "Remove issue worktrees whose GitHub issues are closed.",
+		handler: async (_args, ctx) => {
+			await handleCleanup(ctx);
+		},
+	});
 }
 
 async function handleCleanup(ctx: ExtensionContext): Promise<void> {
@@ -68,13 +70,13 @@ async function handleCleanup(ctx: ExtensionContext): Promise<void> {
 	for (const wt of existing) {
 		const num = parseIssueNumberFromBranch(wt.branch);
 		if (num === null) continue;
-		if ((await getIssueStatus(repoInfo.remote, num)) === "merged_and_closed") toRemove.push(wt);
+		if ((await getIssueStatus(repoInfo.remote, num)) === "closed") toRemove.push(wt);
 	}
 
-	if (toRemove.length === 0) { ctx.ui.notify("No merged-and-closed issue worktrees to clean up.", "info"); return; }
+	if (toRemove.length === 0) { ctx.ui.notify("No closed issue worktrees to clean up.", "info"); return; }
 
 	const names = toRemove.map((wt) => wt.branch).join(", ");
-	if (!(await ctx.ui.confirm("Remove merged-and-closed worktrees?", `The following worktrees will be removed:\n${names}`))) {
+	if (!(await ctx.ui.confirm("Remove closed issue worktrees?", `The following worktrees will be removed:\n${names}`))) {
 		ctx.ui.notify("Cleanup canceled.", "info");
 		return;
 	}

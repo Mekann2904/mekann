@@ -42,9 +42,9 @@ export async function listOpenIssues(remote: string): Promise<GitHubIssue[]> {
 }
 
 /**
- * Get the status of an issue: is it closed? Is the branch merged?
+ * Get whether an issue is closed. Cleanup removes worktrees for closed issues.
  */
-export type IssueCleanupStatus = "merged_and_closed" | "not_merged" | "not_closed" | "error";
+export type IssueCleanupStatus = "closed" | "open" | "error";
 
 export async function getIssueStatus(remote: string, issueNumber: number): Promise<IssueCleanupStatus> {
 	const { execFile } = await import("node:child_process");
@@ -59,21 +59,7 @@ export async function getIssueStatus(remote: string, issueNumber: number): Promi
 			"--json", "state",
 		], { timeout: 10000 });
 		const issue = JSON.parse(issueJson);
-		if (issue.state !== "CLOSED") return "not_closed";
-
-		// Check if branch is merged
-		const branch = `issue-${issueNumber}`;
-		try {
-			const { stdout } = await execFileAsync("git", [
-				"branch", "--merged", "HEAD",
-			], { timeout: 5000 });
-			const mergedBranches = stdout.split("\n").map((b: string) => b.trim().replace(/^\*?\s*/, ""));
-			if (!mergedBranches.includes(branch)) return "not_merged";
-		} catch {
-			return "not_merged";
-		}
-
-		return "merged_and_closed";
+		return issue.state === "CLOSED" ? "closed" : "open";
 	} catch {
 		return "error";
 	}

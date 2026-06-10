@@ -4,7 +4,7 @@
  *
  * Interactive mode: OpenTUI issue list → create worktree → launch pi in Kitty split
  * Direct mode: --issue N → create worktree and print its path
- * Cleanup: remove merged-and-closed worktrees
+ * Cleanup: remove worktrees whose issues are closed
  */
 
 import { parseIssueArgs } from "./args.js";
@@ -53,11 +53,11 @@ async function runCleanup(): Promise<void> {
 		const issueNumber = parseIssueNumberFromBranch(wt.branch);
 		if (issueNumber === null) continue;
 		const status = await getIssueStatus(repoInfo.remote, issueNumber);
-		if (status === "merged_and_closed") toRemove.push(wt);
+		if (status === "closed") toRemove.push(wt);
 	}
 
 	if (toRemove.length === 0) {
-		console.log("No merged-and-closed issue worktrees to clean up.");
+		console.log("No closed issue worktrees to clean up.");
 		return;
 	}
 

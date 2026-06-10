@@ -434,11 +434,11 @@ A standalone CLI tool that provides two modes: an interactive OpenTUI issue list
 _Avoid_: issue command handler, issue extension
 
 **`/issue` command**:
-A Pi extension command registered by the issue worktree feature that validates prerequisites (Kitty terminal, `gh` CLI, git repository) and launches `mekann-issue` in a Kitty split via the Mekann terminal adapter infrastructure. Also provides `/issue cleanup` for batch removal of merged-and-closed issue worktrees.
+A Pi extension command registered by the issue worktree feature that validates prerequisites (Kitty terminal, `gh` CLI, git repository) and launches `mekann-issue` in a Kitty split via the Mekann terminal adapter infrastructure. Closed issue worktrees are removed with `/clean-issue-worktrees`.
 _Avoid_: issue tool, issue prompt template
 
 **Issue worktree cleanup**:
-The batch removal of issue worktrees whose branches are merged and whose corresponding GitHub issues are closed. Triggered by `/issue cleanup`, removes both the worktree and the local branch.
+The batch removal of issue worktrees whose corresponding GitHub issues are closed. Triggered by `/clean-issue-worktrees`, removes both the worktree and the local branch.
 _Avoid_: worktree garbage collection, autoresearch candidate removal
 
 ### Development workflow
@@ -465,4 +465,4 @@ Developer: "Can `/issue` work without Kitty?"
 Domain expert: "No. Issue worktree management is Kitty-only because it relies on Kitty split to open a separate pi session. Without Kitty the command is not registered."
 
 Developer: "What happens when the PR is merged?"
-Domain expert: "Run `/issue cleanup`. It removes issue worktrees whose branches are merged and issues are closed, including both the worktree directory and the local branch."
+Domain expert: "Run `/clean-issue-worktrees`. It removes issue worktrees whose issues are closed, including both the worktree directory and the local branch."
