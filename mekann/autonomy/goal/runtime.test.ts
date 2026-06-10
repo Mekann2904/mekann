@@ -31,6 +31,9 @@ function createMockCtx(overrides?: Record<string, any>) {
     },
     isIdle: vi.fn(() => true),
     hasPendingMessages: vi.fn(() => false),
+    /** Default: no context pressure (undefined usage). */
+    getContextUsage: vi.fn(() => undefined),
+    compact: vi.fn(),
     ui: {
       notify: vi.fn(),
       confirm: vi.fn(),
@@ -765,15 +768,13 @@ describe("GoalRuntime", () => {
     runtime.maybeContinueIfIdle(ctx);
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1); // should work with valid objective
   });
-  // ── 38. maybeContinueIfIdle works when ctx lacks isIdle/hasPendingMessages ──
+  // ── 38. maybeContinueIfIdle rejects when isIdle returns false ──
 
-  it("maybeContinueIfIdle defaults to idle when ctx lacks isIdle", () => {
-    const { runtime, pi, ctx, store } = setupRuntimeWithGoal();
-    const ctxNoIdle = { ...ctx };
-    delete (ctxNoIdle as any).isIdle;
-    delete (ctxNoIdle as any).hasPendingMessages;
-    runtime.maybeContinueIfIdle(ctxNoIdle);
-    expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+  it("maybeContinueIfIdle rejects when isIdle returns false", () => {
+    const { runtime, pi, ctx } = setupRuntimeWithGoal();
+    ctx.isIdle.mockReturnValue(false);
+    runtime.maybeContinueIfIdle(ctx);
+    expect(pi.sendUserMessage).not.toHaveBeenCalled();
   });
 
   // ── 39. onMessageEnd handles missing usage fields ──
@@ -852,5 +853,157 @@ describe("GoalRuntime", () => {
     runtime.maybeContinueIfIdle(ctx);
 
     expect(onGoalEvent).not.toHaveBeenCalledWith("continuation_limit", expect.anything());
+  });
+
+  // ─── Compaction-before-continuation (issue #13) ─────────────
+
+  describe("compaction before continuation (issue #13)", () => {
+    /** Helper: create a ctx that reports high context usage. */
+    function createHighContextCtx(contextWindow = 200_000, tokens = 190_000) {
+      return createMockCtx({
+        getContextUsage: vi.fn(() => ({
+          tokens,
+          contextWindow,
+          percent: Math.round((tokens / contextWindow) * 100),
+        })),
+      });
+    }
+
+    it("triggers compaction when context is near the limit", () => {
+      const { runtime, pi, store } = setupRuntimeWithGoal();
+      const ctx = createHighContextCtx(200_000, 190_000);
+
+      runtime.maybeContinueIfIdle(ctx);
+
+      // Should NOT send continuation directly
+      expect(pi.sendUserMessage).not.toHaveBeenCalled();
+      // Should trigger compaction
+      expect(ctx.compact).toHaveBeenCalledTimes(1);
+      // continuation_active should be true (prevents re-entry)
+      expect(runtime.continuation_active).toBe(true);
+      // continuation_count should have been incremented
+      expect(store.getGoal()!.continuation_count).toBe(1);
+    });
+
+    it("sends continuation after compaction completes", () => {
+      const { runtime, pi, store } = setupRuntimeWithGoal();
+      let onComplete: (() => void) | undefined;
+      const ctx = createHighContextCtx(200_000, 190_000);
+      ctx.compact.mockImplementation((opts: any) => {
+        onComplete = opts.onComplete;
+      });
+
+      runtime.maybeContinueIfIdle(ctx);
+      expect(pi.sendUserMessage).not.toHaveBeenCalled();
+
+      // Simulate compaction completing
+      onComplete!();
+
+      // Now continuation should be sent
+      expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+      expect(pi.sendUserMessage).toHaveBeenCalledWith(
+        expect.stringContaining("Build the feature"),
+        { deliverAs: "followUp" },
+      );
+    });
+
+    it("resets continuation_active when compaction fails", () => {
+      const { runtime, pi } = setupRuntimeWithGoal();
+      let onError: (() => void) | undefined;
+      const ctx = createHighContextCtx(200_000, 190_000);
+      ctx.compact.mockImplementation((opts: any) => {
+        onError = opts.onError;
+      });
+
+      runtime.maybeContinueIfIdle(ctx);
+      expect(runtime.continuation_active).toBe(true);
+
+      // Simulate compaction failure
+      onError!();
+
+      // Flag should be reset so we can retry
+      expect(runtime.continuation_active).toBe(false);
+      // No continuation sent
+      expect(pi.sendUserMessage).not.toHaveBeenCalled();
+    });
+
+    it("resets continuation_active when goal is no longer active after compaction", () => {
+      const { runtime, pi, store } = setupRuntimeWithGoal();
+      let onComplete: (() => void) | undefined;
+      const ctx = createHighContextCtx(200_000, 190_000);
+      ctx.compact.mockImplementation((opts: any) => {
+        onComplete = opts.onComplete;
+      });
+
+      runtime.maybeContinueIfIdle(ctx);
+
+      // Simulate goal being paused during compaction
+      store.updateGoal({ status: "paused" }, undefined, "runtime");
+
+      onComplete!();
+
+      // No continuation should be sent
+      expect(pi.sendUserMessage).not.toHaveBeenCalled();
+      // Flag should be reset
+      expect(runtime.continuation_active).toBe(false);
+    });
+
+    it("does NOT compact when context has plenty of room", () => {
+      const { runtime, pi } = setupRuntimeWithGoal();
+      // 100k of 200k = 50% — well below the 183k threshold
+      const ctx = createHighContextCtx(200_000, 100_000);
+
+      runtime.maybeContinueIfIdle(ctx);
+
+      // Should send continuation directly (no compaction)
+      expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+      expect(ctx.compact).not.toHaveBeenCalled();
+    });
+
+    it("does NOT compact when getContextUsage returns undefined", () => {
+      const { runtime, pi } = setupRuntimeWithGoal();
+      // Default mock returns undefined
+      const ctx = createMockCtx();
+
+      runtime.maybeContinueIfIdle(ctx);
+
+      expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+      expect(ctx.compact).not.toHaveBeenCalled();
+    });
+
+    it("does NOT compact when tokens is null", () => {
+      const { runtime, pi } = setupRuntimeWithGoal();
+      const ctx = createMockCtx({
+        getContextUsage: vi.fn(() => ({ tokens: null, contextWindow: 200_000, percent: null })),
+      });
+
+      runtime.maybeContinueIfIdle(ctx);
+
+      expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+      expect(ctx.compact).not.toHaveBeenCalled();
+    });
+
+    it("compacts at exact threshold boundary (tokens == contextWindow - 16384)", () => {
+      const { runtime, pi } = setupRuntimeWithGoal();
+      // Exactly at threshold: 200000 - 16384 = 183616
+      const ctx = createHighContextCtx(200_000, 183_616);
+
+      runtime.maybeContinueIfIdle(ctx);
+
+      // NOT over threshold (needs > not >=), so should send normally
+      expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
+      expect(ctx.compact).not.toHaveBeenCalled();
+    });
+
+    it("compacts just over threshold boundary", () => {
+      const { runtime, pi } = setupRuntimeWithGoal();
+      // 1 token over threshold
+      const ctx = createHighContextCtx(200_000, 183_617);
+
+      runtime.maybeContinueIfIdle(ctx);
+
+      expect(ctx.compact).toHaveBeenCalledTimes(1);
+      expect(pi.sendUserMessage).not.toHaveBeenCalled();
+    });
   });
 });

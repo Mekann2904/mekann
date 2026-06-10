@@ -39,6 +39,8 @@ function createMockCtx(overrides?: Record<string, any>) {
     },
     isIdle: vi.fn(() => true),
     hasPendingMessages: vi.fn(() => false),
+    getContextUsage: vi.fn(() => undefined),
+    compact: vi.fn(),
     ui: {
       notify: vi.fn(),
       confirm: vi.fn(() => Promise.resolve(true)),
