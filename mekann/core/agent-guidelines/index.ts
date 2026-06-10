@@ -19,6 +19,17 @@ Proactive code review policy:
 - When you judge that a review would add value, do not wait for the user to ask — suggest it proactively.
 `;
 
+const GIT_SAFETY_EXTRA = `
+
+Git safety policy — require explicit user instruction before executing:
+- Never push (including force push) unless the user explicitly asks you to.
+- Never create, merge, close, or approve a PR unless the user explicitly asks you to.
+- Never create or close a GitHub issue unless the user explicitly asks you to.
+- Never run destructive local operations (git reset --hard, git clean -f, git branch -D, git rebase) unless the user explicitly asks you to.
+- Never delete a remote branch unless the user explicitly asks you to.
+- If you believe one of these actions would be appropriate, suggest it and wait for the user to confirm before executing.
+`;
+
 const GITHUB_LINKS_EXTRA = `
 
 GitHub link policy:
@@ -78,6 +89,23 @@ export default function agentGuidelinesExtension(_pi: ExtensionAPI): void {
 				version: "v1",
 				cacheIntent: "prefer_cache",
 				content: GITHUB_LINKS_EXTRA,
+			}];
+		},
+	});
+
+	registerPromptProvider({
+		id: "git-safety",
+		getFragments() {
+			return [{
+				id: "git-safety:coding_guidelines",
+				source: "git-safety",
+				kind: "coding_guidelines",
+				stability: "stable",
+				scope: "global",
+				priority: 140,
+				version: "v1",
+				cacheIntent: "prefer_cache",
+				content: GIT_SAFETY_EXTRA,
 			}];
 		},
 	});
