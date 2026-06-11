@@ -13,21 +13,14 @@ Additional coding-agent guidelines:
 
 const PROACTIVE_REVIEW_EXTRA = `
 
-Proactive code review policy:
-- After completing a non-trivial implementation or when the user seems to want a review, actively propose running the thermo-nuclear-code-quality-review skill.
-- Even if the user has not explicitly asked for a review, if the change's importance or complexity makes a review beneficial, run the review yourself or recommend the skill.
-- When you judge that a review would add value, do not wait for the user to ask — suggest it proactively.
+Proactive review routing policy:
+- Prefer Mekann runtime review-quality detection such as \`/review-quality\` for diff-size based review prompts; still use judgment to recommend deeper review when risk is semantic rather than mechanical.
 `;
 
 const GIT_SAFETY_EXTRA = `
 
-Git safety policy — require explicit user instruction before executing:
-- Never push (including force push) unless the user explicitly asks you to.
-- Never create, merge, close, or approve a PR unless the user explicitly asks you to.
-- Never create or close a GitHub issue unless the user explicitly asks you to.
-- Never run destructive local operations (git reset --hard, git clean -f, git branch -D, git rebase) unless the user explicitly asks you to.
-- Never delete a remote branch unless the user explicitly asks you to.
-- If you believe one of these actions would be appropriate, suggest it and wait for the user to confirm before executing.
+Git safety routing policy:
+- Use Mekann runtime confirmation flows for remote GitHub mutations, push/force-push, and destructive local git operations; if a needed action is blocked or not covered by runtime policy, ask for explicit user permission first.
 `;
 
 const GITHUB_LINKS_EXTRA = `
@@ -38,6 +31,13 @@ GitHub link policy:
 - After creating an issue or PR, report the URL immediately so the user can open it directly.
 - After pushing a commit or branch, provide the commit URL or compare URL.
 - Before creating a new issue, always check open issues first to avoid duplicates or conflicts. Use \`gh issue list --state open\` or search existing issues. If a similar or overlapping issue already exists, reference it or suggest updating it instead of creating a new one.
+`;
+
+const PR_WORKFLOW_EXTRA = `
+
+PR workflow routing policy:
+- Prefer Mekann PR runtime flows such as \`/pr-check\` over manual ad-hoc PR mergeability procedures when available.
+- If a runtime flow reports that a PR is blocked, conflicted, dirty, or unknown, handle only safe follow-up work and defer force push, merge, close, approval, or destructive git decisions to explicit user permission.
 `;
 
 export default function agentGuidelinesExtension(_pi: ExtensionAPI): void {
@@ -89,6 +89,23 @@ export default function agentGuidelinesExtension(_pi: ExtensionAPI): void {
 				version: "v1",
 				cacheIntent: "prefer_cache",
 				content: GITHUB_LINKS_EXTRA,
+			}];
+		},
+	});
+
+	registerPromptProvider({
+		id: "pr-workflow",
+		getFragments() {
+			return [{
+				id: "pr-workflow:coding_guidelines",
+				source: "pr-workflow",
+				kind: "coding_guidelines",
+				stability: "stable",
+				scope: "global",
+				priority: 135,
+				version: "v1",
+				cacheIntent: "prefer_cache",
+				content: PR_WORKFLOW_EXTRA,
 			}];
 		},
 	});
