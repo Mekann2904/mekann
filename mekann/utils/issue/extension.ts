@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { execFileSync } from "node:child_process";
 import { launchExternalUi } from "../terminal/launch.js";
 import { getRepoInfo, listExistingWorktrees, parseIssueNumberFromBranch, removeWorktree } from "./worktree.js";
-import { getIssueStatus } from "./github.js";
+import { createIssue, getIssueStatus, searchOpenIssues } from "./github.js";
 
 function checkPrerequisites(ctx: ExtensionContext): string | null {
 	if (!process.env.KITTY_WINDOW_ID) return "Kitty terminal is required for /issue.";
@@ -51,12 +51,54 @@ export default function issueWorktree(pi: ExtensionAPI): void {
 		},
 	});
 
+	pi.registerCommand("issue-create", {
+		description: "Create a GitHub issue after searching for open duplicates.",
+		handler: async (args, ctx) => {
+			await handleIssueCreate(args, ctx);
+		},
+	});
+
 	pi.registerCommand("clean-issue-worktrees", {
 		description: "Remove issue worktrees whose GitHub issues are closed.",
 		handler: async (_args, ctx) => {
 			await handleCleanup(ctx);
 		},
 	});
+}
+
+function parseIssueCreateArgs(args: string): { title: string; body: string } | null {
+	const trimmed = (args ?? "").trim();
+	if (!trimmed) return null;
+	const [titlePart, ...bodyParts] = trimmed.split(/\n\n+/);
+	return { title: titlePart.trim(), body: bodyParts.join("\n\n").trim() || titlePart.trim() };
+}
+
+async function handleIssueCreate(args: string, ctx: ExtensionContext): Promise<void> {
+	const repoInfo = getRepoInfo(ctx.cwd);
+	if (!repoInfo) { ctx.ui.notify("Not inside a git repository.", "error"); return; }
+
+	const parsed = parseIssueCreateArgs(args);
+	if (!parsed) {
+		ctx.ui.notify("Usage: /issue-create <title> followed optionally by a blank line and body.", "warning");
+		return;
+	}
+
+	try {
+		const duplicates = await searchOpenIssues(repoInfo.remote, parsed.title);
+		if (duplicates.length > 0) {
+			const summary = duplicates.map((issue) => `#${issue.number} ${issue.title}\n${issue.url}`).join("\n\n");
+			const ok = await ctx.ui.confirm("Potential duplicate issues found", `Open issues matched this title:\n\n${summary}\n\nCreate a new issue anyway?`);
+			if (!ok) { ctx.ui.notify("Issue creation canceled.", "info"); return; }
+		} else {
+			const ok = await ctx.ui.confirm("Create GitHub issue?", `No open duplicate issues were found. Create this issue?\n\n${parsed.title}`);
+			if (!ok) { ctx.ui.notify("Issue creation canceled.", "info"); return; }
+		}
+
+		const issue = await createIssue(repoInfo.remote, parsed.title, parsed.body);
+		ctx.ui.notify(`Created issue: ${issue.url}`, "info");
+	} catch (error) {
+		ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+	}
 }
 
 async function handleCleanup(ctx: ExtensionContext): Promise<void> {

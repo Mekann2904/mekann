@@ -24,6 +24,12 @@ export interface IssueWithStatus extends GitHubIssue, IssueDependencyStatus {
 	worktreePath?: string;
 }
 
+export interface IssueCreateResult {
+	number: number;
+	title: string;
+	url: string;
+}
+
 /**
  * List open GitHub issues using `gh` CLI.
  */
@@ -102,6 +108,53 @@ function normalizeIssueState(state: unknown): IssueDependency["state"] {
 	if (lower === "open") return "open";
 	if (lower === "closed") return "closed";
 	return "unknown";
+}
+
+function execFileText(command: string, args: string[], options: { timeout: number }): Promise<string> {
+	return import("node:child_process").then(({ execFile }) => new Promise((resolve, reject) => {
+		execFile(command, args, options, (error, stdout) => {
+			if (error) reject(error);
+			else resolve(String(stdout));
+		});
+	}));
+}
+
+export async function searchOpenIssues(remote: string, query: string): Promise<GitHubIssue[]> {
+	try {
+		const stdout = await execFileText("gh", [
+			"issue", "list",
+			"--repo", remote,
+			"--state", "open",
+			"--search", query,
+			"--limit", "10",
+			"--json", "number,title,labels,url,body",
+		], { timeout: 15000 });
+		const issues = JSON.parse(stdout);
+		return issues.map((issue: any) => ({
+			number: issue.number,
+			title: issue.title,
+			labels: (issue.labels ?? []).map((l: any) => typeof l === "string" ? l : l.name),
+			url: issue.url,
+			body: issue.body ?? "",
+		}));
+	} catch (err) {
+		throw new Error(`Failed to search GitHub issues for ${remote}: ${(err as Error).message}`);
+	}
+}
+
+export async function createIssue(remote: string, title: string, body: string): Promise<IssueCreateResult> {
+	try {
+		const stdout = await execFileText("gh", [
+			"issue", "create",
+			"--repo", remote,
+			"--title", title,
+			"--body", body,
+			"--json", "number,title,url",
+		], { timeout: 15000 });
+		return JSON.parse(stdout) as IssueCreateResult;
+	} catch (err) {
+		throw new Error(`Failed to create GitHub issue for ${remote}: ${(err as Error).message}`);
+	}
 }
 
 /**

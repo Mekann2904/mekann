@@ -122,7 +122,7 @@ Stable global prompt providers currently include:
    - `gh pr create` result detector: extract PR URLs from tool output.
    - Mergeability follow-up: enqueue a user follow-up only when the PR is blocked and safe remediation requires agent work.
 2. Move destructive git and GitHub mutation checks from prompt-only policy into `tool_call` enforcement. Initial runtime confirmation lives in `mekann/safety/git-safety`.
-3. Move issue duplicate search and dependency gates into issue commands.
+3. Move issue duplicate search and dependency gates into issue commands. Dependency gates already run in `mekann-issue`; duplicate search now starts in `/issue-create`.
 4. Add a budget check so stable global prompt bullet controls cannot grow beyond 50 unnoticed.
 
 ## PR workflow runtime feature design
