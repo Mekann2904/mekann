@@ -9,9 +9,15 @@ describe("agent-guidelines", () => {
 		const pi = { on: vi.fn() };
 		extension(pi as any);
 		expect(pi.on).not.toHaveBeenCalledWith("before_agent_start", expect.anything());
-		expect(listPromptProviders().map((p) => p.id)).toContain("agent-guidelines");
-		const [fragment] = await collectPromptFragments({ cwd: "/tmp" });
+		const providerIds = listPromptProviders().map((p) => p.id);
+		expect(providerIds).toContain("agent-guidelines");
+		expect(providerIds).toContain("pr-workflow");
+		const fragments = await collectPromptFragments({ cwd: "/tmp" });
+		const fragment = fragments.find((f) => f.source === "agent-guidelines");
 		expect(fragment).toMatchObject({ source: "agent-guidelines", kind: "coding_guidelines", stability: "stable", scope: "global" });
-		expect(fragment.content).toContain("Additional coding-agent guidelines");
+		expect(fragment?.content).toContain("Additional coding-agent guidelines");
+		const prWorkflowFragment = fragments.find((f) => f.source === "pr-workflow");
+		expect(prWorkflowFragment?.content).toContain("If the PR is not mergeable");
+		expect(prWorkflowFragment?.content).toContain("After attempting a fix, re-run the PR merge-state check");
 	});
 });

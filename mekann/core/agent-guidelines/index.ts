@@ -40,6 +40,18 @@ GitHub link policy:
 - Before creating a new issue, always check open issues first to avoid duplicates or conflicts. Use \`gh issue list --state open\` or search existing issues. If a similar or overlapping issue already exists, reference it or suggest updating it instead of creating a new one.
 `;
 
+const PR_WORKFLOW_EXTRA = `
+
+PR workflow policy:
+- After creating a PR, immediately check whether GitHub reports merge conflicts or a blocked merge state.
+- Prefer \`gh pr view <url-or-number> --json mergeStateStatus,mergeable,url\` for the check.
+- If the PR is mergeable, report the PR URL and the merge state.
+- If the PR is not mergeable, conflicted, dirty, or otherwise blocked, fix it when it is safe and within the user's instructions; otherwise report the blocker clearly with the PR URL and ask for the needed decision or permission.
+- If fixing requires destructive git operations, force push, changing PR base, merging, closing, or other actions covered by git safety policy, ask for explicit user instruction before proceeding.
+- After attempting a fix, re-run the PR merge-state check and report the final state.
+- If GitHub reports an unknown or pending merge state, say that the conflict status is not yet conclusive and re-check if practical.
+`;
+
 export default function agentGuidelinesExtension(_pi: ExtensionAPI): void {
 	registerPromptProvider({
 		id: "agent-guidelines",
@@ -89,6 +101,23 @@ export default function agentGuidelinesExtension(_pi: ExtensionAPI): void {
 				version: "v1",
 				cacheIntent: "prefer_cache",
 				content: GITHUB_LINKS_EXTRA,
+			}];
+		},
+	});
+
+	registerPromptProvider({
+		id: "pr-workflow",
+		getFragments() {
+			return [{
+				id: "pr-workflow:coding_guidelines",
+				source: "pr-workflow",
+				kind: "coding_guidelines",
+				stability: "stable",
+				scope: "global",
+				priority: 135,
+				version: "v1",
+				cacheIntent: "prefer_cache",
+				content: PR_WORKFLOW_EXTRA,
 			}];
 		},
 	});
