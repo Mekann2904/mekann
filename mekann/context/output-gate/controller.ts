@@ -37,6 +37,7 @@ export interface ToolResultInput {
 	content: unknown;
 	details?: Record<string, unknown>;
 	isError?: boolean;
+	command?: string;
 	sessionId?: string;
 	turnId?: string;
 	toolCallId?: string;
@@ -117,7 +118,7 @@ export class OutputGateController {
 			cwd: input.cwd,
 			toolName,
 			text,
-			source: { kind: "tool_result", toolName },
+			source: { kind: "tool_result", toolName, ...(input.command ? { command: input.command } : {}) },
 			maxInlineBytes: this.config.maxInlineBytes,
 			previewBytes: this.config.previewBytes,
 			sessionId: input.sessionId,

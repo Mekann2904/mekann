@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildStructuredPreview, detectOutputContentType } from "./preview.js";
+import { buildStructuredPreview, classifyBashOutputPolicy, detectOutputContentType } from "./preview.js";
 
 describe("output-gate structured preview", () => {
 	it("detects and summarizes JSON arrays", () => {
@@ -32,5 +32,31 @@ describe("output-gate structured preview", () => {
 		expect(result.contentType).toBe("test-output");
 		expect(result.preview).toContain("AssertionError");
 		expect(result.retrievalHints.some((h) => h.includes("AssertionError"))).toBe(true);
+	});
+
+	it("classifies common bash commands for command-aware previews", () => {
+		expect(classifyBashOutputPolicy("ls -la")).toBe("listing");
+		expect(classifyBashOutputPolicy("rg TODO src")).toBe("search");
+		expect(classifyBashOutputPolicy("git status --short")).toBe("git-status");
+		expect(classifyBashOutputPolicy("git diff -- src/index.ts")).toBe("git-diff");
+		expect(classifyBashOutputPolicy("npm test")).toBe("test");
+		expect(classifyBashOutputPolicy("ruff check .")).toBe("lint");
+	});
+
+	it("builds compact command-aware preview for listing commands", () => {
+		const text = Array.from({ length: 200 }, (_, i) => `file-${i}.ts`).join("\n");
+		const result = buildStructuredPreview(text, { toolName: "bash", command: "ls -la", maxBytes: 5000 });
+		expect(result.preview).toContain("bash output policy: listing");
+		expect(result.preview).toContain("command: ls -la");
+		expect(result.preview).toContain("[...120 lines omitted...]");
+		expect(result.preview).toContain("file-199.ts");
+	});
+
+	it("uses command-aware search summary for rg commands", () => {
+		const text = "src/a.ts:10:hello\nsrc/a.ts:20:world\nsrc/b.ts:1:hello\n";
+		const result = buildStructuredPreview(text, { toolName: "bash", command: "rg hello src", maxBytes: 5000 });
+		expect(result.preview).toContain("bash output policy: search");
+		expect(result.preview).toContain("search result summary");
+		expect(result.preview).toContain("src/a.ts: 2");
 	});
 });

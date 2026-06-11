@@ -12,6 +12,7 @@
 - manifest に tool 名・byte 数・hash などを記録
 - `search_tool_outputs` で artifact を検索
 - 必要な snippet だけを再取得
+- `bash` artifact は command-aware structured preview を生成し、`ls`/`rg`/`git status`/`git diff`/test/lint などを raw dump ではなく機械的な要約として inline に残す
 
 ## 境界
 

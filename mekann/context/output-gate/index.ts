@@ -67,6 +67,17 @@ function parseShowArg(args: string | undefined): string | undefined {
 	return undefined;
 }
 
+function extractBashCommand(event: any): string | undefined {
+	const candidates = [
+		event?.command,
+		event?.args?.command,
+		event?.input?.command,
+		event?.toolInput?.command,
+		event?.parameters?.command,
+	];
+	return candidates.find((value) => typeof value === "string" && value.trim().length > 0);
+}
+
 // ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
@@ -231,6 +242,7 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 				content: event?.content,
 				details: event?.details,
 				isError: event?.isError,
+				command: toolName === "bash" ? extractBashCommand(event) : undefined,
 				sessionId: ctx?.sessionId,
 				turnId: ctx?.turnId,
 				toolCallId: event?.toolCallId,

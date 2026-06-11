@@ -1,4 +1,5 @@
 export type OutputContentType = "json" | "diff" | "search-results" | "test-output" | "log" | "text" | "unknown";
+export type BashOutputPolicyName = "listing" | "search" | "git-status" | "git-diff" | "git-log" | "git-mutation" | "test" | "lint" | "docker";
 
 export interface OutputPreview {
 	contentType: OutputContentType;
@@ -14,6 +15,25 @@ const RG_RE = /^(?:[^\n:]+):(\d+):/m;
 const LOG_RE = /^\[?\d{4}[-/]\d{2}[-/]\d{2}|\b(INFO|WARN|WARNING|ERROR|DEBUG|TRACE|FATAL)\b/m;
 
 function byteLength(text: string): number { return Buffer.byteLength(text, "utf8"); }
+
+function normalizeCommand(command: string): string {
+	return command.trim().replace(/\s+/g, " ");
+}
+
+export function classifyBashOutputPolicy(command: string | undefined): BashOutputPolicyName | undefined {
+	if (!command) return undefined;
+	const c = normalizeCommand(command);
+	if (/^(ls|tree|find)\b/.test(c)) return "listing";
+	if (/(^|[;&|()\s])(rg|grep)\b/.test(c)) return "search";
+	if (/^git\s+status\b/.test(c)) return "git-status";
+	if (/^git\s+(?:diff|show)\b/.test(c)) return "git-diff";
+	if (/^git\s+log\b/.test(c)) return "git-log";
+	if (/^git\s+(?:add|commit|push|pull|merge|checkout|switch|restore|reset|stash|tag|branch)\b/.test(c)) return "git-mutation";
+	if (/(^|[;&|()\s])(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:test|check|ci)\b|(^|[;&|()\s])(?:pytest|cargo\s+test|go\s+test)\b/.test(c)) return "test";
+	if (/(^|[;&|()\s])(?:ruff\s+check|eslint|tsc|mypy|clippy)\b/.test(c)) return "lint";
+	if (/^docker\s+(?:ps|compose\s+ps)\b/.test(c)) return "docker";
+	return undefined;
+}
 
 function truncateLines(lines: string[], maxLines: number): string[] {
 	if (lines.length <= maxLines) return lines;
@@ -83,14 +103,51 @@ function searchResultsPreview(text: string): { preview: string; hints: string[] 
 	return { preview: [`search result summary`, `matches: ${lines.length}`, `files: ${files.size}`, ...top.map(([file, count]) => `- ${file}: ${count}`), ``, ...truncateLines(lines, 40)].join("\n"), hints: top.slice(0, 8).map(([file]) => file) };
 }
 
-export function buildStructuredPreview(text: string, opts: { toolName?: string; maxBytes: number }): OutputPreview {
+function commandAwarePreview(text: string, command: string): { preview: string; hints: string[] } | undefined {
+	const policy = classifyBashOutputPolicy(command);
+	if (!policy) return undefined;
+	const lines = text.split(/\r?\n/).filter((line, index, arr) => line !== "" || index < arr.length - 1);
+	const header = [`bash output policy: ${policy}`, `command: ${normalizeCommand(command).slice(0, 300)}`, `lines: ${lines.length}`, `bytes: ${byteLength(text)}`];
+	if (policy === "search") {
+		const built = searchResultsPreview(text);
+		return { preview: [...header, "", built.preview].join("\n"), hints: built.hints };
+	}
+	if (policy === "git-diff") {
+		const built = diffPreview(text);
+		return { preview: [...header, "", built.preview].join("\n"), hints: built.hints };
+	}
+	if (policy === "test") {
+		const built = lineFocusedPreview(text, ERROR_RE, 80);
+		return { preview: [...header, "", built.preview].join("\n"), hints: built.hints };
+	}
+	if (policy === "lint") {
+		const built = lineFocusedPreview(text, ERROR_RE, 80);
+		return { preview: [...header, "", built.preview || truncateLines(lines, 80).join("\n")].join("\n"), hints: built.hints };
+	}
+	const limits: Record<BashOutputPolicyName, number> = {
+		listing: 80,
+		search: 80,
+		"git-status": 120,
+		"git-diff": 80,
+		"git-log": 60,
+		"git-mutation": 40,
+		test: 80,
+		lint: 80,
+		docker: 80,
+	};
+	const kept = truncateLines(lines, limits[policy]);
+	return { preview: [...header, "", ...kept].join("\n"), hints: [] };
+}
+
+export function buildStructuredPreview(text: string, opts: { toolName?: string; maxBytes: number; command?: string }): OutputPreview {
 	const contentType = detectOutputContentType(text, opts.toolName);
 	let built: { preview: string; hints: string[] } | undefined;
-	if (contentType === "json") built = jsonPreview(text);
-	else if (contentType === "diff") built = diffPreview(text);
-	else if (contentType === "search-results") built = searchResultsPreview(text);
-	else if (contentType === "test-output") built = lineFocusedPreview(text, ERROR_RE, 100);
-	else if (contentType === "log") built = lineFocusedPreview(text, ERROR_RE, 100);
+	if (opts.toolName === "bash") built = commandAwarePreview(text, opts.command ?? "");
+	if (!built && contentType === "json") built = jsonPreview(text);
+	else if (!built && contentType === "diff") built = diffPreview(text);
+	else if (!built && contentType === "search-results") built = searchResultsPreview(text);
+	else if (!built && contentType === "test-output") built = lineFocusedPreview(text, ERROR_RE, 100);
+	else if (!built && contentType === "log") built = lineFocusedPreview(text, ERROR_RE, 100);
 	if (!built) built = { preview: truncateLines(text.split(/\r?\n/), 80).join("\n"), hints: [] };
 	let preview = built.preview;
 	if (byteLength(preview) > opts.maxBytes) preview = Buffer.from(preview, "utf8").subarray(0, opts.maxBytes).toString("utf8").replace(/�$/u, "") + "\n[structured preview truncated]";

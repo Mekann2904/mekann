@@ -202,6 +202,12 @@ export function shouldGateOutput(text: string, opts: { toolName?: string; maxInl
 	return Buffer.byteLength(text, "utf8") > (opts.maxInlineBytes ?? (Number(featureConfig("output-gate").maxInlineBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes));
 }
 
+function commandFromSource(source: unknown): string | undefined {
+	if (!source || typeof source !== "object") return undefined;
+	const value = (source as { command?: unknown }).command;
+	return typeof value === "string" ? value : undefined;
+}
+
 export async function saveArtifact(input: SaveArtifactInput): Promise<{ entry: OutputGateManifestEntry; text: string }> {
 	await ensureOutputGateDirs(input.cwd);
 	const createdAt = input.now?.() ?? Date.now();
@@ -214,7 +220,7 @@ export async function saveArtifact(input: SaveArtifactInput): Promise<{ entry: O
 	await fsp.writeFile(artifactAbs, redacted.text, "utf8");
 	const originalBytes = Buffer.byteLength(input.text, "utf8");
 	const originalLines = countLines(input.text);
-	const structured = buildStructuredPreview(redacted.text, { toolName: input.toolName, maxBytes: 3000 });
+	const structured = buildStructuredPreview(redacted.text, { toolName: input.toolName, maxBytes: 3000, command: commandFromSource(input.source) });
 	const entry: OutputGateManifestEntry = {
 		schemaVersion: "output-gate/v1",
 		id,
