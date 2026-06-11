@@ -16,6 +16,7 @@ export default async function utilsSuite(pi: ExtensionAPI): Promise<void> {
 			isFeatureEnabled("voice-notify") ? profileStartupStep("import:utils/voice-notify", () => import("./voice-notify/index.js")) : undefined,
 			isFeatureEnabled("pr-workflow") ? profileStartupStep("import:utils/pr-workflow", () => import("./pr-workflow/index.js")) : undefined,
 			isFeatureEnabled("verify") ? profileStartupStep("import:utils/verify", () => import("./verify/index.js")) : undefined,
+			isFeatureEnabled("review-quality") ? profileStartupStep("import:utils/review-quality", () => import("./review-quality/index.js")) : undefined,
 		]));
 		modules[0]?.default(pi);
 		modules[1]?.default(pi);
@@ -28,5 +29,6 @@ export default async function utilsSuite(pi: ExtensionAPI): Promise<void> {
 		modules[8]?.default(pi);
 		modules[9]?.default(pi);
 		modules[10]?.default(pi);
+		modules[11]?.default(pi);
 	});
 }

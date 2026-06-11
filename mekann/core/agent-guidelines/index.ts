@@ -13,10 +13,8 @@ Additional coding-agent guidelines:
 
 const PROACTIVE_REVIEW_EXTRA = `
 
-Proactive code review policy:
-- After completing a non-trivial implementation or when the user seems to want a review, actively propose running the thermo-nuclear-code-quality-review skill.
-- Even if the user has not explicitly asked for a review, if the change's importance or complexity makes a review beneficial, run the review yourself or recommend the skill.
-- When you judge that a review would add value, do not wait for the user to ask — suggest it proactively.
+Proactive review routing policy:
+- Prefer Mekann runtime review-quality detection such as \`/review-quality\` for diff-size based review prompts; still use judgment to recommend deeper review when risk is semantic rather than mechanical.
 `;
 
 const GIT_SAFETY_EXTRA = `

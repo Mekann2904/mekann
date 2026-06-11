@@ -104,7 +104,7 @@ Stable global prompt providers currently include:
 | Provider | Current classification | Migration note |
 | --- | --- | --- |
 | `agent-guidelines` | Prompt | Broad coding judgment. Keep concise. |
-| `proactive-review` | Prompt + future runtime flow | Diff-size detection can become runtime flow; judgment remains prompt. |
+| `proactive-review` | Runtime-flow routing prompt | Diff-size detection lives in `utils/review-quality`; semantic risk judgment remains prompt. |
 | `github-links` | Prompt + result enhancer candidate | URL formatting can later be handled by GitHub result enhancers. |
 | `pr-workflow` | Runtime-flow routing prompt | Detailed steps should live in `utils/pr-workflow`; prompt should only route to it. |
 | `git-safety` | Runtime enforcement + prompt safety net | `mekann/safety/git-safety` confirms high-risk bash commands at `tool_call`; prompt remains a short fallback. |
@@ -125,6 +125,7 @@ Stable global prompt providers currently include:
 3. Move issue duplicate search and dependency gates into issue commands. Dependency gates already run in `mekann-issue`; duplicate search now starts in `/issue-create`.
 4. Add a budget check so stable global prompt bullet controls cannot grow beyond 50 unnoticed.
 5. Move verification reporting into `/verify`, which runs repo-local scripts and reports exactly which commands passed or failed.
+6. Move diff-size based review prompting into `/review-quality` and its `agent_end` detector.
 
 ## PR workflow runtime feature design
 
