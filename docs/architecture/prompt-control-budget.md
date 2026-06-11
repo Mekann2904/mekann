@@ -114,6 +114,22 @@ Stable global prompt providers currently include:
 | mode providers | Mode policy | Mode-specific and should not count as broad global controls unless stable/global. |
 | tool `promptGuidelines` | Tool policy | Prefer moving into tool descriptions/result shaping where possible. |
 
+## Migration status
+
+Implemented runtime flows in this issue:
+
+- `utils/pr-workflow`: PR mergeability checks via `/pr-check` and PR URL detection on `agent_end`.
+- `safety/git-safety`: runtime confirmation for high-risk git and GitHub mutations at `tool_call`.
+- `utils/issue` `/issue-create`: open-issue duplicate search before creating a new GitHub issue.
+- `utils/verify`: repo-local verification reporting via `/verify`.
+- `utils/review-quality`: diff-size review prompting via `/review-quality` and `agent_end` detection.
+
+Remaining candidates are follow-up hardening rather than acceptance blockers:
+
+- GitHub full URL formatting as a result enhancer.
+- Repo-specific verification registry beyond package scripts.
+- Deeper PR-ready blocked-issue gates.
+
 ## Migration candidates
 
 1. Implement `utils/pr-workflow` as the runtime home for PR mergeability.
