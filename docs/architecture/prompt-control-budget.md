@@ -124,6 +124,7 @@ Stable global prompt providers currently include:
 2. Move destructive git and GitHub mutation checks from prompt-only policy into `tool_call` enforcement. Initial runtime confirmation lives in `mekann/safety/git-safety`.
 3. Move issue duplicate search and dependency gates into issue commands. Dependency gates already run in `mekann-issue`; duplicate search now starts in `/issue-create`.
 4. Add a budget check so stable global prompt bullet controls cannot grow beyond 50 unnoticed.
+5. Move verification reporting into `/verify`, which runs repo-local scripts and reports exactly which commands passed or failed.
 
 ## PR workflow runtime feature design
 
