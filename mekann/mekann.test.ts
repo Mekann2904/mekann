@@ -28,6 +28,7 @@ const EXPECTED_COMMANDS_BY_MODULE: Record<string, string[]> = {
 	"autonomy/subagent/index.ts": ["agents", "wait-agent", "focus-agent", "close-agent"],
 	"autonomy/autoresearch/commands.ts": ["autoresearch"],
 	"utils/zip-repo/index.ts": ["zip"],
+	"utils/pr-workflow/index.ts": ["pr-check"],
 	"utils/codex-limits/index.ts": ["codex-status"],
 	"context/output-gate/index.ts": ["output-gate"],
 };
@@ -90,9 +91,10 @@ describe("mekann integrated extension", () => {
 		expect(calls).toEqual(["core", "safety", "autonomy", "utils", "context"]);
 	});
 
-	it("loads sandbox before modes inside safety", () => {
+	it("loads safety runtime boundaries before collaboration-mode UX", () => {
 		const source = read("mekann/safety/index.ts");
 		expect(source.indexOf("sandbox(pi);")).toBeLessThan(source.indexOf("modes(pi);"));
+		expect(source.indexOf("gitSafety(pi);")).toBeGreaterThan(source.indexOf("modes(pi);"));
 	});
 
 	it("keeps autonomy modules in goal, subagent, autoresearch order", () => {

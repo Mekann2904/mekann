@@ -107,7 +107,7 @@ Stable global prompt providers currently include:
 | `proactive-review` | Prompt + future runtime flow | Diff-size detection can become runtime flow; judgment remains prompt. |
 | `github-links` | Prompt + result enhancer candidate | URL formatting can later be handled by GitHub result enhancers. |
 | `pr-workflow` | Runtime-flow routing prompt | Detailed steps should live in `utils/pr-workflow`; prompt should only route to it. |
-| `git-safety` | Runtime enforcement + prompt safety net | Mechanical command blocking should live in `tool_call`; prompt remains a short fallback. |
+| `git-safety` | Runtime enforcement + prompt safety net | `mekann/safety/git-safety` confirms high-risk bash commands at `tool_call`; prompt remains a short fallback. |
 | `sandbox` | Runtime enforcement + prompt safety net | Sandbox owns hard boundaries. |
 | `cacheable-context` | Project instruction locator | Keep as compact locator rather than embedding all docs. |
 | `skill-surface` | Skill routing | Semi-stable surface; detailed procedures live in skill files. |
@@ -121,7 +121,7 @@ Stable global prompt providers currently include:
    - `agent_end`: optionally inspect when a PR was created or mentioned in the turn.
    - `gh pr create` result detector: extract PR URLs from tool output.
    - Mergeability follow-up: enqueue a user follow-up only when the PR is blocked and safe remediation requires agent work.
-2. Move destructive git and GitHub mutation checks from prompt-only policy into `tool_call` enforcement.
+2. Move destructive git and GitHub mutation checks from prompt-only policy into `tool_call` enforcement. Initial runtime confirmation lives in `mekann/safety/git-safety`.
 3. Move issue duplicate search and dependency gates into issue commands.
 4. Add a budget check so stable global prompt bullet controls cannot grow beyond 50 unnoticed.
 

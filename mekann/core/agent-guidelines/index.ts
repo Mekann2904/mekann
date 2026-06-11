@@ -21,13 +21,8 @@ Proactive code review policy:
 
 const GIT_SAFETY_EXTRA = `
 
-Git safety policy — require explicit user instruction before executing:
-- Never push (including force push) unless the user explicitly asks you to.
-- Never create, merge, close, or approve a PR unless the user explicitly asks you to.
-- Never create or close a GitHub issue unless the user explicitly asks you to.
-- Never run destructive local operations (git reset --hard, git clean -f, git branch -D, git rebase) unless the user explicitly asks you to.
-- Never delete a remote branch unless the user explicitly asks you to.
-- If you believe one of these actions would be appropriate, suggest it and wait for the user to confirm before executing.
+Git safety routing policy:
+- Use Mekann runtime confirmation flows for remote GitHub mutations, push/force-push, and destructive local git operations; if a needed action is blocked or not covered by runtime policy, ask for explicit user permission first.
 `;
 
 const GITHUB_LINKS_EXTRA = `
