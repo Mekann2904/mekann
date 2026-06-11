@@ -2,7 +2,7 @@
 
 `git-safety` is a safety feature that moves mechanically detectable high-risk git and GitHub operations out of prompt-only policy and into `tool_call` runtime confirmation.
 
-It intercepts `bash` tool calls and asks the user to confirm before allowing commands such as:
+It intercepts `bash` tool calls, recognizes common `git`/`gh` option prefixes such as `git -C ...` and `gh --repo ...`, and asks the user to confirm before allowing commands such as:
 
 - `git push`, including force-push variants
 - `git reset --hard`

@@ -39,9 +39,20 @@ async function checkPr(target: string | undefined, cwd: string): Promise<PrStatu
 	return JSON.parse(stdout) as PrStatus;
 }
 
-function extractPrUrls(messages: unknown): string[] {
-	const text = JSON.stringify(messages ?? "");
-	return [...new Set(text.match(PR_URL_RE) ?? [])];
+function textFromMessage(message: unknown): string {
+	if (typeof message === "string") return message;
+	if (!message || typeof message !== "object") return "";
+	const record = message as Record<string, unknown>;
+	if (typeof record.content === "string") return record.content;
+	if (Array.isArray(record.content)) return record.content.map(textFromMessage).join("\n");
+	if (typeof record.text === "string") return record.text;
+	return "";
+}
+
+function extractPrUrlsFromMessages(messages: unknown): string[] {
+	const text = Array.isArray(messages) ? messages.map(textFromMessage).join("\n") : textFromMessage(messages);
+	const fallback = text || JSON.stringify(messages ?? "");
+	return [...new Set(fallback.match(PR_URL_RE) ?? [])];
 }
 
 export default function prWorkflowExtension(pi: ExtensionAPI): void {
@@ -60,7 +71,7 @@ export default function prWorkflowExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("agent_end", async (event, ctx) => {
-		const urls = extractPrUrls((event as { messages?: unknown }).messages);
+		const urls = extractPrUrlsFromMessages((event as { messages?: unknown }).messages);
 		for (const url of urls) {
 			if (autoCheckedUrls.has(url)) continue;
 			try {

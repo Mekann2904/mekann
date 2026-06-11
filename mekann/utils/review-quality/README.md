@@ -4,8 +4,8 @@
 
 ## Command
 
-- `/review-quality`: inspects `git diff --numstat HEAD` and reports diff size. For large diffs, it suggests `thermo-nuclear-code-quality-review`.
+- `/review-quality`: inspects the branch diff from the merge-base with `origin/HEAD` or `main`, plus the working-tree diff from `HEAD`, and reports diff size. For large diffs, it suggests `thermo-nuclear-code-quality-review`.
 
 ## Hook
 
-On `agent_end`, the feature checks diff size and notifies once per diff signature when the change is large enough to merit a strict maintainability review.
+On `agent_end`, the feature checks branch + working-tree diff size and notifies once per diff signature when the change is large enough to merit a strict maintainability review.

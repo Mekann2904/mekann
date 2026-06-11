@@ -3,23 +3,36 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 type GitSafetyMatch = {
 	label: string;
 	reason: string;
+	severity: number;
 };
 
-const MUTATING_PATTERNS: Array<{ pattern: RegExp; label: string; reason: string }> = [
-	{ pattern: /\bgit\s+push\b/i, label: "git push", reason: "remote branch publication requires explicit user permission" },
-	{ pattern: /\bgit\s+push\b[^\n;&|]*\s(?:--force|-f|--force-with-lease)\b/i, label: "git force push", reason: "force push can rewrite remote history" },
-	{ pattern: /\bgit\s+reset\s+--hard\b/i, label: "git reset --hard", reason: "hard reset discards local work" },
-	{ pattern: /\bgit\s+clean\b(?=[^\n;&|]*(?:\s-[A-Za-z]*f[A-Za-z]*\b|\s--force\b))/i, label: "git clean", reason: "git clean can delete untracked files" },
-	{ pattern: /\bgit\s+branch\s+-D\b/i, label: "git branch -D", reason: "forced branch deletion can remove local work" },
-	{ pattern: /\bgit\s+rebase\b/i, label: "git rebase", reason: "rebase rewrites local history" },
-	{ pattern: /\bgh\s+pr\s+(?:merge|close|ready|review\b[^\n;&|]*\s--approve\b)\b/i, label: "GitHub PR mutation", reason: "PR merge/close/ready/approval changes remote collaboration state" },
-	{ pattern: /\bgh\s+issue\s+close\b/i, label: "GitHub issue close", reason: "closing an issue changes remote project state" },
-	{ pattern: /\bgh\s+pr\s+create\b/i, label: "GitHub PR create", reason: "creating a PR changes remote project state" },
-	{ pattern: /\bgh\s+issue\s+create\b/i, label: "GitHub issue create", reason: "creating an issue changes remote project state" },
+type GitSafetyRule = GitSafetyMatch & { pattern: RegExp };
+
+function commandPrefix(tool: "git" | "gh"): string {
+	return `(?:^|[\\s;&|()])(?:command\\s+|env\\s+[^;&|]*?\\s+)?${tool}(?:\\s+-C\\s+\\S+|\\s+--repo\\s+\\S+|\\s+--no-pager)*\\s+`;
+}
+
+const GIT = commandPrefix("git");
+const GH = commandPrefix("gh");
+
+const MUTATING_PATTERNS: GitSafetyRule[] = [
+	{ pattern: new RegExp(`${GIT}push\\b[^\\n;&|]*(?:\\s--force\\b|\\s-f\\b|\\s--force-with-lease\\b)`, "i"), label: "git force push", reason: "force push can rewrite remote history", severity: 100 },
+	{ pattern: new RegExp(`${GIT}reset\\s+--hard\\b`, "i"), label: "git reset --hard", reason: "hard reset discards local work", severity: 90 },
+	{ pattern: new RegExp(`${GIT}clean\\b(?=[^\\n;&|]*(?:\\s-[A-Za-z]*f[A-Za-z]*\\b|\\s--force\\b))`, "i"), label: "git clean", reason: "git clean can delete untracked files", severity: 90 },
+	{ pattern: new RegExp(`${GIT}branch\\s+-D\\b`, "i"), label: "git branch -D", reason: "forced branch deletion can remove local work", severity: 80 },
+	{ pattern: new RegExp(`${GIT}rebase\\b`, "i"), label: "git rebase", reason: "rebase rewrites local history", severity: 80 },
+	{ pattern: new RegExp(`${GIT}push\\b`, "i"), label: "git push", reason: "remote branch publication requires explicit user permission", severity: 70 },
+	{ pattern: new RegExp(`${GH}pr\\s+(?:merge|close|ready)\\b`, "i"), label: "GitHub PR mutation", reason: "PR merge/close/ready changes remote collaboration state", severity: 80 },
+	{ pattern: new RegExp(`${GH}pr\\s+review\\b[^\\n;&|]*\\s--approve\\b`, "i"), label: "GitHub PR approval", reason: "approving a PR changes remote collaboration state", severity: 80 },
+	{ pattern: new RegExp(`${GH}issue\\s+close\\b`, "i"), label: "GitHub issue close", reason: "closing an issue changes remote project state", severity: 70 },
+	{ pattern: new RegExp(`${GH}pr\\s+create\\b`, "i"), label: "GitHub PR create", reason: "creating a PR changes remote project state", severity: 70 },
+	{ pattern: new RegExp(`${GH}issue\\s+create\\b`, "i"), label: "GitHub issue create", reason: "creating an issue changes remote project state", severity: 70 },
 ];
 
 export function classifyGitSafetyCommand(command: string): GitSafetyMatch | undefined {
-	return MUTATING_PATTERNS.find(({ pattern }) => pattern.test(command));
+	return MUTATING_PATTERNS
+		.filter(({ pattern }) => pattern.test(command))
+		.sort((a, b) => b.severity - a.severity)[0];
 }
 
 export default function gitSafetyExtension(pi: ExtensionAPI): void {

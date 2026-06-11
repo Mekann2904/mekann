@@ -38,8 +38,23 @@ describe("verify", () => {
 	});
 
 	it("selects the cheapest standard quick script", () => {
-		expect(selectVerifyScripts({ test: "vitest", typecheck: "tsc", "typecheck:prod": "tsc -p tsconfig.prod.json" }, "quick")).toEqual(["typecheck:prod"]);
-		expect(selectVerifyScripts({ test: "vitest" }, "quick")).toEqual(["test"]);
+		expect(selectVerifyScripts({ test: "vitest", typecheck: "tsc", "typecheck:prod": "tsc -p tsconfig.prod.json" }, "quick")).toEqual({ selected: ["typecheck:prod"], missing: [] });
+		expect(selectVerifyScripts({ test: "vitest" }, "quick")).toEqual({ selected: ["test"], missing: [] });
+	});
+
+	it("reports missing explicitly requested scripts", async () => {
+		const dir = createProject({ test: "vitest" });
+		try {
+			const pi = createMockPi();
+			verifyExtension(pi as any);
+			const ctx = { cwd: dir, ui: { notify: vi.fn() } };
+
+			await pi.commands.verify.handler("test lint", ctx);
+
+			expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("MISSING: lint"), "error");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 
 	it("registers /verify and reports passing commands", async () => {

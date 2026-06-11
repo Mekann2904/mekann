@@ -41,9 +41,34 @@ function formatSuggestion(stats: DiffStats): string {
 	return `Large change detected (${stats.files} files, +${stats.added}/-${stats.deleted}). Consider running /skill:thermo-nuclear-code-quality-review or /review-quality for a maintainability pass.`;
 }
 
+function mergeStats(branch: DiffStats, working: DiffStats): DiffStats {
+	return {
+		files: branch.files + working.files,
+		added: branch.added + working.added,
+		deleted: branch.deleted + working.deleted,
+		total: branch.total + working.total,
+		signature: `${branch.signature}::working::${working.signature}`,
+	};
+}
+
+async function resolveBaseRef(cwd: string): Promise<string> {
+	try {
+		return (await execGit(["merge-base", "HEAD", "origin/HEAD"], cwd)).trim();
+	} catch {
+		return (await execGit(["merge-base", "HEAD", "main"], cwd)).trim();
+	}
+}
+
 async function collectStats(ctx: ExtensionContext): Promise<DiffStats> {
-	const output = await execGit(["diff", "--numstat", "HEAD"], ctx.cwd);
-	return parseNumstat(output);
+	let branch = parseNumstat("");
+	try {
+		const base = await resolveBaseRef(ctx.cwd);
+		branch = parseNumstat(await execGit(["diff", "--numstat", `${base}...HEAD`], ctx.cwd));
+	} catch {
+		// Repositories without a discoverable base still get working-tree review hints.
+	}
+	const working = parseNumstat(await execGit(["diff", "--numstat", "HEAD"], ctx.cwd));
+	return mergeStats(branch, working);
 }
 
 async function handleReviewQuality(ctx: ExtensionContext): Promise<void> {

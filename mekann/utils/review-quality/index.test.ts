@@ -34,7 +34,9 @@ describe("review-quality", () => {
 	it("registers /review-quality and reports small diffs", async () => {
 		const pi = createMockPi();
 		reviewQualityExtension(pi as any);
-		execResults.set("git diff --numstat HEAD", { stdout: "10\t2\ta.ts\n" });
+		execResults.set("git merge-base HEAD origin/HEAD", { stdout: "base\n" });
+		execResults.set("git diff --numstat base...HEAD", { stdout: "10\t2\ta.ts\n" });
+		execResults.set("git diff --numstat HEAD", { stdout: "" });
 		const c = ctx();
 
 		await pi.commands["review-quality"].handler("", c);
@@ -45,7 +47,9 @@ describe("review-quality", () => {
 	it("suggests strict review once per diff signature on agent_end", async () => {
 		const pi = createMockPi();
 		reviewQualityExtension(pi as any);
-		execResults.set("git diff --numstat HEAD", { stdout: "500\t1\ta.ts\n" });
+		execResults.set("git merge-base HEAD origin/HEAD", { stdout: "base\n" });
+		execResults.set("git diff --numstat base...HEAD", { stdout: "500\t1\ta.ts\n" });
+		execResults.set("git diff --numstat HEAD", { stdout: "" });
 		const c = ctx();
 
 		await pi.handlers.agent_end({}, c);
