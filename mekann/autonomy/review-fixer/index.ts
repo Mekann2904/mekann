@@ -11,17 +11,43 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { isFeatureEnabled } from "../../settings/enabled.js";
+import { createSubagentControl } from "../subagent/controlFactory.js";
+import { extractJSONWithSchema } from "../subagent/resultSchemaShared.js";
+import type { ReviewFixerResult } from "./types.js";
 import { resolveIssueContext, checkIssueReadiness } from "./issueContext.js";
-import { runChildReviewFixer } from "./childLifecycle.js";
 import { loadReviewFixerSettings } from "./settingsLoader.js";
 import { ReviewFixerParamsSchema } from "./schemas.js";
+import { buildChildPrompt } from "./childPrompt.js";
 import { registerReviewFixerPromptProvider } from "./promptProvider.js";
+
+function extractReviewFixerResult(output: string | undefined): ReviewFixerResult | null {
+  if (!output) return null;
+  const json = extractJSONWithSchema(output, "review-fixer.result.v1");
+  if (!json) return null;
+  try { return JSON.parse(json) as ReviewFixerResult; }
+  catch { return null; }
+}
 
 export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<void> {
   if (!isFeatureEnabled("review-fixer")) return;
 
   registerReviewFixerPromptProvider();
+
+  // Review fixer intentionally reuses the subagent control plane instead of
+  // hand-rolling Kitty/IPC lifecycle. If delegate_agent works, review_fixer
+  // should work through the same path.
+  let control: ReturnType<typeof createSubagentControl> | null = null;
+  const subagentExtensionPath = fileURLToPath(new URL("../subagent/index.ts", import.meta.url));
+  function ensureControl() {
+    if (!control) control = createSubagentControl(pi, subagentExtensionPath);
+    return control;
+  }
+
+  pi.on("session_shutdown", async () => {
+    if (control) { await control.shutdown(); control = null; }
+  });
 
   // ─── Tool ────────────────────────────────────────────────────
 
@@ -77,13 +103,25 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
         statusBefore = execFileSync("git", ["status", "--porcelain"], { cwd: ctx.cwd, encoding: "utf-8" });
       } catch { /* ignore */ }
 
-      // 5. Run child Pi
-      const { result, changedFiles, error } = await runChildReviewFixer(
-        issueContext,
-        settings,
-        ctx.cwd,
-        ctx,
-      );
+      // 5. Run through the same synchronous subagent delegate path as delegate_agent
+      const prompt = buildChildPrompt(issueContext, ctx.cwd);
+      const delegate = await ensureControl().delegate({
+        task_name: `review-fixer-${issueContext.number}`,
+        message: prompt,
+        model: settings.model ? `${settings.model.provider}/${settings.model.modelId}` : undefined,
+        reasoning_effort: settings.reasoningEffort,
+        role: "review-fixer",
+        nickname: `review-fixer #${issueContext.number}`,
+        fork_turns: "none",
+        authority: { mode: "edit" },
+        result_contract: "free_text",
+        roi_category: "fresh_review",
+        justification: "Synchronous issue-scoped thermo-nuclear code quality review before PR creation.",
+        cost_intent: "expensive",
+        type: "review",
+      }, ctx);
+      const result = extractReviewFixerResult(delegate.final_result);
+      const error = delegate.status === "errored" ? `subagent status: ${delegate.status}` : undefined;
 
       // 6. Snapshot git status after
       let statusAfter = "";
@@ -96,7 +134,7 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
         return {
           content: [{
             type: "text" as const,
-            text: `Review fixer failed: ${error}\n\nChanged files: ${changedFiles.length > 0 ? changedFiles.join(", ") : "none"}`,
+            text: `Review fixer failed: ${error}\n\nChanged files: none`,
           }],
           isError: true,
         };
@@ -107,12 +145,12 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
       const afterFiles = new Set(statusAfter.split("\n").filter(Boolean).map((l) => l.slice(3)));
       const newChangedFiles = [...afterFiles].filter((f) => !beforeFiles.has(f));
 
-      // If child reported its own changed files, prefer those; otherwise use diff
-      const effectiveChangedFiles = changedFiles.length > 0 ? changedFiles : newChangedFiles;
+      const effectiveChangedFiles = newChangedFiles;
 
       const details: Record<string, unknown> = {
         issue: { number: issueContext.number, title: issueContext.title, url: issueContext.url },
         childResult: result,
+        subagent: { agent_id: delegate.agent_id, task_name: delegate.task_name, status: delegate.status },
         changedFiles: effectiveChangedFiles,
         statusBefore: statusBefore.trim(),
         statusAfter: statusAfter.trim(),

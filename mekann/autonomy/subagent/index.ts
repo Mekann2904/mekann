@@ -56,9 +56,9 @@ export async function delegateAgentFromFeature(params: DelegateAgentParams, ctx:
 // ─── Extension entry point ───────────────────────────────────────
 
 export default function subagentExtension(pi: ExtensionAPI): void | Promise<void> {
-  if (process.env.MEKANN_TEST_ENABLE_SUBAGENT !== "1" && !isFeatureEnabled("subagent")) return;
-
-  registerSubagentPromptProvider();
+  // Child mode must be handled before the feature-enabled gate. Review fixer
+  // reuses the subagent runtime even when the public subagent tool surface is
+  // disabled, and external child Pi processes are launched with --sub.
   if (process.env.PI_SUBAGENT_ROLE === "child" || process.env.PI_SUBAGENT_ROLE === "review-fixer") {
     const g = globalThis as typeof globalThis & { __piSubagentChildStarted?: boolean };
     if (!g.__piSubagentChildStarted) {
@@ -70,6 +70,10 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     }
     return;
   }
+
+  if (process.env.MEKANN_TEST_ENABLE_SUBAGENT !== "1" && !isFeatureEnabled("subagent")) return;
+
+  registerSubagentPromptProvider();
 
   let control: AgentControl | null = null;
   // ─── Flags ────────────────────────────────────────────────────
