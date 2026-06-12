@@ -1,3 +1,0 @@
-# Use subagents for context isolation and fresh review
-
-Mekann treats subagents as a way to preserve reasoning quality during autonomous work, not merely as a parallel execution mechanism or a context-compression trick. We delegate coherent bounded tasks with minimal sufficient context so the parent agent does not have to hold every branch of the work at once, and so review or evaluation can be performed from a cleaner context that reduces anchoring and self-justification.
