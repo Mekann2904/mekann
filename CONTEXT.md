@@ -296,6 +296,10 @@ _Avoid_: context compression, shared scratchpad
 An evaluation or judgment performed by an agent whose context is intentionally cleaner than the parent agent's context. Fresh review is used to reduce anchoring, self-justification, and overconfidence in code or plans produced by the parent agent.
 _Avoid_: self-review, rubber stamp
 
+**Review fixer**:
+A synchronous fresh-review workflow for an issue worktree that launches a child Pi in the same branch and workspace as the parent, derives the managed GitHub issue from the issue worktree, runs a narrowly specified review skill such as `thermo-nuclear-code-quality-review`, allows the child Pi to edit the current workspace directly, and returns control to the parent only after the review-and-fix task completes. Review fixers trade workspace isolation for fidelity to the current diff and therefore require the parent to stop mechanically while the child Pi owns the workspace.
+_Avoid_: generic subagent, patch-only review, asynchronous background reviewer, issue-agnostic review
+
 ### Subagents and trust
 
 **Subagent result**:

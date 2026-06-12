@@ -95,10 +95,10 @@ describe("mekann integrated extension", () => {
 		expect(source.indexOf("sandbox(pi);")).toBeLessThan(source.indexOf("modes(pi);"));
 	});
 
-	it("keeps autonomy modules in goal, subagent, autoresearch order", () => {
+	it("keeps autonomy modules in goal, subagent, review-fixer, autoresearch order", () => {
 		const source = read("mekann/autonomy/index.ts");
-		const calls = [...source.matchAll(/await (goal|subagent|autoresearch)\(pi\);/g)].map((m) => m[1]);
-		expect(calls).toEqual(["goal", "subagent", "autoresearch"]);
+		const calls = [...source.matchAll(/await (goal|subagent|reviewFixer|autoresearch)\(pi\);/g)].map((m) => m[1]);
+		expect(calls).toEqual(["goal", "subagent", "reviewFixer", "autoresearch"]);
 	});
 
 	it("keeps tool ownership separated across modules", () => {

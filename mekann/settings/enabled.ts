@@ -36,6 +36,7 @@ function rawFeatureValue(feature: string, key: string, cwd = process.cwd()): unk
 
 const DEFAULT_FEATURE_ENABLED: Record<string, boolean> = {
 	subagent: false,
+	"review-fixer": false,
 };
 
 /**
