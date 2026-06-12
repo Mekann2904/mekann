@@ -1,6 +1,6 @@
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, appendFile, writeFile, writeFile as writeFileCb } from "node:fs/promises";
+import { mkdir, appendFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AgentDisplayRef } from "./types.js";
@@ -141,32 +141,24 @@ export class KittyController {
    * to avoid exceeding shell/env-var size limits.
    */
   private async prepareScript(params: LaunchPiWindowParams): Promise<{ script: string; cleanup: () => void }> {
-    let cleanup = () => {};
+    const cleanup = () => {};
 
     if (params.initialMessage.length > KittyController.ENV_VAR_MSG_LIMIT) {
       // Write the message to a temp file, then have the child script read it.
       const msgFile = path.join(os.tmpdir(), `pi-msg-${params.agentId}.txt`);
       await writeFile(msgFile, params.initialMessage, "utf-8");
-      cleanup = () => { try { require("fs").unlinkSync(msgFile); } catch { /* ignore */ }; };
-
       const patchedParams = {
         ...params,
         // Replace the huge inline message with a small marker; the script
-        // below overrides PI_SUBAGENT_INITIAL_MESSAGE from the file.
+        // below points the child at the temp file instead.
         initialMessage: `__FILE__:${msgFile}`,
       };
       const baseScript = this.buildChildScript(patchedParams);
-      // Replace the env var export with a file-read version
+      // Do not cat the file back into an env var here: that reintroduces
+      // environment-size risk at exec time. Child mode reads this file directly.
       const script = baseScript.replace(
         `export PI_SUBAGENT_INITIAL_MESSAGE='__FILE__:${msgFile}'`,
-        [
-          `if [ -f "${msgFile}" ]; then`,
-          `  export PI_SUBAGENT_INITIAL_MESSAGE="$(cat "${msgFile}")"`,
-          `  rm -f "${msgFile}"`,
-          `else`,
-          `  export PI_SUBAGENT_INITIAL_MESSAGE="(initial message file not found)"`,
-          `fi`,
-        ].join("; "),
+        `export PI_SUBAGENT_INITIAL_MESSAGE_FILE=${shellQuote(msgFile)}`,
       );
       return { script, cleanup };
     }
