@@ -66,7 +66,11 @@ function readADRs(cwd: string): string[] {
   }
 }
 
-export function buildChildPrompt(issueContext: ResolvedIssueContext, cwd: string): string {
+export interface ChildPromptOptions {
+  maxFixRetries: number;
+}
+
+export function buildChildPrompt(issueContext: ResolvedIssueContext, cwd: string, options: ChildPromptOptions): string {
   const skill = readSkill();
   const contextMd = readContextMd(cwd);
   const adrs = readADRs(cwd);
@@ -85,7 +89,7 @@ and edit the code to achieve the best possible implementation quality.
 - Follow the thermo-nuclear-code-quality-review skill below strictly.
 - You MAY edit files directly in the workspace to fix issues you find.
 - You MUST run relevant tests after editing and verify they pass.
-- If tests fail, fix the issues and retry up to the configured limit.
+- If tests fail, fix the issues and retry up to ${options.maxFixRetries} times.
 - You MUST NOT make changes outside the scope of the current issue.
 - You MUST NOT change public API behavior, UX, or product decisions.
 - If you believe a behavior change is necessary, note it in behavior_changes but do NOT make it.

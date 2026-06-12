@@ -21,6 +21,7 @@ import { loadReviewFixerSettings } from "./settingsLoader.js";
 import { ReviewFixerParamsSchema } from "./schemas.js";
 import { buildChildPrompt } from "./childPrompt.js";
 import { registerReviewFixerPromptProvider } from "./promptProvider.js";
+import { snapshotContentHashes, computeChangedFiles } from "./changedFiles.js";
 
 function extractReviewFixerResult(output: string | undefined): ReviewFixerResult | null {
   if (!output) return null;
@@ -35,9 +36,21 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
 
   registerReviewFixerPromptProvider();
 
-  // Review fixer intentionally reuses the subagent control plane instead of
-  // hand-rolling Kitty/IPC lifecycle. If delegate_agent works, review_fixer
-  // should work through the same path.
+  // ── Subagent runtime dependency boundary ──────────────────────────
+  //
+  // review-fixer reuses the subagent feature's control plane
+  // (`createSubagentControl` → `AgentControl.delegate()`) for child Pi
+  // lifecycle management. The following subagent settings affect review-fixer:
+  //   - display mode (kitty-split / kitty-pi / none)
+  //   - extensionPath (child Pi extension loading)
+  //   - piCommand, kittenBin, logDir
+  //   - maxAgents, maxDepth, maxQueuedSubagents
+  //   - defaultReasoningEffort (overridden by review-fixer settings)
+  //
+  // Review-fixer-specific settings (model, reasoningEffort, maxFixRetries)
+  // are resolved in ./settingsLoader.ts and passed explicitly to the
+  // delegate call and child prompt.
+  // ──────────────────────────────────────────────────────────────────
   let control: ReturnType<typeof createSubagentControl> | null = null;
   const subagentExtensionPath = fileURLToPath(new URL("../subagent/index.ts", import.meta.url));
   function ensureControl() {
@@ -99,14 +112,16 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
         };
       }
 
-      // 4. Snapshot git status before
+      // 4. Snapshot content hashes before (detects changes to already-dirty files)
+      const hashesBefore = snapshotContentHashes(ctx.cwd);
+      // Also keep a porcelain snapshot for the details payload
       let statusBefore = "";
       try {
         statusBefore = execFileSync("git", ["status", "--porcelain"], { cwd: ctx.cwd, encoding: "utf-8" });
       } catch { /* ignore */ }
 
       // 5. Run through the same synchronous subagent delegate path as delegate_agent
-      const prompt = buildChildPrompt(issueContext, ctx.cwd);
+      const prompt = buildChildPrompt(issueContext, ctx.cwd, { maxFixRetries: settings.maxFixRetries });
       const delegate = await ensureControl().delegate({
         task_name: `review-fixer-${issueContext.number}`,
         message: prompt,
@@ -125,7 +140,8 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
       const result = extractReviewFixerResult(delegate.final_result);
       const error = delegate.status === "errored" ? `subagent status: ${delegate.status}` : undefined;
 
-      // 6. Snapshot git status after
+      // 6. Snapshot content hashes after
+      const hashesAfter = snapshotContentHashes(ctx.cwd);
       let statusAfter = "";
       try {
         statusAfter = execFileSync("git", ["status", "--porcelain"], { cwd: ctx.cwd, encoding: "utf-8" });
@@ -143,12 +159,10 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
         };
       }
 
-      // Compute actual changed files from diff
-      const beforeFiles = new Set(statusBefore.split("\n").filter(Boolean).map((l) => l.slice(3)));
-      const afterFiles = new Set(statusAfter.split("\n").filter(Boolean).map((l) => l.slice(3)));
-      const newChangedFiles = [...afterFiles].filter((f) => !beforeFiles.has(f));
-
-      const effectiveChangedFiles = newChangedFiles;
+      // Compute changed files via content-hash comparison
+      // This detects changes to files that were already dirty before the child ran,
+      // not just newly-appeared files in git status.
+      const effectiveChangedFiles = computeChangedFiles(hashesBefore, hashesAfter);
 
       const details: Record<string, unknown> = {
         issue: { number: issueContext.number, title: issueContext.title, url: issueContext.url },
