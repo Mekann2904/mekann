@@ -13,6 +13,15 @@ import { getRepoInfo, createWorktree, removeWorktree, worktreeDir, listExistingW
 import { mountIssueList } from "./app.js";
 import { launchPiSessionInKittySplit } from "../terminal/pi-session.js";
 
+function buildIssueSessionSystemPrompt(issueNumber: number): string {
+	return [
+		`You are working in an issue worktree for GitHub issue #${issueNumber}.`,
+		"When the user asks you to implement or fix the issue, complete the implementation in this session, then immediately run the review_fixer tool before any commit, push, or PR creation.",
+		"The required workflow is: user instruction → implement/fix → run review_fixer → inspect and report the review_fixer result to the user.",
+		"Do not merely recommend review_fixer after implementation; invoke it yourself unless the issue is blocked or the user explicitly forbids it.",
+	].join("\n");
+}
+
 async function main(): Promise<void> {
 	const args = parseIssueArgs(process.argv.slice(2));
 	if (!args.ok) {
@@ -136,6 +145,7 @@ async function runInteractive(): Promise<void> {
 				cwd: wtPath,
 				title: `Issue #${issue.number}`,
 				nodeBin: process.env.MEKANN_NODE_BIN,
+				appendSystemPrompt: buildIssueSessionSystemPrompt(issue.number),
 				hold: process.env.MEKANN_ISSUE_DEBUG === "1",
 			});
 			process.exit(0);

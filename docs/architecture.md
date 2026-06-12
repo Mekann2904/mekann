@@ -28,10 +28,10 @@ mekann
 | Suite | Responsibility | Notable features |
 |---|---|---|
 | `core` | prompt の土台、常時ガイドライン、provider-aware 最適化 | `prompt-core`, `cache-friendly-prompt`, `agent-guidelines`, `model-optimizer` |
-| `safety` | tool 実行や collaboration mode の安全境界 | `sandbox`, `modes`, `policy-core` |
+| `safety` | tool 実行や collaboration mode の安全境界 | `sandbox`, `modes`, `policy-core`, `git-safety` |
 | `autonomy` | 長い作業、並列作業、継続目標、反復研究 | `goal`, `subagent`, `autoresearch` |
 | `context` | runtime context management と大出力制御 | `output-gate`, `context-ledger` |
-| `utils` | human-facing helper と terminal integration | `zip-repo`, `codex-limits`, `dashboard`, `codex-web-search`, `terminal-shortcuts`, `settings-editor` |
+| `utils` | human-facing helper と terminal integration | `zip-repo`, `codex-limits`, `dashboard`, `codex-web-search`, `terminal-shortcuts`, `settings-editor`, `pr-workflow`, `verify`, `review-quality` |
 
 ## Design sources
 

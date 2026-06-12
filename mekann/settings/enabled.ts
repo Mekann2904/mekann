@@ -34,24 +34,16 @@ function rawFeatureValue(feature: string, key: string, cwd = process.cwd()): unk
 	return getPathValue(rawFeatureConfig(feature, cwd), key);
 }
 
-const DEFAULT_FEATURE_ENABLED: Record<string, boolean> = {
-	subagent: false,
-	"review-fixer": false,
-};
-
 /**
  * Returns whether a Mekann feature should expose its LLM/user-visible surface.
- * Missing settings default to enabled unless the feature is explicitly opted out
- * in DEFAULT_FEATURE_ENABLED.
+ * Missing settings default to enabled so existing installations keep behavior.
  *
  * Keep this path independent from the settings schema registry: suite indexes call
  * it during Pi startup before deciding which feature modules to import, and pulling
  * in every feature's settings schema here defeats lazy loading.
  */
 export function isFeatureEnabled(feature: string, cwd = process.cwd()): boolean {
-	const value = rawFeatureValue(feature, "enabled", cwd);
-	if (typeof value === "boolean") return value;
-	return DEFAULT_FEATURE_ENABLED[feature] ?? true;
+	return rawFeatureValue(feature, "enabled", cwd) !== false;
 }
 
 export function featureStringValue(feature: string, key: string, fallback: string, cwd = process.cwd()): string {

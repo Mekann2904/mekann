@@ -13,21 +13,14 @@ Additional coding-agent guidelines:
 
 const PROACTIVE_REVIEW_EXTRA = `
 
-Proactive code review policy:
-- After completing a non-trivial implementation or when the user seems to want a review, actively propose running the thermo-nuclear-code-quality-review skill.
-- Even if the user has not explicitly asked for a review, if the change's importance or complexity makes a review beneficial, run the review yourself or recommend the skill.
-- When you judge that a review would add value, do not wait for the user to ask — suggest it proactively.
+Proactive review routing policy:
+- Prefer Mekann runtime review-quality detection such as \`/review-quality\` for diff-size based review prompts; still use judgment to recommend deeper review when risk is semantic rather than mechanical.
 `;
 
 const GIT_SAFETY_EXTRA = `
 
-Git safety policy — require explicit user instruction before executing:
-- Never push (including force push) unless the user explicitly asks you to.
-- Never create, merge, close, or approve a PR unless the user explicitly asks you to.
-- Never create or close a GitHub issue unless the user explicitly asks you to.
-- Never run destructive local operations (git reset --hard, git clean -f, git branch -D, git rebase) unless the user explicitly asks you to.
-- Never delete a remote branch unless the user explicitly asks you to.
-- If you believe one of these actions would be appropriate, suggest it and wait for the user to confirm before executing.
+Git safety routing policy:
+- Use Mekann runtime confirmation flows for remote GitHub mutations, push/force-push, and destructive local git operations; if a needed action is blocked or not covered by runtime policy, ask for explicit user permission first.
 `;
 
 const GITHUB_LINKS_EXTRA = `
@@ -42,14 +35,9 @@ GitHub link policy:
 
 const PR_WORKFLOW_EXTRA = `
 
-PR workflow policy:
-- After creating a PR, immediately check whether GitHub reports merge conflicts or a blocked merge state.
-- Prefer \`gh pr view <url-or-number> --json mergeStateStatus,mergeable,url\` for the check.
-- If the PR is mergeable, report the PR URL and the merge state.
-- If the PR is not mergeable, conflicted, dirty, or otherwise blocked, fix it when it is safe and within the user's instructions; otherwise report the blocker clearly with the PR URL and ask for the needed decision or permission.
-- If fixing requires destructive git operations, force push, changing PR base, merging, closing, or other actions covered by git safety policy, ask for explicit user instruction before proceeding.
-- After attempting a fix, re-run the PR merge-state check and report the final state.
-- If GitHub reports an unknown or pending merge state, say that the conflict status is not yet conclusive and re-check if practical.
+PR workflow routing policy:
+- Prefer Mekann PR runtime flows such as \`/pr-check\` over manual ad-hoc PR mergeability procedures when available.
+- If a runtime flow reports that a PR is blocked, conflicted, dirty, or unknown, handle only safe follow-up work and defer force push, merge, close, approval, or destructive git decisions to explicit user permission.
 `;
 
 export default function agentGuidelinesExtension(_pi: ExtensionAPI): void {

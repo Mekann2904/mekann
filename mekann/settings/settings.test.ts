@@ -42,7 +42,7 @@ describe("mekann settings core", () => {
 });
 
 describe("settings registry", () => {
-  const featureNames = ["modes", "sandbox", "subagent", "review-fixer", "command-normalization", "output-gate", "codex-shared", "codex-web-search", "codex-limits", "dashboard", "model-optimizer", "terminal"];
+  const featureNames = ["modes", "sandbox", "subagent", "command-normalization", "output-gate", "codex-shared", "codex-web-search", "codex-limits", "dashboard", "model-optimizer", "terminal"];
 
   it("registers all expected features", () => {
     const registered = mekannSettingsSchemas.map((s) => s.feature);
@@ -99,13 +99,6 @@ describe("sandbox schema", () => {
     const bytes = schema.settings.find((s) => s.key === "llmOutputMaxBytes")!;
     expect(bytes.validate(0)).toBeTruthy();
     expect(bytes.validate(51200)).toEqual([]);
-  });
-});
-
-describe("subagent schema", () => {
-  it("is disabled by default", () => {
-    const schema = mekannSettingsSchemas.find((s) => s.feature === "subagent")!;
-    expect(schema.settings.find((s) => s.key === "enabled")?.defaultValue).toBe(false);
   });
 });
 

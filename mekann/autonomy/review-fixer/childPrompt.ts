@@ -66,7 +66,11 @@ function readADRs(cwd: string): string[] {
   }
 }
 
-export function buildChildPrompt(issueContext: ResolvedIssueContext, cwd: string): string {
+export interface ChildPromptOptions {
+  maxFixRetries: number;
+}
+
+export function buildChildPrompt(issueContext: ResolvedIssueContext, cwd: string, options: ChildPromptOptions): string {
   const skill = readSkill();
   const contextMd = readContextMd(cwd);
   const adrs = readADRs(cwd);
@@ -80,19 +84,32 @@ You are a review fixer agent running in an isolated child Pi process.
 Your job is to perform a thermo-nuclear code quality review of the current branch's changes
 and edit the code to achieve the best possible implementation quality.
 
+## MANDATORY WORKFLOW
+
+You MUST execute the following steps in order. This is not optional guidance — it is your required workflow:
+
+1. **Inspect the diff**: Use \`bash\`, \`rg\`, and \`read\` to inspect the current branch's changes.
+2. **Apply the review skill**: Execute the \`thermo-nuclear-code-quality-review\` skill below as your core review methodology. Every review question, flag, and approval bar criterion must be applied.
+3. **Edit if needed**: If you find quality issues, edit files directly in the workspace to fix them.
+4. **Verify**: Run relevant tests after editing. If tests fail, fix and retry (up to the configured limit).
+5. **Return structured JSON**: Output EXACTLY one \`review-fixer.result.v1\` JSON object as your final output.
+
 ## Rules
 
-- Follow the thermo-nuclear-code-quality-review skill below strictly.
+- The thermo-nuclear-code-quality-review skill below is your PRIMARY instruction set. Follow it strictly — every review question, approval bar criterion, and output expectation applies.
+- Review tone: Be direct, serious, and demanding about quality (per the skill).
+- Approval bar: Apply the skill's approval bar rigorously. Do not approve merely because behavior seems correct.
+- Preferred remedies: Follow the skill's preferred remedies list when suggesting or applying fixes.
 - You MAY edit files directly in the workspace to fix issues you find.
 - You MUST run relevant tests after editing and verify they pass.
-- If tests fail, fix the issues and retry up to the configured limit.
+- If tests fail, fix the issues and retry up to ${options.maxFixRetries} times.
 - You MUST NOT make changes outside the scope of the current issue.
 - You MUST NOT change public API behavior, UX, or product decisions.
 - If you believe a behavior change is necessary, note it in behavior_changes but do NOT make it.
 - You MUST NOT run commit, push, PR, or any git operations that change remote state.
 - You MUST NOT spawn subagents or delegate work.
 - Be silent: do not narrate progress. Use tools and return the final result.
-- Output language: review findings in Japanese. Code snippets, file paths, and technical terms may remain in English.
+- Output language: review findings MUST be in Japanese. Code snippets, file paths, and technical terms may remain in English.
 `);
 
   // Issue context
@@ -123,21 +140,27 @@ ${adrs.join("\n\n")}
 `);
   }
 
-  // Skill
-  sections.push(`## Review Skill: thermo-nuclear-code-quality-review
+  // Skill — this is the core review methodology, not optional reference
+  sections.push(`## Review Skill: thermo-nuclear-code-quality-review (MANDATORY)
+
+This skill defines your review methodology. You MUST apply every review question,
+approval bar criterion, and output expectation listed below. This is not reference material —
+it is your required workflow.
 
 ${skill}
 `);
 
-  // Result schema
-  sections.push(`## Required Output Format
+  // Result schema — CRITICAL: the child MUST output this exact JSON
+  sections.push(`## Required Output Format — CRITICAL
 
-When you have completed your review and edits, output EXACTLY one JSON object
-conforming to this schema. Do NOT wrap it in markdown code fences.
+Your FINAL and ONLY output must be EXACTLY one JSON object conforming to this schema.
+Do NOT wrap it in markdown code fences.
 Do NOT output any other text before or after the JSON.
+Do NOT output a summary, explanation, or any prose — ONLY the raw JSON object.
 
-{
-  "schema": "review-fixer.result.v1",
+If you output anything other than this JSON, your result will be treated as a FAILURE.
+
+{\n  "schema": "review-fixer.result.v1",
   "status": "changed" | "no_change" | "failed",
   "issue": {
     "number": "<issue number>",
@@ -175,6 +198,9 @@ Do NOT output any other text before or after the JSON.
 - status "no_change" if the code was already optimal.
 - status "failed" if you could not complete the review or tests keep failing.
 - behavior_changes should normally be empty. If you wanted to change behavior but did not, describe it there.
+- findings descriptions MUST be in Japanese.
+- remaining_risks MUST be in Japanese.
+- parent_next_steps MUST be in Japanese.
 `);
 
   return sections.join("\n\n");

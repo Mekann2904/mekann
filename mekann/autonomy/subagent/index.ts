@@ -19,7 +19,6 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { readFileSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { AgentControl } from "./agentControl.js";
 import { SubagentClient } from "./ipc.js";
@@ -56,10 +55,10 @@ export async function delegateAgentFromFeature(params: DelegateAgentParams, ctx:
 // ─── Extension entry point ───────────────────────────────────────
 
 export default function subagentExtension(pi: ExtensionAPI): void | Promise<void> {
-  // Child mode must be handled before the feature-enabled gate. Review fixer
-  // reuses the subagent runtime even when the public subagent tool surface is
-  // disabled, and external child Pi processes are launched with --sub.
-  if (process.env.PI_SUBAGENT_ROLE === "child" || process.env.PI_SUBAGENT_ROLE === "review-fixer") {
+  if (process.env.MEKANN_TEST_ENABLE_SUBAGENT !== "1" && !isFeatureEnabled("subagent")) return;
+
+  registerSubagentPromptProvider();
+  if (process.env.PI_SUBAGENT_ROLE === "child") {
     const g = globalThis as typeof globalThis & { __piSubagentChildStarted?: boolean };
     if (!g.__piSubagentChildStarted) {
       g.__piSubagentChildStarted = true;
@@ -70,10 +69,6 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     }
     return;
   }
-
-  if (process.env.MEKANN_TEST_ENABLE_SUBAGENT !== "1" && !isFeatureEnabled("subagent")) return;
-
-  registerSubagentPromptProvider();
 
   let control: AgentControl | null = null;
   // ─── Flags ────────────────────────────────────────────────────
@@ -445,22 +440,11 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
     await shutdownControl();
   });
 }
-function readInitialMessageFile(filePath: string): string {
-  try {
-    const text = readFileSync(filePath, "utf-8");
-    try { unlinkSync(filePath); } catch { /* best-effort cleanup */ }
-    return text;
-  } catch (err) {
-    return `(initial message file could not be read: ${err instanceof Error ? err.message : String(err)})`;
-  }
-}
-
 async function startChildMode(pi: ExtensionAPI): Promise<void> {
   const agentId = process.env.PI_SUBAGENT_ID;
   const agentPath = process.env.PI_SUBAGENT_PATH;
   const socketPath = process.env.PI_SUBAGENT_PARENT_SOCKET;
-  const initialMessageFile = process.env.PI_SUBAGENT_INITIAL_MESSAGE_FILE;
-  const initialMessage = initialMessageFile ? readInitialMessageFile(initialMessageFile) : (process.env.PI_SUBAGENT_INITIAL_MESSAGE ?? "");
+  const initialMessage = process.env.PI_SUBAGENT_INITIAL_MESSAGE ?? "";
   const nonce = process.env.PI_SUBAGENT_NONCE;
   if (!agentId || !agentPath || !socketPath) {
     console.error("subagent child mode requires PI_SUBAGENT_ID, PI_SUBAGENT_PATH, and PI_SUBAGENT_PARENT_SOCKET");

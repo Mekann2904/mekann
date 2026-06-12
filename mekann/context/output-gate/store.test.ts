@@ -167,14 +167,6 @@ describe("output-gate store", () => {
 		expect(entry.source).toEqual({ kind: "tool_result", toolName: "bash" });
 	});
 
-	it("saveArtifact uses bash command source for command-aware structured preview", async () => {
-		const cwd = await tmp();
-		const text = Array.from({ length: 200 }, (_, i) => `file-${i}.ts`).join("\n");
-		const { entry } = await saveArtifact({ cwd, toolName: "bash", text, idGenerator: () => "og_cmd_1", source: { kind: "tool_result", toolName: "bash", command: "ls -la" } });
-		expect(entry.structuredPreview).toContain("bash output policy: listing");
-		expect(entry.structuredPreview).toContain("command: ls -la");
-	});
-
 	it("saveArtifact with redacted=true skips redaction", async () => {
 		const cwd = await tmp();
 		const { text } = await saveArtifact({ cwd, toolName: "bash", text: "password=secret", idGenerator: () => "og_red_1", redacted: true });

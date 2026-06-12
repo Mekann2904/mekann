@@ -21,8 +21,9 @@ import { loadReviewFixerSettings } from "./settingsLoader.js";
 import { ReviewFixerParamsSchema } from "./schemas.js";
 import { buildChildPrompt } from "./childPrompt.js";
 import { registerReviewFixerPromptProvider } from "./promptProvider.js";
+import { snapshotContentHashes, computeChangedFiles } from "./changedFiles.js";
 
-function extractReviewFixerResult(output: string | undefined): ReviewFixerResult | null {
+export function extractReviewFixerResult(output: string | undefined): ReviewFixerResult | null {
   if (!output) return null;
   const json = extractJSONWithSchema(output, "review-fixer.result.v1");
   if (!json) return null;
@@ -35,9 +36,21 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
 
   registerReviewFixerPromptProvider();
 
-  // Review fixer intentionally reuses the subagent control plane instead of
-  // hand-rolling Kitty/IPC lifecycle. If delegate_agent works, review_fixer
-  // should work through the same path.
+  // ── Subagent runtime dependency boundary ──────────────────────────
+  //
+  // review-fixer reuses the subagent feature's control plane
+  // (`createSubagentControl` → `AgentControl.delegate()`) for child Pi
+  // lifecycle management. The following subagent settings affect review-fixer:
+  //   - display mode (kitty-split / kitty-pi / none)
+  //   - extensionPath (child Pi extension loading)
+  //   - piCommand, kittenBin, logDir
+  //   - maxAgents, maxDepth, maxQueuedSubagents
+  //   - defaultReasoningEffort (overridden by review-fixer settings)
+  //
+  // Review-fixer-specific settings (model, reasoningEffort, maxFixRetries)
+  // are resolved in ./settingsLoader.ts and passed explicitly to the
+  // delegate call and child prompt.
+  // ──────────────────────────────────────────────────────────────────
   let control: ReturnType<typeof createSubagentControl> | null = null;
   const subagentExtensionPath = fileURLToPath(new URL("../subagent/index.ts", import.meta.url));
   function ensureControl() {
@@ -99,14 +112,16 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
         };
       }
 
-      // 4. Snapshot git status before
+      // 4. Snapshot content hashes before (detects changes to already-dirty files)
+      const hashesBefore = snapshotContentHashes(ctx.cwd);
+      // Also keep a porcelain snapshot for the details payload
       let statusBefore = "";
       try {
         statusBefore = execFileSync("git", ["status", "--porcelain"], { cwd: ctx.cwd, encoding: "utf-8" });
       } catch { /* ignore */ }
 
       // 5. Run through the same synchronous subagent delegate path as delegate_agent
-      const prompt = buildChildPrompt(issueContext, ctx.cwd);
+      const prompt = buildChildPrompt(issueContext, ctx.cwd, { maxFixRetries: settings.maxFixRetries });
       const delegate = await ensureControl().delegate({
         task_name: `review-fixer-${issueContext.number}`,
         message: prompt,
@@ -122,32 +137,51 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
         cost_intent: "expensive",
       }, ctx);
       const result = extractReviewFixerResult(delegate.final_result);
-      const error = delegate.status === "errored" ? `subagent status: ${delegate.status}` : undefined;
+      const contractError = result
+        ? undefined
+        : delegate.status === "errored"
+          ? `subagent status: ${delegate.status}`
+          : `structured result missing: child Pi did not return valid review-fixer.result.v1 JSON. Raw output length: ${(delegate.final_result ?? "").length} chars. This is a FAILURE — do not treat as success.`;
 
-      // 6. Snapshot git status after
+      // 6. Snapshot content hashes after
+      const hashesAfter = snapshotContentHashes(ctx.cwd);
       let statusAfter = "";
       try {
         statusAfter = execFileSync("git", ["status", "--porcelain"], { cwd: ctx.cwd, encoding: "utf-8" });
       } catch { /* ignore */ }
 
       // 7. Build response
-      if (error && !result) {
+      if (!result) {
+        const reason = contractError ?? "structured result missing: child Pi did not return valid review-fixer.result.v1 JSON.";
         return {
           content: [{
             type: "text" as const,
-            text: `Review fixer failed: ${error}\n\nChanged files: none`,
+            text: [
+              `## Review Fixer FAILED for Issue #${issueContext.number}`,
+              "",
+              `**Status**: ❌ FAILED — ${reason}`,
+              `**Subagent status**: ${delegate.status}`,
+              "",
+              "This is a contract violation. The child Pi must output review-fixer.result.v1 JSON.",
+              "Do NOT proceed with commit / push / PR creation. Re-run review_fixer or investigate the failure.",
+            ].join("\n"),
           }],
-          details: undefined,
+          details: {
+            issue: { number: issueContext.number, title: issueContext.title, url: issueContext.url },
+            childResult: null,
+            subagent: { agent_id: delegate.agent_id, task_name: delegate.task_name, status: delegate.status },
+            rawOutputLength: (delegate.final_result ?? "").length,
+            statusBefore: statusBefore.trim(),
+            statusAfter: statusAfter.trim(),
+          },
           isError: true,
         };
       }
 
-      // Compute actual changed files from diff
-      const beforeFiles = new Set(statusBefore.split("\n").filter(Boolean).map((l) => l.slice(3)));
-      const afterFiles = new Set(statusAfter.split("\n").filter(Boolean).map((l) => l.slice(3)));
-      const newChangedFiles = [...afterFiles].filter((f) => !beforeFiles.has(f));
-
-      const effectiveChangedFiles = newChangedFiles;
+      // Compute changed files via content-hash comparison
+      // This detects changes to files that were already dirty before the child ran,
+      // not just newly-appeared files in git status.
+      const effectiveChangedFiles = computeChangedFiles(hashesBefore, hashesAfter);
 
       const details: Record<string, unknown> = {
         issue: { number: issueContext.number, title: issueContext.title, url: issueContext.url },
@@ -158,38 +192,32 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
         statusAfter: statusAfter.trim(),
       };
 
-      // Format human-readable summary
+      // Format human-readable summary (result is guaranteed non-null here)
       const summaryLines: string[] = [];
       summaryLines.push(`## Review Fixer Result for Issue #${issueContext.number}`);
       summaryLines.push("");
 
-      if (result) {
-        summaryLines.push(`**Status**: ${result.status}`);
-        summaryLines.push(`**Findings**: ${result.findings.length} (${result.findings.filter((f) => f.severity === "blocker").length} blockers, ${result.findings.filter((f) => f.severity === "major").length} major, ${result.findings.filter((f) => f.severity === "minor").length} minor)`);
-        summaryLines.push(`**Files changed**: ${result.changes.files_changed.length > 0 ? result.changes.files_changed.join(", ") : "none"}`);
-        summaryLines.push(`**Structural changes**: ${result.changes.structural_changes.length > 0 ? result.changes.structural_changes.join("; ") : "none"}`);
-        summaryLines.push(`**Behavior changes**: ${result.changes.behavior_changes.length > 0 ? result.changes.behavior_changes.join("; ") : "none"}`);
-        summaryLines.push(`**Tests modified**: ${result.changes.tests_added_or_modified.length > 0 ? result.changes.tests_added_or_modified.join(", ") : "none"}`);
-        summaryLines.push(`**Verification**: ${result.verification.all_passed ? "✅ All passed" : "❌ Some failed"} (${result.verification.commands_run.length} commands)`);
-        summaryLines.push(`**Remaining risks**: ${result.remaining_risks.length > 0 ? result.remaining_risks.join("; ") : "none"}`);
-        summaryLines.push(`**Next steps**: ${result.parent_next_steps}`);
-      } else {
-        summaryLines.push("**Status**: No structured result returned from child Pi");
-      }
+      summaryLines.push(`**Status**: ${result.status}`);
+      summaryLines.push(`**Findings**: ${result.findings.length} (${result.findings.filter((f) => f.severity === "blocker").length} blockers, ${result.findings.filter((f) => f.severity === "major").length} major, ${result.findings.filter((f) => f.severity === "minor").length} minor)`);
+      summaryLines.push(`**Files changed**: ${result.changes.files_changed.length > 0 ? result.changes.files_changed.join(", ") : "none"}`);
+      summaryLines.push(`**Structural changes**: ${result.changes.structural_changes.length > 0 ? result.changes.structural_changes.join("; ") : "none"}`);
+      summaryLines.push(`**Behavior changes**: ${result.changes.behavior_changes.length > 0 ? result.changes.behavior_changes.join("; ") : "none"}`);
+      summaryLines.push(`**Tests modified**: ${result.changes.tests_added_or_modified.length > 0 ? result.changes.tests_added_or_modified.join(", ") : "none"}`);
+      summaryLines.push(`**Verification**: ${result.verification.all_passed ? "✅ All passed" : "❌ Some failed"} (${result.verification.commands_run.length} commands)`);
+      summaryLines.push(`**Remaining risks**: ${result.remaining_risks.length > 0 ? result.remaining_risks.join("; ") : "none"}`);
+      summaryLines.push(`**Next steps**: ${result.parent_next_steps}`);
 
       if (effectiveChangedFiles.length > 0) {
         summaryLines.push("");
         summaryLines.push(`**New workspace changes**: ${effectiveChangedFiles.join(", ")}`);
       }
 
-      if (error) {
-        summaryLines.push("");
-        summaryLines.push(`**Warning**: ${error}`);
-      }
+      const reviewFailed = result.status === "failed" || !result.verification.all_passed;
 
       return {
         content: [{ type: "text" as const, text: summaryLines.join("\n") }],
         details,
+        isError: reviewFailed,
       };
     },
   });

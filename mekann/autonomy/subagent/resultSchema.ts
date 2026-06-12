@@ -1,5 +1,4 @@
 import type { SubagentResultV1 } from "./types.js";
-import { balancedJsonObjects, extractJSONWithSchema } from "./resultSchemaShared.js";
 
 export type ParseResult = { ok: true; result: SubagentResultV1 } | { ok: false; error: string };
 
@@ -27,8 +26,67 @@ function validEffect(v: unknown): boolean {
   return oneOf(v.change, ["add", "modify", "remove"] as const);
 }
 
+/**
+ * Extract a JSON object from text that may be wrapped in markdown code blocks
+ * or surrounded by prose.  LLMs frequently wrap JSON output in ```json ... ```
+ * even when instructed not to.
+ */
+function balancedJsonObjects(text: string): string[] {
+  const out: string[] = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) { escaped = false; continue; }
+      if (ch === "\\") { escaped = true; continue; }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}" && depth > 0) {
+      depth--;
+      if (depth === 0 && start >= 0) out.push(text.slice(start, i + 1));
+    }
+  }
+  return out;
+}
+
+function looksLikeSubagentResult(candidate: string): boolean {
+  try {
+    const raw = JSON.parse(candidate) as unknown;
+    return isObj(raw) && raw.schema === "subagent.result.v1";
+  } catch { return false; }
+}
+
 function extractJSON(text: string): string {
-  return extractJSONWithSchema(text, "subagent.result.v1") ?? text.trim();
+  const trimmed = text.trim();
+
+  // Try direct parse first (fast path)
+  if (trimmed.startsWith("{") && looksLikeSubagentResult(trimmed)) return trimmed;
+
+  // Look for markdown code blocks anywhere in the text. Prefer the block that
+  // actually contains the subagent result; models sometimes include other JSON
+  // snippets before the final structured result.
+  const codeBlocks = [...trimmed.matchAll(/```(?:\w*)\s*\n([\s\S]*?)\n?```/g)].map((m) => m[1].trim());
+  for (const block of codeBlocks) {
+    if (block.startsWith("{") && looksLikeSubagentResult(block)) return block;
+    const nested = balancedJsonObjects(block).find(looksLikeSubagentResult);
+    if (nested) return nested;
+  }
+
+  // Fallback: scan balanced JSON objects and choose the one with the expected
+  // schema. This avoids the old "first { to last }" behaviour, which failed
+  // when prose or logs contained another JSON object before/after the result.
+  const candidate = balancedJsonObjects(trimmed).find(looksLikeSubagentResult);
+  if (candidate) return candidate;
+
+  return trimmed;
 }
 
 export function tryParseSubagentResult(text: string): ParseResult {

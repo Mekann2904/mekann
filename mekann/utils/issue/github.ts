@@ -24,31 +24,56 @@ export interface IssueWithStatus extends GitHubIssue, IssueDependencyStatus {
 	worktreePath?: string;
 }
 
+export interface IssueCreateResult {
+	number: number;
+	title: string;
+	url: string;
+}
+
+type RawGitHubIssue = { number: number; title: string; labels?: Array<string | { name?: string }>; url: string; body?: string };
+
+function normalizeIssue(issue: RawGitHubIssue): GitHubIssue {
+	return {
+		number: issue.number,
+		title: issue.title,
+		labels: (issue.labels ?? []).map((label) => typeof label === "string" ? label : label.name ?? "").filter(Boolean),
+		url: issue.url,
+		body: issue.body ?? "",
+	};
+}
+
+async function ghJson<T>(args: string[], options: { timeout: number }): Promise<T> {
+	const { execFile } = await import("node:child_process");
+	return new Promise((resolve, reject) => {
+		execFile("gh", args, options, (error, stdout) => {
+			if (error) reject(error);
+			else {
+				try { resolve(JSON.parse(String(stdout)) as T); }
+				catch (parseError) { reject(parseError); }
+			}
+		});
+	});
+}
+
+async function listIssues(remote: string, options: { limit: number; search?: string }): Promise<GitHubIssue[]> {
+	const args = [
+		"issue", "list",
+		"--repo", remote,
+		"--state", "open",
+		"--limit", String(options.limit),
+		"--json", "number,title,labels,url,body",
+	];
+	if (options.search) args.splice(6, 0, "--search", options.search);
+	const issues = await ghJson<RawGitHubIssue[]>(args, { timeout: 15000 });
+	return issues.map(normalizeIssue);
+}
+
 /**
  * List open GitHub issues using `gh` CLI.
  */
 export async function listOpenIssues(remote: string): Promise<GitHubIssue[]> {
-	const { execFile } = await import("node:child_process");
-	const { promisify } = await import("node:util");
-	const execFileAsync = promisify(execFile);
-
 	try {
-		const { stdout } = await execFileAsync("gh", [
-			"issue", "list",
-			"--repo", remote,
-			"--state", "open",
-			"--limit", "100",
-			"--json", "number,title,labels,url,body",
-		], { timeout: 15000 });
-
-		const issues = JSON.parse(stdout);
-		return issues.map((issue: any) => ({
-			number: issue.number,
-			title: issue.title,
-			labels: (issue.labels ?? []).map((l: any) => typeof l === "string" ? l : l.name),
-			url: issue.url,
-			body: issue.body ?? "",
-		}));
+		return await listIssues(remote, { limit: 100 });
 	} catch (err) {
 		throw new Error(`Failed to list GitHub issues for ${remote}: ${(err as Error).message}`);
 	}
@@ -102,6 +127,28 @@ function normalizeIssueState(state: unknown): IssueDependency["state"] {
 	if (lower === "open") return "open";
 	if (lower === "closed") return "closed";
 	return "unknown";
+}
+
+export async function searchOpenIssues(remote: string, query: string): Promise<GitHubIssue[]> {
+	try {
+		return await listIssues(remote, { limit: 10, search: query });
+	} catch (err) {
+		throw new Error(`Failed to search GitHub issues for ${remote}: ${(err as Error).message}`);
+	}
+}
+
+export async function createIssue(remote: string, title: string, body: string): Promise<IssueCreateResult> {
+	try {
+		return await ghJson<IssueCreateResult>([
+			"issue", "create",
+			"--repo", remote,
+			"--title", title,
+			"--body", body,
+			"--json", "number,title,url",
+		], { timeout: 15000 });
+	} catch (err) {
+		throw new Error(`Failed to create GitHub issue for ${remote}: ${(err as Error).message}`);
+	}
 }
 
 /**
