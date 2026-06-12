@@ -21,6 +21,7 @@ const MUTATING_PATTERNS: GitSafetyRule[] = [
 	{ pattern: new RegExp(`${GIT}clean\\b(?=[^\\n;&|]*(?:\\s-[A-Za-z]*f[A-Za-z]*\\b|\\s--force\\b))`, "i"), label: "git clean", reason: "git clean can delete untracked files", severity: 90 },
 	{ pattern: new RegExp(`${GIT}branch\\s+-D\\b`, "i"), label: "git branch -D", reason: "forced branch deletion can remove local work", severity: 80 },
 	{ pattern: new RegExp(`${GIT}rebase\\b`, "i"), label: "git rebase", reason: "rebase rewrites local history", severity: 80 },
+	{ pattern: new RegExp(`${GIT}config\\b(?![^\\n;&|]*(?:\\s--get\\b|\\s--get-regexp\\b|\\s--list\\b|\\s-l\\b))`, "i"), label: "git config mutation", reason: "git config can rewrite repository-local settings such as user.email or core.bare", severity: 80 },
 	{ pattern: new RegExp(`${GIT}push\\b`, "i"), label: "git push", reason: "remote branch publication requires explicit user permission", severity: 70 },
 	{ pattern: new RegExp(`${GH}pr\\s+(?:merge|close|ready)\\b`, "i"), label: "GitHub PR mutation", reason: "PR merge/close/ready changes remote collaboration state", severity: 80 },
 	{ pattern: new RegExp(`${GH}pr\\s+review\\b[^\\n;&|]*\\s--approve\\b`, "i"), label: "GitHub PR approval", reason: "approving a PR changes remote collaboration state", severity: 80 },

@@ -42,6 +42,7 @@
     "prepare": "node scripts/prepare-husky.js",
     "check:prepare-ci": "CI=true npm run prepare",
     "check:workflows": "bash scripts/check-workflows.sh",
+    "check:git-local-safety": "bash scripts/check-git-local-safety.sh",
     "check:coverage:modes": "bash scripts/check-coverage-threshold.sh mekann/safety/modes 85 npx vitest run --coverage --fileParallelism=false",
     "typecheck:prod": "tsc -p tsconfig.prod.json",
     "typecheck": "npm run typecheck:prod && cd mekann/safety/sandbox && npm run typecheck && cd ../../autonomy/subagent && npm run typecheck",

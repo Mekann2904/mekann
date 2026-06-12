@@ -116,6 +116,7 @@ const DESTRUCTIVE_PATTERNS = [
 	/\b(pip|brew)\s+(install|uninstall|upgrade)/i,
 	/\bapt(-get)?\s+(install|remove|purge|update|upgrade)/i,
 	/\bgit\s+(add|commit|push|pull|merge|rebase|reset|checkout|branch\s+-[dD]|stash|cherry-pick|revert|tag|init|clone)/i,
+	/\bgit\s+(?:-C\s+\S+\s+)?config\b(?![^\n;&|]*(?:\s--get\b|\s--get-regexp\b|\s--list\b|\s-l\b))/i,
 	/\bgit\s+diff\b.*--output\b/i,
 	/\bfind\b.*\s+(?:-delete|-exec\b|-execdir\b|-ok\b|-fls\b|-fprint\b|-fprint0\b|-fprintf)\b/i,
 	/\bsed\b.*-i\b/i,
@@ -128,7 +129,7 @@ const DESTRUCTIVE_PATTERNS = [
 const SAFE_PATTERNS = [
 	/^\s*(cat|head|tail|less|more|grep|ls|pwd|echo|printf|wc|sort|uniq|diff|file|stat|du|df|tree|which|whereis|type|env|printenv|uname|whoami|id|date|cal|uptime|ps|top|htop|free)\b/,
 	/^\s*find\b(?!.*\b(?:-delete|-exec|-execdir|-ok|-fls|-fprint|-fprintf)\b)/i,
-	/^\s*git\s+(status|log|diff|show|branch|remote|config\s+--get|ls-\S+|submodule\s+(?:status|summary))/i,
+	/^\s*git\s+(status|log|diff|show|branch|remote|config\s+(?:--get|--get-regexp|--list|-l)|ls-\S+|submodule\s+(?:status|summary))/i,
 	/^\s*(npm|yarn)\s+(list|ls|view|info|search|outdated|audit|why)/i,
 	/^\s*(node|python)\s+--version/i,
 	/^\s*wget\s+-O\s*-/i,

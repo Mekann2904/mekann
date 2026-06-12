@@ -64,6 +64,7 @@ const DANGEROUS_PATTERNS = [
 	{ pattern: /\breboot\b/i, reason: "システム再起動" },
 	{ pattern: /\bmkfs\b/i, reason: "ファイルシステム初期化" },
 	{ pattern: /\bdd\s+/i, reason: "RAW ディスク操作" },
+	{ pattern: /\bgit\s+(?:-C\s+\S+\s+)?config\b(?![^\n;&|]*(?:\s--get\b|\s--get-regexp\b|\s--list\b|\s-l\b))/i, reason: "Git 設定変更" },
 ];
 
 /** 承認要否の判定結果。 */

@@ -108,6 +108,12 @@ describe("shouldRequestApproval: workspace_write dangerous patterns", () => {
 		expect(result.needsApproval).toBe(true);
 		expect(result.reason).toContain("RAW ディスク操作");
 	});
+
+	it("git config の変更は承認が必要", () => {
+		const result = shouldRequestApproval("workspace_write", "git config user.email test@example.com");
+		expect(result.needsApproval).toBe(true);
+		expect(result.reason).toContain("Git 設定変更");
+	});
 });
 
 // ─── shouldRequestApproval: workspace_write 安全パターン ────────
@@ -118,6 +124,8 @@ describe("shouldRequestApproval: workspace_write safe patterns", () => {
 		"cat README.md",
 		"echo hello",
 		"git status",
+		"git config --get user.email",
+		"git config --list",
 		"npm test",
 		"npm run build",
 		"node script.js",

@@ -28,6 +28,9 @@ describe("git-safety", () => {
 		"git clean -fd",
 		"git branch -D old-branch",
 		"git rebase main",
+		"git config user.email test@example.com",
+		"git config --local core.bare true",
+		"git -C /repo config user.name 'Test User'",
 		"gh --repo Mekann2904/mekann pr merge 1",
 		"gh pr merge 1",
 		"gh pr close 1",
@@ -41,6 +44,9 @@ describe("git-safety", () => {
 	it.each([
 		"git status --short",
 		"git log --oneline -5",
+		"git config --get user.email",
+		"git config --list",
+		"git config -l",
 		"gh pr view 1 --json mergeStateStatus",
 		"gh issue view 15 --json title",
 	])("does not classify read-only command: %s", (command) => {
@@ -49,6 +55,10 @@ describe("git-safety", () => {
 
 	it("prefers the highest severity match", () => {
 		expect(classifyGitSafetyCommand("git push --force-with-lease")?.label).toBe("git force push");
+	});
+
+	it("classifies git config mutation specifically", () => {
+		expect(classifyGitSafetyCommand("git config user.email test@example.com")?.label).toBe("git config mutation");
 	});
 
 	it("blocks a mutating command when confirmation is denied", async () => {

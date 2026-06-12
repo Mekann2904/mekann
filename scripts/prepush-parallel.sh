@@ -5,6 +5,9 @@ set -euo pipefail
 
 start_ms=$(python3 -c 'import time; print(int(time.time()*1000))')
 
+# Fail before running checks if a previous extension/test run polluted .git/config.
+bash scripts/check-git-local-safety.sh
+
 tmpdir=$(mktemp -d)
 trap "rm -rf $tmpdir" EXIT
 
@@ -46,6 +49,9 @@ if [ $fail -ne 0 ]; then
   done
   exit 1
 fi
+
+# Fail after checks too: tests/extensions must not leave repo-local Git config polluted.
+bash scripts/check-git-local-safety.sh
 
 echo "✓ All checks passed (workflow checks + CI prepare check + modes coverage threshold + typecheck + test suites)"
 end_ms=$(python3 -c 'import time; print(int(time.time()*1000))')

@@ -160,6 +160,7 @@ describe("isReadOnlyCommandIntent: property-based invariants", () => {
 			"git add", "git commit", "git push", "git pull",
 			"git merge", "git rebase", "git reset", "git stash",
 			"git checkout", "git branch -d", "git branch -D",
+			"git config user.email test@example.com", "git config --local core.bare true",
 		];
 		fc.assert(
 			fc.property(
@@ -176,7 +177,7 @@ describe("isReadOnlyCommandIntent: property-based invariants", () => {
 	it("read-only git commands are always safe", () => {
 		const gitSafe = [
 			"git status", "git log", "git diff", "git show",
-			"git branch", "git remote -v",
+			"git branch", "git remote -v", "git config --get user.email", "git config --list",
 		];
 		fc.assert(
 			fc.property(
