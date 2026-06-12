@@ -1,1 +1,0 @@
-{"name":"cache-friendly-prompt","version":"1.0.0","description":"Provider-agnostic cache-friendly prompt orchestration for Pi coding agent extensions.","main":"index.ts","scripts":{"test":"vitest run"},"type":"module","license":"MIT","peerDependencies":{"@earendil-works/pi-coding-agent":">=0.1.0"},"devDependencies":{"vitest":"^4.1.6"}}
