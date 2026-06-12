@@ -102,6 +102,13 @@ describe("sandbox schema", () => {
   });
 });
 
+describe("subagent schema", () => {
+  it("is disabled by default", () => {
+    const schema = mekannSettingsSchemas.find((s) => s.feature === "subagent")!;
+    expect(schema.settings.find((s) => s.key === "enabled")?.defaultValue).toBe(false);
+  });
+});
+
 describe("command-normalization schema", () => {
   it("has command-normalization settings", () => {
     const schema = mekannSettingsSchemas.find((s) => s.feature === "command-normalization")!;
