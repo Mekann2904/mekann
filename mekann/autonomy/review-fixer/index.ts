@@ -10,6 +10,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { execFileSync } from "node:child_process";
 import { isFeatureEnabled } from "../../settings/enabled.js";
 import { resolveIssueContext, checkIssueReadiness } from "./issueContext.js";
 import { runChildReviewFixer } from "./childLifecycle.js";
@@ -71,7 +72,6 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
       }
 
       // 4. Snapshot git status before
-      const { execFileSync } = await import("node:child_process");
       let statusBefore = "";
       try {
         statusBefore = execFileSync("git", ["status", "--porcelain"], { cwd: ctx.cwd, encoding: "utf-8" });
@@ -107,12 +107,13 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
       const afterFiles = new Set(statusAfter.split("\n").filter(Boolean).map((l) => l.slice(3)));
       const newChangedFiles = [...afterFiles].filter((f) => !beforeFiles.has(f));
 
-      // Cross-check with child result if available
+      // If child reported its own changed files, prefer those; otherwise use diff
+      const effectiveChangedFiles = changedFiles.length > 0 ? changedFiles : newChangedFiles;
+
       const details: Record<string, unknown> = {
         issue: { number: issueContext.number, title: issueContext.title, url: issueContext.url },
         childResult: result,
-        changedFiles,
-        newChangedFiles,
+        changedFiles: effectiveChangedFiles,
         statusBefore: statusBefore.trim(),
         statusAfter: statusAfter.trim(),
       };
@@ -136,9 +137,9 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
         summaryLines.push("**Status**: No structured result returned from child Pi");
       }
 
-      if (newChangedFiles.length > 0) {
+      if (effectiveChangedFiles.length > 0) {
         summaryLines.push("");
-        summaryLines.push(`**New workspace changes**: ${newChangedFiles.join(", ")}`);
+        summaryLines.push(`**New workspace changes**: ${effectiveChangedFiles.join(", ")}`);
       }
 
       if (error) {

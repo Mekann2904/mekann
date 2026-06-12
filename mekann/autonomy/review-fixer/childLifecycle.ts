@@ -8,11 +8,11 @@
 import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { mkdir, unlink } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { SubagentHub, type ChildToParent } from "../subagent/ipc.js";
 import { KittyController } from "../subagent/kittyControl.js";
+import { extractJSONWithSchema } from "../subagent/resultSchemaShared.js";
 import type { ReviewFixerResult, ReviewFixerSettings } from "./types.js";
 import type { ResolvedIssueContext } from "./issueContext.js";
 import { buildChildPrompt } from "./childPrompt.js";
@@ -47,9 +47,6 @@ export async function runChildReviewFixer(
   const nonce = crypto.randomBytes(24).toString("base64url");
   const title = `review-fixer #${issueContext.number}`;
 
-  // Snapshot before
-  const filesBefore = snapshotChangedFiles(cwd);
-
   // Build the child prompt
   const prompt = buildChildPrompt(issueContext, cwd);
 
@@ -66,15 +63,9 @@ export async function runChildReviewFixer(
   const kitty = new KittyController();
 
   // Collect result from child
-  let childFinalText: string | null = null;
   let childError: string | null = null;
-  let childCompleted = false;
 
-  hub.onMessage((msg: ChildToParent) => {
-    if (msg.type === "final" && msg.agentId === agentId) {
-      childFinalText = msg.message;
-      childCompleted = true;
-    }
+  const hubOff0 = hub.onMessage((msg: ChildToParent) => {
     if (msg.type === "error" && msg.agentId === agentId) {
       childError = childError ? `${childError}; ${msg.message}` : msg.message;
     }
@@ -108,77 +99,59 @@ export async function runChildReviewFixer(
     // then sends a "final" IPC message with the structured JSON result.
     // Timeout after 10 minutes.
     const COMPLETION_TIMEOUT_MS = 600_000;
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        if (!childCompleted) reject(new Error("Review fixer child timed out"));
-      }, COMPLETION_TIMEOUT_MS);
+    const childFinalText = await new Promise<string | null>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Review fixer child timed out")), COMPLETION_TIMEOUT_MS);
 
       const off = hub.onMessage((msg: ChildToParent) => {
         if (msg.type === "final" && msg.agentId === agentId) {
           clearTimeout(timer);
           off();
-          resolve();
+          resolve(msg.message);
         }
         if (msg.type === "status" && msg.agentId === agentId && (msg.status === "errored" || msg.status === "shutdown")) {
           clearTimeout(timer);
           off();
-          if (!childCompleted) reject(new Error(`Child exited with status: ${msg.status}`));
+          reject(new Error(`Child exited with status: ${msg.status}`));
         }
       });
     });
 
-    // Extract result from child's final message
+    // Extract result from child's final message using shared JSON extractor
     const result = extractResult(childFinalText ?? "");
 
-    // Compute changed files
+    // Compute changed files (only files changed by the child)
+    const filesBefore = snapshotChangedFiles(cwd);
     const filesAfter = snapshotChangedFiles(cwd);
-    const allChangedFiles = [...filesAfter];
+    const newChangedFiles = [...filesAfter].filter((f) => !filesBefore.has(f));
 
     // Close Kitty split
     try { await kitty.close(display); } catch { /* ignore */ }
 
     return {
       result,
-      changedFiles: allChangedFiles,
+      changedFiles: newChangedFiles,
       error: childError ?? undefined,
     };
   } catch (err: any) {
-    const filesAfter = snapshotChangedFiles(cwd);
     const errorMessage = err instanceof Error ? err.message : String(err);
-    return { result: null, changedFiles: [...filesAfter], error: errorMessage };
+    return { result: null, changedFiles: [], error: errorMessage };
   } finally {
+    hubOff0();
     await hub.stop().catch(() => undefined);
   }
 }
 
 /**
  * Extract the structured JSON result from child Pi output.
+ * Uses the shared balanced-brace JSON extractor from subagent infrastructure.
  */
 function extractResult(output: string): ReviewFixerResult | null {
   if (!output) return null;
-
-  // Try: entire output is JSON
+  const json = extractJSONWithSchema(output, "review-fixer.result.v1");
+  if (!json) return null;
   try {
-    const parsed = JSON.parse(output.trim());
-    if (parsed.schema === "review-fixer.result.v1") return parsed as ReviewFixerResult;
-  } catch { /* not raw JSON */ }
-
-  // Try: extract from markdown code blocks
-  const jsonBlockMatch = output.match(/```(?:json)?\s*\n([\s\S]*?)```/);
-  if (jsonBlockMatch) {
-    try {
-      const parsed = JSON.parse(jsonBlockMatch[1].trim());
-      if (parsed.schema === "review-fixer.result.v1") return parsed as ReviewFixerResult;
-    } catch { /* not valid JSON */ }
+    return JSON.parse(json) as ReviewFixerResult;
+  } catch {
+    return null;
   }
-
-  // Try: find any JSON object with the right schema
-  const jsonMatch = output.match(/\{[\s\S]*?"schema"\s*:\s*"review-fixer\.result\.v1"[\s\S]*?\}/);
-  if (jsonMatch) {
-    try {
-      return JSON.parse(jsonMatch[0]) as ReviewFixerResult;
-    } catch { /* not valid JSON */ }
-  }
-
-  return null;
 }

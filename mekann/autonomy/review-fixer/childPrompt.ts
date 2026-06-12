@@ -9,45 +9,60 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ResolvedIssueContext } from "./issueContext.js";
 
+const MAX_CONTEXT_CHARS = 32_000;
+const MAX_ADR_CHARS = 32_000;
+
+/** Cache the skill file content at module load time — it never changes. */
+let _skillCache: string | null = null;
+function readSkill(): string {
+  if (_skillCache !== null) return _skillCache;
+  const skillPath = path.resolve(import.meta.dirname, "../../skills/thermo-nuclear-code-quality-review/SKILL.md");
+  try {
+    _skillCache = fs.readFileSync(skillPath, "utf-8");
+  } catch {
+    _skillCache = "(thermo-nuclear-code-quality-review skill file not found)";
+  }
+  return _skillCache;
+}
+
+function truncate(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars) + "\n... (truncated)";
+}
+
 /**
- * Read CONTEXT.md from the workspace root.
+ * Read CONTEXT.md from the workspace root, truncated to token budget.
  */
 function readContextMd(cwd: string): string | null {
   const p = path.join(cwd, "CONTEXT.md");
   try {
-    if (fs.existsSync(p)) return fs.readFileSync(p, "utf-8");
+    if (fs.existsSync(p)) return truncate(fs.readFileSync(p, "utf-8"), MAX_CONTEXT_CHARS);
   } catch { /* ignore */ }
   return null;
 }
 
 /**
- * Read all ADR files from docs/adr/.
+ * Read all ADR files from docs/adr/, truncated to token budget.
  */
 function readADRs(cwd: string): string[] {
   const adrDir = path.join(cwd, "docs", "adr");
   if (!fs.existsSync(adrDir)) return [];
   try {
-    return fs.readdirSync(adrDir)
+    const entries = fs.readdirSync(adrDir)
       .filter((f) => f.endsWith(".md"))
       .sort()
       .map((f) => {
         const content = fs.readFileSync(path.join(adrDir, f), "utf-8");
         return `--- ADR: ${f} ---\n${content}`;
       });
+    let budget = MAX_ADR_CHARS;
+    return entries.filter((e) => {
+      if (e.length > budget) return false;
+      budget -= e.length;
+      return true;
+    });
   } catch {
     return [];
-  }
-}
-
-/**
- * Read the thermo-nuclear-code-quality-review skill.
- */
-function readSkill(): string {
-  const skillPath = path.resolve(import.meta.dirname, "../../skills/thermo-nuclear-code-quality-review/SKILL.md");
-  try {
-    return fs.readFileSync(skillPath, "utf-8");
-  } catch {
-    return "(thermo-nuclear-code-quality-review skill file not found)";
   }
 }
 
@@ -125,9 +140,9 @@ Do NOT output any other text before or after the JSON.
   "schema": "review-fixer.result.v1",
   "status": "changed" | "no_change" | "failed",
   "issue": {
-    "number": ${issueContext.number},
-    "title": "${issueContext.title.replace(/"/g, '\\"')}",
-    "url": "${issueContext.url}"
+    "number": "<issue number>",
+    "title": "<issue title>",
+    "url": "<issue url>"
   },
   "findings": [
     {
