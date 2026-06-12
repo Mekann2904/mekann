@@ -1,0 +1,21 @@
+{
+  "upstream": "mattpocock/skills",
+  "sourceRoot": "vendor/mattpocock-skills/skills/engineering",
+  "destinationRoot": "mekann/skills",
+  "imports": [
+    { "name": "diagnose", "source": "diagnose", "destination": "diagnose", "adapter": "pi-engineering-skill" },
+    { "name": "grill-with-docs", "source": "grill-with-docs", "destination": "grill-with-docs", "adapter": "pi-engineering-skill" },
+    { "name": "improve-codebase-architecture", "source": "improve-codebase-architecture", "destination": "improve-codebase-architecture", "adapter": "pi-engineering-skill" },
+    { "name": "prototype", "source": "prototype", "destination": "prototype", "adapter": "pi-engineering-skill" },
+    { "name": "setup-matt-pocock-skills", "source": "setup-matt-pocock-skills", "destination": "setup-matt-pocock-skills", "adapter": "pi-engineering-skill" },
+    { "name": "tdd", "source": "tdd", "destination": "tdd", "adapter": "pi-engineering-skill" },
+    { "name": "to-issues", "source": "to-issues", "destination": "to-issues", "adapter": "pi-engineering-skill" },
+    { "name": "to-prd", "source": "to-prd", "destination": "to-prd", "adapter": "pi-engineering-skill" },
+    { "name": "triage", "source": "triage", "destination": "triage", "adapter": "pi-engineering-skill" },
+    { "name": "zoom-out", "source": "zoom-out", "destination": "zoom-out", "adapter": "pi-engineering-skill" }
+  ],
+  "protectedLocalSkills": [
+    "autoresearch-create",
+    "mekann-pi-skill-dev"
+  ]
+}

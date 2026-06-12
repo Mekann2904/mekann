@@ -1,0 +1,20 @@
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { isFeatureEnabled } from "../settings/enabled.js";
+import { profileStartupStep } from "../startupProfile.js";
+
+export default async function context(pi: ExtensionAPI): Promise<void> {
+	await profileStartupStep("suite-context", async () => {
+		const instrumentation = await profileStartupStep("context-instrumentation-imports", () => Promise.all([
+			isFeatureEnabled("context-tracker") ? profileStartupStep("import:context/context-tracker", () => import("./context-tracker/index.js")) : undefined,
+		]));
+		for (const module of instrumentation) module?.default(pi);
+
+		const modules = await profileStartupStep("context-feature-imports", () => Promise.all([
+			isFeatureEnabled("command-normalization") ? profileStartupStep("import:context/command-normalization", () => import("./command-normalization/index.js")) : undefined,
+			isFeatureEnabled("output-gate") ? profileStartupStep("import:context/output-gate", () => import("./output-gate/index.js")) : undefined,
+			isFeatureEnabled("context-ledger") ? profileStartupStep("import:context/ledger", () => import("./ledger/index.js")) : undefined,
+			isFeatureEnabled("cacheable-context") ? profileStartupStep("import:context/cacheable-context", () => import("./cacheable-context/index.js")) : undefined,
+		]));
+		for (const module of modules) module?.default(pi);
+	});
+}

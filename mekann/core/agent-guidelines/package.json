@@ -1,0 +1,1 @@
+{"name":"agent-guidelines","version":"1.0.0","description":"Additional coding-agent guidelines prompt fragments.","main":"index.ts","scripts":{"test":"vitest run"},"type":"module","license":"MIT","peerDependencies":{"@earendil-works/pi-coding-agent":">=0.1.0"},"devDependencies":{"vitest":"^4.1.6"}}

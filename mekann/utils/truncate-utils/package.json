@@ -1,0 +1,15 @@
+{
+  "name": "truncate-utils",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.ts",
+  "description": "Scan-based truncateTail/truncateHead replacing split('\\n') full-line array allocation",
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.6",
+    "vitest": "^4.1.6"
+  }
+}

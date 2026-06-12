@@ -1,0 +1,848 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`SBPL policy snapshots > read_only (基本) 1`] = `
+"
+(version 1)
+
+; closed by default
+(deny default)
+
+; allow command execution inside the same sandbox
+(allow process-exec)
+(allow process-fork)
+; SECURITY: signal restricted to same-sandbox processes only
+(allow signal (target same-sandbox))
+; SECURITY: process-info restricted to same-sandbox processes only
+(allow process-info* (target same-sandbox))
+
+; basic devices / tty behavior
+(allow file-read* file-write* file-ioctl (literal "/dev/null"))
+(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))
+(allow file-read* (literal "/dev/tty"))
+(allow file-read* (literal "/dev/urandom"))
+(allow pseudo-tty)
+
+; macOS process initialization
+(allow sysctl-read)
+(allow ipc-posix-shm)
+(allow mach-lookup)
+(allow file-read-metadata)
+
+; ─── System read paths (minimum set) ──────────────────────────
+; SECURITY: (literal "/") is required for bash to stat root during init.
+(allow file-read*
+  (literal "/")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/usr/bin")
+  (subpath "/usr/sbin")
+  (subpath "/usr/lib")
+  (subpath "/usr/libexec")
+  (subpath "/usr/share")
+  (subpath "/System")
+  (literal "/etc")
+  (subpath "/etc")
+  (subpath "/dev")
+)
+
+; user-selected readable roots
+(allow file-read*
+  (subpath "/Users/dev/project")
+)
+
+
+
+
+
+; ═══════════════════════════════════════════════════════════════
+; SECURITY: Deny rules come LAST.
+; macOS Seatbelt: LAST matching rule wins.
+; ═══════════════════════════════════════════════════════════════
+
+; protect repo metadata even when workspace is writable
+(deny file-write*
+  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+)
+
+
+; SECURITY: read_only mode — explicitly deny writes to workspace roots
+(deny file-write* (subpath "/Users/dev/project"))
+
+"
+`;
+
+exports[`SBPL policy snapshots > read_only + homebrew 1`] = `
+"
+(version 1)
+
+; closed by default
+(deny default)
+
+; allow command execution inside the same sandbox
+(allow process-exec)
+(allow process-fork)
+; SECURITY: signal restricted to same-sandbox processes only
+(allow signal (target same-sandbox))
+; SECURITY: process-info restricted to same-sandbox processes only
+(allow process-info* (target same-sandbox))
+
+; basic devices / tty behavior
+(allow file-read* file-write* file-ioctl (literal "/dev/null"))
+(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))
+(allow file-read* (literal "/dev/tty"))
+(allow file-read* (literal "/dev/urandom"))
+(allow pseudo-tty)
+
+; macOS process initialization
+(allow sysctl-read)
+(allow ipc-posix-shm)
+(allow mach-lookup)
+(allow file-read-metadata)
+
+; ─── System read paths (minimum set) ──────────────────────────
+; SECURITY: (literal "/") is required for bash to stat root during init.
+(allow file-read*
+  (literal "/")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/usr/bin")
+  (subpath "/usr/sbin")
+  (subpath "/usr/lib")
+  (subpath "/usr/libexec")
+  (subpath "/usr/share")
+  (subpath "/System")
+  (literal "/etc")
+  (subpath "/etc")
+  (subpath "/dev")
+)
+
+; user-selected readable roots
+(allow file-read*
+  (subpath "/Users/dev/project")
+)
+
+
+
+; homebrew: needed for tools installed via brew (node, python, etc.)
+; Only included when allowHomebrewPaths is explicitly set
+(allow file-read*
+  (subpath "/opt/homebrew")
+  (subpath "/usr/local")
+)
+
+
+
+; ═══════════════════════════════════════════════════════════════
+; SECURITY: Deny rules come LAST.
+; macOS Seatbelt: LAST matching rule wins.
+; ═══════════════════════════════════════════════════════════════
+
+; protect repo metadata even when workspace is writable
+(deny file-write*
+  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+)
+
+
+; SECURITY: read_only mode — explicitly deny writes to workspace roots
+(deny file-write* (subpath "/Users/dev/project"))
+
+"
+`;
+
+exports[`SBPL policy snapshots > read_only + isolated temp dir 1`] = `
+"
+(version 1)
+
+; closed by default
+(deny default)
+
+; allow command execution inside the same sandbox
+(allow process-exec)
+(allow process-fork)
+; SECURITY: signal restricted to same-sandbox processes only
+(allow signal (target same-sandbox))
+; SECURITY: process-info restricted to same-sandbox processes only
+(allow process-info* (target same-sandbox))
+
+; basic devices / tty behavior
+(allow file-read* file-write* file-ioctl (literal "/dev/null"))
+(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))
+(allow file-read* (literal "/dev/tty"))
+(allow file-read* (literal "/dev/urandom"))
+(allow pseudo-tty)
+
+; macOS process initialization
+(allow sysctl-read)
+(allow ipc-posix-shm)
+(allow mach-lookup)
+(allow file-read-metadata)
+
+; ─── System read paths (minimum set) ──────────────────────────
+; SECURITY: (literal "/") is required for bash to stat root during init.
+(allow file-read*
+  (literal "/")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/usr/bin")
+  (subpath "/usr/sbin")
+  (subpath "/usr/lib")
+  (subpath "/usr/libexec")
+  (subpath "/usr/share")
+  (subpath "/System")
+  (literal "/etc")
+  (subpath "/etc")
+  (subpath "/dev")
+)
+
+; user-selected readable roots
+(allow file-read*
+  (subpath "/Users/dev/project")
+)
+
+
+
+
+; Per-run isolated temp directory (not system TMPDIR)
+; Created for this specific command invocation, cleaned up after exit
+; Includes isolated HOME directory to prevent workspace startup file injection
+(allow file-read* file-write*
+  (subpath "/tmp/sandbox-run-xyz789")
+)
+
+
+; ═══════════════════════════════════════════════════════════════
+; SECURITY: Deny rules come LAST.
+; macOS Seatbelt: LAST matching rule wins.
+; ═══════════════════════════════════════════════════════════════
+
+; protect repo metadata even when workspace is writable
+(deny file-write*
+  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+)
+
+
+; SECURITY: read_only mode — explicitly deny writes to workspace roots
+(deny file-write* (subpath "/Users/dev/project"))
+
+"
+`;
+
+exports[`SBPL policy snapshots > read_only + resolved gitdirs 1`] = `
+"
+(version 1)
+
+; closed by default
+(deny default)
+
+; allow command execution inside the same sandbox
+(allow process-exec)
+(allow process-fork)
+; SECURITY: signal restricted to same-sandbox processes only
+(allow signal (target same-sandbox))
+; SECURITY: process-info restricted to same-sandbox processes only
+(allow process-info* (target same-sandbox))
+
+; basic devices / tty behavior
+(allow file-read* file-write* file-ioctl (literal "/dev/null"))
+(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))
+(allow file-read* (literal "/dev/tty"))
+(allow file-read* (literal "/dev/urandom"))
+(allow pseudo-tty)
+
+; macOS process initialization
+(allow sysctl-read)
+(allow ipc-posix-shm)
+(allow mach-lookup)
+(allow file-read-metadata)
+
+; ─── System read paths (minimum set) ──────────────────────────
+; SECURITY: (literal "/") is required for bash to stat root during init.
+(allow file-read*
+  (literal "/")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/usr/bin")
+  (subpath "/usr/sbin")
+  (subpath "/usr/lib")
+  (subpath "/usr/libexec")
+  (subpath "/usr/share")
+  (subpath "/System")
+  (literal "/etc")
+  (subpath "/etc")
+  (subpath "/dev")
+)
+
+; user-selected readable roots
+(allow file-read*
+  (subpath "/Users/dev/project")
+)
+
+
+
+
+; Per-run isolated temp directory (not system TMPDIR)
+; Created for this specific command invocation, cleaned up after exit
+; Includes isolated HOME directory to prevent workspace startup file injection
+(allow file-read* file-write*
+  (subpath "/tmp/sandbox-run-abc")
+)
+
+
+; ═══════════════════════════════════════════════════════════════
+; SECURITY: Deny rules come LAST.
+; macOS Seatbelt: LAST matching rule wins.
+; ═══════════════════════════════════════════════════════════════
+
+; protect repo metadata even when workspace is writable
+(deny file-write*
+  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+)
+
+; Resolved .git directories (pointer files / worktrees / submodules)
+(deny file-write* (subpath "/Users/dev/project/.git"))
+(deny file-write* (subpath "/tmp/external-gitdir"))
+
+
+; SECURITY: read_only mode — explicitly deny writes to workspace roots
+(deny file-write* (subpath "/Users/dev/project"))
+
+"
+`;
+
+exports[`SBPL policy snapshots > workspace_write (基本) 1`] = `
+"
+(version 1)
+
+; closed by default
+(deny default)
+
+; allow command execution inside the same sandbox
+(allow process-exec)
+(allow process-fork)
+; SECURITY: signal restricted to same-sandbox processes only
+(allow signal (target same-sandbox))
+; SECURITY: process-info restricted to same-sandbox processes only
+(allow process-info* (target same-sandbox))
+
+; basic devices / tty behavior
+(allow file-read* file-write* file-ioctl (literal "/dev/null"))
+(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))
+(allow file-read* (literal "/dev/tty"))
+(allow file-read* (literal "/dev/urandom"))
+(allow pseudo-tty)
+
+; macOS process initialization
+(allow sysctl-read)
+(allow ipc-posix-shm)
+(allow mach-lookup)
+(allow file-read-metadata)
+
+; ─── System read paths (minimum set) ──────────────────────────
+; SECURITY: (literal "/") is required for bash to stat root during init.
+(allow file-read*
+  (literal "/")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/usr/bin")
+  (subpath "/usr/sbin")
+  (subpath "/usr/lib")
+  (subpath "/usr/libexec")
+  (subpath "/usr/share")
+  (subpath "/System")
+  (literal "/etc")
+  (subpath "/etc")
+  (subpath "/dev")
+)
+
+; user-selected readable roots
+(allow file-read*
+  (subpath "/Users/dev/project")
+)
+
+; user-selected writable roots
+(allow file-write*
+  (subpath "/Users/dev/project")
+)
+
+
+
+
+
+; ═══════════════════════════════════════════════════════════════
+; SECURITY: Deny rules come LAST.
+; macOS Seatbelt: LAST matching rule wins.
+; ═══════════════════════════════════════════════════════════════
+
+; protect repo metadata even when workspace is writable
+(deny file-write*
+  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+)
+
+
+"
+`;
+
+exports[`SBPL policy snapshots > workspace_write + homebrew 1`] = `
+"
+(version 1)
+
+; closed by default
+(deny default)
+
+; allow command execution inside the same sandbox
+(allow process-exec)
+(allow process-fork)
+; SECURITY: signal restricted to same-sandbox processes only
+(allow signal (target same-sandbox))
+; SECURITY: process-info restricted to same-sandbox processes only
+(allow process-info* (target same-sandbox))
+
+; basic devices / tty behavior
+(allow file-read* file-write* file-ioctl (literal "/dev/null"))
+(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))
+(allow file-read* (literal "/dev/tty"))
+(allow file-read* (literal "/dev/urandom"))
+(allow pseudo-tty)
+
+; macOS process initialization
+(allow sysctl-read)
+(allow ipc-posix-shm)
+(allow mach-lookup)
+(allow file-read-metadata)
+
+; ─── System read paths (minimum set) ──────────────────────────
+; SECURITY: (literal "/") is required for bash to stat root during init.
+(allow file-read*
+  (literal "/")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/usr/bin")
+  (subpath "/usr/sbin")
+  (subpath "/usr/lib")
+  (subpath "/usr/libexec")
+  (subpath "/usr/share")
+  (subpath "/System")
+  (literal "/etc")
+  (subpath "/etc")
+  (subpath "/dev")
+)
+
+; user-selected readable roots
+(allow file-read*
+  (subpath "/Users/dev/project")
+)
+
+; user-selected writable roots
+(allow file-write*
+  (subpath "/Users/dev/project")
+)
+
+
+
+; homebrew: needed for tools installed via brew (node, python, etc.)
+; Only included when allowHomebrewPaths is explicitly set
+(allow file-read*
+  (subpath "/opt/homebrew")
+  (subpath "/usr/local")
+)
+
+
+
+; ═══════════════════════════════════════════════════════════════
+; SECURITY: Deny rules come LAST.
+; macOS Seatbelt: LAST matching rule wins.
+; ═══════════════════════════════════════════════════════════════
+
+; protect repo metadata even when workspace is writable
+(deny file-write*
+  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+)
+
+
+"
+`;
+
+exports[`SBPL policy snapshots > workspace_write + isolated temp + gitdirs 1`] = `
+"
+(version 1)
+
+; closed by default
+(deny default)
+
+; allow command execution inside the same sandbox
+(allow process-exec)
+(allow process-fork)
+; SECURITY: signal restricted to same-sandbox processes only
+(allow signal (target same-sandbox))
+; SECURITY: process-info restricted to same-sandbox processes only
+(allow process-info* (target same-sandbox))
+
+; basic devices / tty behavior
+(allow file-read* file-write* file-ioctl (literal "/dev/null"))
+(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))
+(allow file-read* (literal "/dev/tty"))
+(allow file-read* (literal "/dev/urandom"))
+(allow pseudo-tty)
+
+; macOS process initialization
+(allow sysctl-read)
+(allow ipc-posix-shm)
+(allow mach-lookup)
+(allow file-read-metadata)
+
+; ─── System read paths (minimum set) ──────────────────────────
+; SECURITY: (literal "/") is required for bash to stat root during init.
+(allow file-read*
+  (literal "/")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/usr/bin")
+  (subpath "/usr/sbin")
+  (subpath "/usr/lib")
+  (subpath "/usr/libexec")
+  (subpath "/usr/share")
+  (subpath "/System")
+  (literal "/etc")
+  (subpath "/etc")
+  (subpath "/dev")
+)
+
+; user-selected readable roots
+(allow file-read*
+  (subpath "/Users/dev/project")
+)
+
+; user-selected writable roots
+(allow file-write*
+  (subpath "/Users/dev/project")
+)
+
+
+
+
+; Per-run isolated temp directory (not system TMPDIR)
+; Created for this specific command invocation, cleaned up after exit
+; Includes isolated HOME directory to prevent workspace startup file injection
+(allow file-read* file-write*
+  (subpath "/tmp/sandbox-run-abc")
+)
+
+
+; ═══════════════════════════════════════════════════════════════
+; SECURITY: Deny rules come LAST.
+; macOS Seatbelt: LAST matching rule wins.
+; ═══════════════════════════════════════════════════════════════
+
+; protect repo metadata even when workspace is writable
+(deny file-write*
+  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+)
+
+; Resolved .git directories (pointer files / worktrees / submodules)
+(deny file-write* (subpath "/Users/dev/project/.git"))
+
+
+"
+`;
+
+exports[`SBPL policy snapshots > workspace_write + network 1`] = `
+"
+(version 1)
+
+; closed by default
+(deny default)
+
+; allow command execution inside the same sandbox
+(allow process-exec)
+(allow process-fork)
+; SECURITY: signal restricted to same-sandbox processes only
+(allow signal (target same-sandbox))
+; SECURITY: process-info restricted to same-sandbox processes only
+(allow process-info* (target same-sandbox))
+
+; basic devices / tty behavior
+(allow file-read* file-write* file-ioctl (literal "/dev/null"))
+(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))
+(allow file-read* (literal "/dev/tty"))
+(allow file-read* (literal "/dev/urandom"))
+(allow pseudo-tty)
+
+; macOS process initialization
+(allow sysctl-read)
+(allow ipc-posix-shm)
+(allow mach-lookup)
+(allow file-read-metadata)
+
+; ─── System read paths (minimum set) ──────────────────────────
+; SECURITY: (literal "/") is required for bash to stat root during init.
+(allow file-read*
+  (literal "/")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/usr/bin")
+  (subpath "/usr/sbin")
+  (subpath "/usr/lib")
+  (subpath "/usr/libexec")
+  (subpath "/usr/share")
+  (subpath "/System")
+  (literal "/etc")
+  (subpath "/etc")
+  (subpath "/dev")
+)
+
+; user-selected readable roots
+(allow file-read*
+  (subpath "/Users/dev/project")
+)
+
+; user-selected writable roots
+(allow file-write*
+  (subpath "/Users/dev/project")
+)
+
+
+; network access (explicitly opted in)
+(allow network-outbound)
+(allow network-inbound)
+
+
+
+
+; ═══════════════════════════════════════════════════════════════
+; SECURITY: Deny rules come LAST.
+; macOS Seatbelt: LAST matching rule wins.
+; ═══════════════════════════════════════════════════════════════
+
+; protect repo metadata even when workspace is writable
+(deny file-write*
+  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+)
+
+
+"
+`;
+
+exports[`SBPL policy snapshots > workspaceRoots 空 (cwd 使用) 1`] = `
+"
+(version 1)
+
+; closed by default
+(deny default)
+
+; allow command execution inside the same sandbox
+(allow process-exec)
+(allow process-fork)
+; SECURITY: signal restricted to same-sandbox processes only
+(allow signal (target same-sandbox))
+; SECURITY: process-info restricted to same-sandbox processes only
+(allow process-info* (target same-sandbox))
+
+; basic devices / tty behavior
+(allow file-read* file-write* file-ioctl (literal "/dev/null"))
+(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))
+(allow file-read* (literal "/dev/tty"))
+(allow file-read* (literal "/dev/urandom"))
+(allow pseudo-tty)
+
+; macOS process initialization
+(allow sysctl-read)
+(allow ipc-posix-shm)
+(allow mach-lookup)
+(allow file-read-metadata)
+
+; ─── System read paths (minimum set) ──────────────────────────
+; SECURITY: (literal "/") is required for bash to stat root during init.
+(allow file-read*
+  (literal "/")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/usr/bin")
+  (subpath "/usr/sbin")
+  (subpath "/usr/lib")
+  (subpath "/usr/libexec")
+  (subpath "/usr/share")
+  (subpath "/System")
+  (literal "/etc")
+  (subpath "/etc")
+  (subpath "/dev")
+)
+
+; user-selected readable roots
+(allow file-read*
+  (subpath "/Users/dev/project")
+)
+
+
+
+
+
+; ═══════════════════════════════════════════════════════════════
+; SECURITY: Deny rules come LAST.
+; macOS Seatbelt: LAST matching rule wins.
+; ═══════════════════════════════════════════════════════════════
+
+; protect repo metadata even when workspace is writable
+(deny file-write*
+  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+)
+
+
+; SECURITY: read_only mode — explicitly deny writes to workspace roots
+(deny file-write* (subpath "/Users/dev/project"))
+
+"
+`;
+
+exports[`SBPL policy snapshots > writableRoots ≠ workspaceRoots 1`] = `
+"
+(version 1)
+
+; closed by default
+(deny default)
+
+; allow command execution inside the same sandbox
+(allow process-exec)
+(allow process-fork)
+; SECURITY: signal restricted to same-sandbox processes only
+(allow signal (target same-sandbox))
+; SECURITY: process-info restricted to same-sandbox processes only
+(allow process-info* (target same-sandbox))
+
+; basic devices / tty behavior
+(allow file-read* file-write* file-ioctl (literal "/dev/null"))
+(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))
+(allow file-read* (literal "/dev/tty"))
+(allow file-read* (literal "/dev/urandom"))
+(allow pseudo-tty)
+
+; macOS process initialization
+(allow sysctl-read)
+(allow ipc-posix-shm)
+(allow mach-lookup)
+(allow file-read-metadata)
+
+; ─── System read paths (minimum set) ──────────────────────────
+; SECURITY: (literal "/") is required for bash to stat root during init.
+(allow file-read*
+  (literal "/")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/usr/bin")
+  (subpath "/usr/sbin")
+  (subpath "/usr/lib")
+  (subpath "/usr/libexec")
+  (subpath "/usr/share")
+  (subpath "/System")
+  (literal "/etc")
+  (subpath "/etc")
+  (subpath "/dev")
+)
+
+; user-selected readable roots
+(allow file-read*
+  (subpath "/Users/dev/project")
+  (subpath "/tmp/other-root")
+)
+
+; user-selected writable roots
+(allow file-write*
+  (subpath "/Users/dev/project/src")
+)
+
+
+
+
+
+; ═══════════════════════════════════════════════════════════════
+; SECURITY: Deny rules come LAST.
+; macOS Seatbelt: LAST matching rule wins.
+; ═══════════════════════════════════════════════════════════════
+
+; protect repo metadata even when workspace is writable
+(deny file-write*
+  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+)
+
+
+"
+`;
+
+exports[`SBPL policy snapshots > yolo 1`] = `
+"
+(version 1)
+(allow default)
+"
+`;
+
+exports[`SBPL policy snapshots > 複数 workspaceRoots 1`] = `
+"
+(version 1)
+
+; closed by default
+(deny default)
+
+; allow command execution inside the same sandbox
+(allow process-exec)
+(allow process-fork)
+; SECURITY: signal restricted to same-sandbox processes only
+(allow signal (target same-sandbox))
+; SECURITY: process-info restricted to same-sandbox processes only
+(allow process-info* (target same-sandbox))
+
+; basic devices / tty behavior
+(allow file-read* file-write* file-ioctl (literal "/dev/null"))
+(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))
+(allow file-read* (literal "/dev/tty"))
+(allow file-read* (literal "/dev/urandom"))
+(allow pseudo-tty)
+
+; macOS process initialization
+(allow sysctl-read)
+(allow ipc-posix-shm)
+(allow mach-lookup)
+(allow file-read-metadata)
+
+; ─── System read paths (minimum set) ──────────────────────────
+; SECURITY: (literal "/") is required for bash to stat root during init.
+(allow file-read*
+  (literal "/")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/usr/bin")
+  (subpath "/usr/sbin")
+  (subpath "/usr/lib")
+  (subpath "/usr/libexec")
+  (subpath "/usr/share")
+  (subpath "/System")
+  (literal "/etc")
+  (subpath "/etc")
+  (subpath "/dev")
+)
+
+; user-selected readable roots
+(allow file-read*
+  (subpath "/Users/dev/project")
+  (subpath "/tmp/other-root")
+)
+
+
+
+
+
+; ═══════════════════════════════════════════════════════════════
+; SECURITY: Deny rules come LAST.
+; macOS Seatbelt: LAST matching rule wins.
+; ═══════════════════════════════════════════════════════════════
+
+; protect repo metadata even when workspace is writable
+(deny file-write*
+  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+)
+
+
+; SECURITY: read_only mode — explicitly deny writes to workspace roots
+(deny file-write* (subpath "/Users/dev/project"))
+(deny file-write* (subpath "/tmp/other-root"))
+
+"
+`;
