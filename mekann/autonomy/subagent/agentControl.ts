@@ -300,7 +300,7 @@ export class AgentControl {
   }
 
   private applySubagentTypeDefaults(params: SpawnParams): SpawnParams {
-    if (!params.type) return params;
+    if (!params.type || params.role === "review-fixer") return params;
     const effectiveType = params.type === "explore" ? "scout" : params.type === "patch" ? "implement" : params.type;
     const mode = effectiveType === "implement" ? "edit" : "read_only";
     const typeInstruction: Record<string, string> = {
