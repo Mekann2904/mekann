@@ -1,0 +1,15 @@
+{
+  "name": "streaming-json",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.ts",
+  "description": "Optimized streaming JSON parser that defers full parse to final event instead of O(n²) re-parsing on every delta",
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.6",
+    "vitest": "^4.1.6"
+  }
+}

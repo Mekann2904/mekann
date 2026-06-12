@@ -1,0 +1,25 @@
+{
+  "name": "autoresearch",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.ts",
+  "description": "自律的実験ループ拡張機能（日本語 UI）— autoresearch for pi",
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run",
+    "test:fast": "vitest run --exclude '**/runner.test.ts' --exclude '**/candidate.test.ts' --exclude '**/contract.test.ts' --exclude '**/index.test.ts'",
+    "test:slow": "vitest run runner.test.ts candidate.test.ts contract.test.ts"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": ">=0.1.0",
+    "@earendil-works/pi-coding-agent": ">=0.1.0",
+    "@sinclair/typebox": "^0.34.49"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.6",
+    "vitest": "^4.1.6"
+  },
+  "dependencies": {
+    "tinyglobby": "^0.2.16"
+  }
+}

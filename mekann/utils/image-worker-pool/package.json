@@ -1,0 +1,15 @@
+{
+  "name": "image-worker-pool",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.ts",
+  "description": "Worker pool for image resize operations to avoid per-call Worker creation overhead",
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.6",
+    "vitest": "^4.1.6"
+  }
+}

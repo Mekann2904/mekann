@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+
+# Vitest
+coverage/
+*.lcov
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+/doc/pi-autoresearch
+/doc/ralph
+
+# Pi autoresearch artifacts
+.pi/
+.autoresearch/
+.pi-cache-friendly/
+.reasonix/truncated-results/
+
+# Mekann generated cache artifacts
+.mekann/cacheable-context/
+.mekann/output-budget/
+/memo.md
+autoresearch.contract.json
+autoresearch.jsonl
+autoresearch.md
+autoresearch.plan.md
+autoresearch.sh
+autoresearch.checks.sh
+
+# Local evaluation artifacts
+/evaluate_maintenance.sh
+/results.tsv
+
+# Local voice/model artifacts
+/*.onnx
+/*.onnx.ok
+/config.json
+
+# Upstream mirrors are local cache only; keep only the vendor index tracked.
+/vendor/*
+!/vendor/README.md
+/.mekann/command-normalization

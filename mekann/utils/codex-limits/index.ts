@@ -1,0 +1,258 @@
+import type {
+	ExtensionAPI,
+	ExtensionCommandContext,
+	ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, type Component } from "@earendil-works/pi-tui";
+import { featureValue } from "../../settings/featureConfig.js";
+import { parseArgs } from "./args.js";
+import { renderCodexFooter } from "./footer.js";
+import { CodexUsageState, queryUsage, type CodexUsageReport } from "./usage.js";
+import { formatCodexUsageFooterLines, formatCodexUsageReport, formatQueryErrors, type CodexUsageModel } from "./format.js";
+export { parseArgs } from "./args.js";
+export { normalizeAppServerResponse } from "./usage.js";
+export { formatCodexUsageFooterLines, formatCodexUsageReport, formatCodexUsageStatusline } from "./format.js";
+
+const CODEX_PROVIDER_ID = "openai-codex";
+const DEFAULT_TIMEOUT_MS = 15_000;
+const CACHE_TTL_MS = 60 * 1000;
+const RESET_FOREGROUND = "\x1b[39m";
+
+export default function codexUsage(pi: ExtensionAPI): void {
+	if (featureValue("codex-limits", "enabled") === false) return;
+
+	const usageState = new CodexUsageState(CACHE_TTL_MS);
+	let statuslineClearTimer: ReturnType<typeof setTimeout> | undefined;
+	let statuslineRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+	let usageStatusLines: string[] = [];
+
+	const updateUsageWidget = (ctx: ExtensionContext) => {
+		ctx.ui.setWidget("codex-usage", undefined);
+		const placement = placeUsageLines(usageStatusLines);
+		pi.events.emit("mekann:codex-usage:status", { text: placement.sandboxLine });
+		if (usageStatusLines.length === 0) {
+			ctx.ui.setFooter(undefined);
+			return;
+		}
+		ctx.ui.setFooter((tui, theme, footerData) => {
+			const unsub = footerData.onBranchChange(() => tui.requestRender());
+			return {
+				dispose: unsub,
+				invalidate() {},
+				render(width: number): string[] {
+					return renderCodexFooter(ctx, footerData, theme, width, placeUsageLines(usageStatusLines).footerLine, pi.getThinkingLevel());
+				},
+			} satisfies Component & { dispose(): void };
+		});
+	};
+
+	const clearStatuslineTimers = () => {
+		if (statuslineClearTimer) clearTimeout(statuslineClearTimer);
+		if (statuslineRefreshTimer) clearTimeout(statuslineRefreshTimer);
+		statuslineClearTimer = undefined;
+		statuslineRefreshTimer = undefined;
+	};
+
+	const clearUsageStatusline = (ctx: ExtensionContext) => {
+		usageState.invalidateRequests();
+		clearStatuslineTimers();
+		usageStatusLines = [];
+		updateUsageWidget(ctx);
+	};
+
+	const scheduleTemporaryStatuslineClear = (ctx: ExtensionContext) => {
+		if (statuslineClearTimer) clearTimeout(statuslineClearTimer);
+		statuslineClearTimer = setTimeout(() => {
+			usageStatusLines = [];
+			updateUsageWidget(ctx);
+			statuslineClearTimer = undefined;
+		}, CACHE_TTL_MS);
+		statuslineClearTimer.unref?.();
+	};
+
+	const scheduleStatuslineRefresh = (ctx: ExtensionContext) => {
+		if (statuslineRefreshTimer) clearTimeout(statuslineRefreshTimer);
+		statuslineRefreshTimer = setTimeout(() => {
+			void refreshCurrentCodexUsageStatusline(ctx, true);
+		}, CACHE_TTL_MS);
+		statuslineRefreshTimer.unref?.();
+	};
+
+	const setUsageStatusline = (
+		ctx: ExtensionContext,
+		report: CodexUsageReport,
+		options: { autoRefresh: boolean; model: CodexUsageModel | undefined },
+	) => {
+		if (statuslineClearTimer) clearTimeout(statuslineClearTimer);
+		statuslineClearTimer = undefined;
+		const nextLines = formatCodexUsageFooterLines(report, options.model);
+		if (!sameLines(usageStatusLines, nextLines)) {
+			usageStatusLines = nextLines;
+			updateUsageWidget(ctx);
+		}
+		if (options.autoRefresh) scheduleStatuslineRefresh(ctx);
+		else scheduleTemporaryStatuslineClear(ctx);
+	};
+
+	const refreshCurrentCodexUsageStatusline = async (
+		ctx: ExtensionContext,
+		force: boolean,
+		model = ctx.model,
+	) => {
+		if (!isOpenAICodexModel(model)) {
+			clearUsageStatusline(ctx);
+			return;
+		}
+
+		const requestId = usageState.nextRequestId();
+		const cached = usageState.getFreshCachedReport();
+		if (cached && !force) {
+			setUsageStatusline(ctx, cached.report, { autoRefresh: true, model });
+			return;
+		}
+
+		const staleCached = usageState.getCachedReport();
+		if (staleCached) {
+			const staleLines = formatCodexUsageFooterLines(staleCached.report, model);
+			if (!sameLines(usageStatusLines, staleLines)) {
+				usageStatusLines = staleLines;
+				updateUsageWidget(ctx);
+			}
+		} else {
+			usageStatusLines = ["checking Codex usage"];
+			updateUsageWidget(ctx);
+		}
+		const result = await queryUsage(ctx, { timeoutMs: DEFAULT_TIMEOUT_MS });
+		if (!usageState.isCurrentRequest(requestId)) return;
+		if (!isOpenAICodexModel(ctx.model)) {
+			clearUsageStatusline(ctx);
+			return;
+		}
+
+		if (!result.ok) {
+			const message = result.errors[0]?.message ?? "unknown error";
+			usageStatusLines = [`Codex usage error: ${truncateToWidth(message, 100, "...")}`];
+			updateUsageWidget(ctx);
+			scheduleStatuslineRefresh(ctx);
+			return;
+		}
+
+		usageState.storeReport(result.report);
+		setUsageStatusline(ctx, result.report, { autoRefresh: true, model });
+	};
+
+	pi.registerCommand("codex-status", {
+		description: "Show Codex ChatGPT subscription usage and rate-limit windows",
+		handler: async (args, ctx) => {
+			const options = parseArgs(args);
+			if (!options.ok) {
+				ctx.ui.notify(options.error, "warning");
+				return;
+			}
+
+			if (options.value.clearStatusline) {
+				clearUsageStatusline(ctx);
+				ctx.ui.notify("Codex usage statusline cleared.", "info");
+				return;
+			}
+
+			const cached = usageState.getFreshCachedReport();
+			if (cached && !options.value.refresh) {
+				if (options.value.statusline) {
+					setUsageStatusline(ctx, cached.report, {
+						autoRefresh: isOpenAICodexModel(ctx.model),
+						model: ctx.model,
+					});
+				}
+				showReport(ctx, cached.report, true);
+				return;
+			}
+
+			let keepStatusline = false;
+			if (options.value.statusline) {
+				usageStatusLines = ["checking Codex usage"];
+				updateUsageWidget(ctx);
+			}
+			try {
+				const result = await queryUsage(ctx, options.value);
+				if (!result.ok) {
+					ctx.ui.notify(formatQueryErrors(result.errors), "error");
+					return;
+				}
+
+				usageState.storeReport(result.report);
+				if (options.value.statusline) {
+					setUsageStatusline(ctx, result.report, {
+						autoRefresh: isOpenAICodexModel(ctx.model),
+						model: ctx.model,
+					});
+					keepStatusline = true;
+				}
+				showReport(ctx, result.report, false);
+			} finally {
+				if (options.value.statusline && !keepStatusline) {
+					usageStatusLines = [];
+					updateUsageWidget(ctx);
+				}
+			}
+		},
+	});
+
+	pi.on("session_start", (_event, ctx) => {
+		if (isOpenAICodexModel(ctx.model)) void refreshCurrentCodexUsageStatusline(ctx, false);
+		else clearUsageStatusline(ctx);
+	});
+
+	pi.on("session_tree", (_event, ctx) => {
+		if (isOpenAICodexModel(ctx.model)) void refreshCurrentCodexUsageStatusline(ctx, false);
+		else clearUsageStatusline(ctx);
+	});
+
+	pi.on("model_select", (event, ctx) => {
+		if (isOpenAICodexModel(event.model)) {
+			void refreshCurrentCodexUsageStatusline(ctx, false, event.model);
+		} else {
+			clearUsageStatusline(ctx);
+		}
+	});
+
+	pi.on("session_shutdown", (_event, ctx) => clearUsageStatusline(ctx));
+}
+
+
+
+function isOpenAICodexModel(model: Pick<CodexUsageModel, "provider"> | undefined): boolean {
+	return model?.provider === CODEX_PROVIDER_ID;
+}
+
+export type CodexUsagePlacement = {
+	sandboxLine?: string;
+	footerLine?: string;
+};
+
+export function placeUsageLines(lines: string[]): CodexUsagePlacement {
+	return {
+		sandboxLine: lines.length > 1 ? lines[0] : undefined,
+		footerLine: lines.length === 1 ? lines[0] : lines[1],
+	};
+}
+
+function sameLines(left: string[], right: string[]): boolean {
+	return left.length === right.length && left.every((line, index) => line === right[index]);
+}
+
+function showReport(
+	ctx: ExtensionCommandContext,
+	report: CodexUsageReport,
+	fromCache: boolean,
+): void {
+	const text = formatCodexUsageReport(
+		report,
+		fromCache ? Date.now() - report.capturedAt : undefined,
+	);
+	ctx.ui.notify(ctx.hasUI ? brightenInfoNotification(text) : text, "info");
+}
+
+function brightenInfoNotification(text: string): string {
+	return `${RESET_FOREGROUND}${text}`;
+}

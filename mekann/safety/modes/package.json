@@ -1,0 +1,22 @@
+{
+  "name": "modes",
+  "version": "1.0.0",
+  "description": "Collaboration mode manager for main / read_only / auto / sub modes with per-mode model and thinking configuration.",
+  "main": "index.ts",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.1.0",
+    "@earendil-works/pi-tui": ">=0.1.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.6",
+    "fast-check": "^4.8.0",
+    "vitest": "^4.1.6"
+  }
+}

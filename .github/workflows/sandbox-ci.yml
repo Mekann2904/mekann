@@ -1,0 +1,50 @@
+name: Sandbox CI
+
+on:
+  push:
+    paths:
+      - "mekann/safety/sandbox/**"
+  pull_request:
+    paths:
+      - "mekann/safety/sandbox/**"
+
+defaults:
+  run:
+    working-directory: mekann/safety/sandbox
+
+jobs:
+  typecheck-and-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci --workspaces=false
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests (non-macOS — integration tests silently skipped)
+        run: npm test
+
+  macos-sandbox:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci --workspaces=false
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Full tests (macOS sandbox integration — fail if sandbox-exec unavailable)
+        run: RUN_MAC_SANDBOX_TESTS=1 npm test

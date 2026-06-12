@@ -1,0 +1,161 @@
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, appendFileSync, unlinkSync, renameSync, statSync } from "node:fs";
+import path from "node:path";
+import type { AgentMetadata, ApplyRecord, EscrowRecord, RejectReason, ResultFilter, SemanticApplyLogEntry, StoredResultStatus, StoredSubagentResult, SubagentResultV1 } from "./types.js";
+import { tryParseSubagentResult } from "./resultSchema.js";
+
+let counter = 0;
+function nextId(): string { return `sar_${Date.now().toString(36)}_${++counter}`; }
+
+export function assertValidResultId(id: string): void {
+  if (!/^sar_[a-z0-9]+_[0-9]+$/i.test(id)) throw new Error(`Invalid result_id: ${id}`);
+}
+
+const VALID_STATUSES = new Set<StoredResultStatus>(["pending", "escrowed", "applying", "applied", "rejected", "needs_review", "superseded"]);
+
+function isUnderDir(file: string, dir: string): boolean { const rel = path.relative(path.resolve(dir), path.resolve(file)); return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel); }
+
+export function resultSummary(stored: StoredSubagentResult): string {
+  const r: any = stored.result;
+  return JSON.stringify({ kind: "subagent_result_available", result_id: stored.result_id, agent_path: stored.agent_path, outcome: r.outcome, summary: r.summary ?? r.reason ?? r.question ?? "", touched_paths: r.scope?.touched_paths ?? [], semantic_risk: r.semantic?.risk?.level });
+}
+
+export class SubagentResultStore {
+  readonly dir: string;
+  constructor(baseDir = process.cwd()) { this.dir = baseDir.endsWith("subagent-results") ? baseDir : path.join(baseDir, ".pi", "subagent-results"); mkdirSync(this.dir, { recursive: true }); }
+  private jsonPath(id: string): string { assertValidResultId(id); return path.join(this.dir, `${id}.json`); }
+  private patchPath(id: string): string { assertValidResultId(id); return path.join(this.dir, `${id}.patch`); }
+  save(agent: AgentMetadata, result: SubagentResultV1): StoredSubagentResult {
+    const id = nextId();
+    const canonical = structuredClone(result) as SubagentResultV1;
+    if (canonical.outcome === "patch") {
+      const body = canonical.patch.body;
+      if (body !== undefined) {
+        const patchPath = this.patchPath(id);
+        const tmpPatchPath = `${patchPath}.tmp`;
+        writeFileSync(tmpPatchPath, body, "utf8");
+        renameSync(tmpPatchPath, patchPath);
+        delete canonical.patch.body;
+        canonical.patch.ref = patchPath;
+        canonical.patch.bytes = Buffer.byteLength(body, "utf8");
+      }
+    }
+    const stored: StoredSubagentResult = { result_id: id, agent_id: agent.agentId, agent_path: agent.agentPath, created_at: Date.now(), status: "pending", result: canonical, authority: agent.authority, authority_enforced: agent.authorityEnforced, workspace_cwd: agent.workspaceCwd };
+    const jsonPath = this.jsonPath(id);
+    const tmpJsonPath = `${jsonPath}.tmp`;
+    writeFileSync(tmpJsonPath, JSON.stringify(stored, null, 2), "utf8");
+    renameSync(tmpJsonPath, jsonPath);
+    return stored;
+  }
+  private validateStored(raw: unknown, expectedId?: string): StoredSubagentResult {
+    if (!raw || typeof raw !== "object") throw new Error("Invalid stored result: not an object");
+    const s = raw as StoredSubagentResult;
+    assertValidResultId(s.result_id);
+    if (expectedId && s.result_id !== expectedId) throw new Error(`Stored result id mismatch: ${expectedId} != ${s.result_id}`);
+    if (!VALID_STATUSES.has(s.status)) throw new Error(`Invalid stored result status: ${String(s.status)}`);
+    if (typeof s.created_at !== "number" || typeof s.agent_id !== "string" || typeof s.agent_path !== "string") throw new Error("Invalid stored result metadata");
+    const resultForSchema = structuredClone(s.result) as any;
+    if (resultForSchema?.outcome === "patch") {
+      if (typeof resultForSchema.patch?.ref !== "string" || !isUnderDir(resultForSchema.patch.ref, this.dir)) throw new Error("Invalid stored patch ref");
+      if (!existsSync(resultForSchema.patch.ref)) throw new Error("Stored patch ref is missing");
+      const patchBytes = statSync(resultForSchema.patch.ref).size;
+      if (typeof resultForSchema.patch.bytes === "number" && resultForSchema.patch.bytes !== patchBytes) throw new Error("Stored patch byte size mismatch");
+      delete resultForSchema.patch.ref;
+      resultForSchema.patch.body = readFileSync((s.result as any).patch.ref, "utf8");
+    }
+    const parsed = tryParseSubagentResult(JSON.stringify(resultForSchema));
+    if (!parsed.ok) throw new Error(`Invalid stored result schema: ${parsed.error}`);
+    return s;
+  }
+  load(resultId: string): StoredSubagentResult { return this.validateStored(JSON.parse(readFileSync(this.jsonPath(resultId), "utf8")), resultId); }
+  list(filter: ResultFilter = {}): StoredSubagentResult[] {
+    if (!existsSync(this.dir)) return [];
+    return readdirSync(this.dir).filter((f) => /^sar_.*\.json$/.test(f)).flatMap((f) => {
+      const id = f.slice(0, -5);
+      try { return [this.validateStored(JSON.parse(readFileSync(path.join(this.dir, f), "utf8")), id)]; } catch { return []; }
+    }).filter((s) => (!filter.status || s.status === filter.status) && (!filter.outcome || s.result.outcome === filter.outcome) && (!filter.agent_path || s.agent_path === filter.agent_path)).sort((a,b)=>a.created_at-b.created_at);
+  }
+  private saveStored(stored: StoredSubagentResult): void {
+    const jsonPath = this.jsonPath(stored.result_id);
+    const tmpJsonPath = `${jsonPath}.tmp`;
+    writeFileSync(tmpJsonPath, JSON.stringify(this.validateStored(stored, stored.result_id), null, 2), "utf8");
+    renameSync(tmpJsonPath, jsonPath);
+  }
+  markApplying(resultId: string): void { const s = this.load(resultId); s.status = "applying"; s.applying_at = Date.now(); this.saveStored(s); }
+  markApplied(resultId: string, applyRecord: ApplyRecord): void { const s = this.load(resultId); s.status = "applied"; s.apply_record = applyRecord; delete s.applying_at; delete s.escrow_record; delete s.reject_reason; delete s.reject_details; delete s.review_record; delete s.superseded_reason; this.saveStored(s); }
+  markEscrowed(resultId: string, escrowRecord: EscrowRecord): void { const s = this.load(resultId); s.status = "escrowed"; s.escrow_record = escrowRecord; delete s.applying_at; delete s.apply_record; delete s.reject_reason; delete s.reject_details; delete s.review_record; delete s.superseded_reason; this.saveStored(s); }
+  markRejected(resultId: string, reason: RejectReason, details?: unknown): void { const s = this.load(resultId); s.status = "rejected"; s.reject_reason = reason; s.reject_details = details; delete s.applying_at; delete s.apply_record; delete s.review_record; delete s.superseded_reason; this.saveStored(s); }
+  markNeedsReview(resultId: string, reason: string, details?: unknown): void { const s = this.load(resultId); s.status = "needs_review"; s.review_record = { result_id: resultId, reason, details }; delete s.applying_at; delete s.apply_record; delete s.reject_reason; delete s.reject_details; delete s.superseded_reason; this.saveStored(s); }
+  recoverStaleApplying(maxAgeMs = 10 * 60 * 1000): number { let count = 0; for (const s of this.list({ status: "applying" })) { if ((s.applying_at ?? s.created_at) + maxAgeMs < Date.now()) { this.markNeedsReview(s.result_id, "stale_applying", { applying_at: s.applying_at }); count++; } } return count; }
+  markSuperseded(resultId: string, reason?: string): void { const s = this.load(resultId); s.status = "superseded"; s.superseded_reason = reason; delete s.applying_at; delete s.apply_record; delete s.reject_reason; delete s.reject_details; delete s.review_record; this.saveStored(s); }
+
+  /**
+   * Prune old results that have reached a terminal state beyond the given TTL.
+   * Returns the number of pruned results.
+   * Terminal states: applied, rejected, superseded, needs_review.
+   */
+  pruneStaleResults(maxAgeMs = 7 * 24 * 60 * 60 * 1000): number {
+    const cutoff = Date.now() - maxAgeMs;
+    let pruned = 0;
+    const terminalStatuses = new Set<StoredResultStatus>(["applied", "rejected", "superseded", "needs_review"]);
+    for (const s of this.list()) {
+      if (terminalStatuses.has(s.status) && s.created_at < cutoff) {
+        try {
+          const jsonPath = this.jsonPath(s.result_id);
+          const patchPath = this.patchPath(s.result_id);
+          if (existsSync(jsonPath)) { unlinkSync(jsonPath); }
+          if (existsSync(patchPath)) { unlinkSync(patchPath); }
+          pruned++;
+        } catch {
+          // best-effort; skip on error
+        }
+      }
+    }
+    return pruned;
+  }
+
+  /** Prune results that have been in "pending" status for too long (stale orphans). */
+  pruneOrphanedPending(maxAgeMs = 24 * 60 * 60 * 1000): number {
+    const cutoff = Date.now() - maxAgeMs;
+    let pruned = 0;
+    for (const s of this.list({ status: "pending" })) {
+      if (s.created_at < cutoff) {
+        this.markSuperseded(s.result_id, "orphaned_pending");
+        pruned++;
+      }
+    }
+    return pruned;
+  }
+
+  /**
+   * Link a retry: update original result with superseded_by,
+   * and return the retry_count for the chain.
+   */
+  linkRetry(originalId: string, retryId: string): number {
+    const original = this.load(originalId);
+    const retryCount = (original.retry_count ?? 0) + 1;
+    // Update original to point to retry
+    const updated = this.load(originalId);
+    updated.superseded_by = retryId;
+    updated.status = "superseded";
+    updated.superseded_reason = "retry";
+    this.saveStored(updated);
+    // Stamp retry chain on the new result
+    const retry = this.load(retryId);
+    retry.retry_count = retryCount;
+    retry.retry_of = original.retry_of ?? originalId;
+    this.saveStored(retry);
+    return retryCount;
+  }
+
+  /** Get the retry count for a result chain (follows retry_of links). */
+  getRetryCount(resultId: string): number {
+    try {
+      const stored = this.load(resultId);
+      return stored.retry_count ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+  appendSemanticLog(entry: SemanticApplyLogEntry): void { appendFileSync(path.join(this.dir, "semantic-log.jsonl"), `${JSON.stringify(entry)}\n`, "utf8"); }
+  readSemanticLog(): SemanticApplyLogEntry[] { const p = path.join(this.dir, "semantic-log.jsonl"); if (!existsSync(p)) return []; return readFileSync(p, "utf8").split(/\r?\n/).filter(Boolean).flatMap((l) => { try { return [JSON.parse(l) as SemanticApplyLogEntry]; } catch { return []; } }); }
+}
