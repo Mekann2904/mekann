@@ -16,6 +16,7 @@ import type { FinalizeSubagentInput } from "./subagentLifecycle.js";
 import { ROOT_PATH } from "./types.js";
 
 const MAILBOX_CONTENT_MAX_CHARS = 1_200;
+const STRUCTURED_REVIEW_FIXER_MAX_CHARS = 64_000;
 
 export class SubagentFinalizer {
   private storesByCwd = new Map<string, SubagentResultStore>();
@@ -44,8 +45,9 @@ export class SubagentFinalizer {
   handleFinalText(input: FinalizeSubagentInput): string {
     const text = input.finalText ?? "(agent completed)";
     const parsed = tryParseSubagentResult(text);
-    let message = truncateText(text, MAILBOX_CONTENT_MAX_CHARS);
     const agent = this.registry.get(input.agentPath);
+    const mailboxLimit = agent?.role === "review-fixer" ? STRUCTURED_REVIEW_FIXER_MAX_CHARS : MAILBOX_CONTENT_MAX_CHARS;
+    let message = truncateText(text, mailboxLimit);
     if (parsed.ok && agent) {
       const store = this.resultStoreFor(input.cwd ?? process.cwd());
       const stored = store.save(agent, parsed.result);
@@ -88,11 +90,13 @@ export class SubagentFinalizer {
   }
 
   enqueueToMailbox(fromAgentId: string, fromPath: string, toPath: string, content: string, kind: "message" | "followup" | "final_result"): void {
+    const agent = this.registry.get(fromPath);
+    const mailboxLimit = agent?.role === "review-fixer" ? STRUCTURED_REVIEW_FIXER_MAX_CHARS : MAILBOX_CONTENT_MAX_CHARS;
     this.mailbox.enqueue({
       fromAgentId,
       fromAgentPath: fromPath,
       toAgentPath: toPath,
-      content: truncateText(content, MAILBOX_CONTENT_MAX_CHARS),
+      content: truncateText(content, mailboxLimit),
       timestamp: Date.now(),
       kind,
     });

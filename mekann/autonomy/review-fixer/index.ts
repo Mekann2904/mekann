@@ -120,7 +120,6 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
         roi_category: "fresh_review",
         justification: "Synchronous issue-scoped thermo-nuclear code quality review before PR creation.",
         cost_intent: "expensive",
-        type: "review",
       }, ctx);
       const result = extractReviewFixerResult(delegate.final_result);
       const error = delegate.status === "errored" ? `subagent status: ${delegate.status}` : undefined;
