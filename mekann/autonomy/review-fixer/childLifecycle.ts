@@ -5,9 +5,8 @@
  * waiting for completion, and collecting the structured result.
  */
 
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -37,8 +36,6 @@ function snapshotChangedFiles(cwd: string): Set<string> {
     return new Set();
   }
 }
-
-import { execFileSync } from "node:child_process";
 
 /**
  * Spawn a child Pi process for the review fixer and wait for completion.
@@ -95,14 +92,11 @@ export async function runChildReviewFixer(
     // Extract the structured result from child output
     const result = extractResult(stdout || stderr);
 
-    // Compute changed files
+    // Compute changed files: diff before vs after snapshot
     const filesAfter = snapshotChangedFiles(cwd);
-    const changedFiles = [...filesAfter].filter((f) => !filesBefore.has(f) || true); // All current changed files
-    // Actually: we want files that changed due to child edits. Since child works on same workspace,
-    // we report all currently changed files.
-    const allChangedFiles = [...filesAfter];
+    const changedFiles = [...filesAfter].filter((f) => !filesBefore.has(f));
 
-    return { result, changedFiles: allChangedFiles };
+    return { result, changedFiles };
   } catch (err: any) {
     // Even on error, check what changed
     const filesAfter = snapshotChangedFiles(cwd);

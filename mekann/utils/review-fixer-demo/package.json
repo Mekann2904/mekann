@@ -1,0 +1,14 @@
+{
+  "name": "review-fixer-demo",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.ts",
+  "description": "Intentionally low-quality utility for testing the review_fixer workflow. Contains spaghetti conditions, any types, giant functions, duplicated logic, and poor naming.",
+  "license": "MIT",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.6"
+  }
+}
