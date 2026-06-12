@@ -59,7 +59,10 @@ export async function runChildReviewFixer(
     : (ctx.model?.provider && ctx.model?.id ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
 
   const thinkingLevel = settings.reasoningEffort;
-  const extensionPath = path.resolve(import.meta.dirname, "../../..");
+  // Child mode is implemented by the subagent extension, so the external Pi
+  // must load that extension entry. Passing the repo root makes `pi -e` exit
+  // without registering child IPC handlers, causing hello timeouts.
+  const extensionPath = path.resolve(import.meta.dirname, "../subagent/index.js");
 
   // Create IPC hub
   const hub = new SubagentHub(socketPath, agentId, nonce);
