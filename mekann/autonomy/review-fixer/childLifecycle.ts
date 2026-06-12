@@ -62,7 +62,7 @@ export async function runChildReviewFixer(
   // Child mode is implemented by the subagent extension, so the external Pi
   // must load that extension entry. Passing the repo root makes `pi -e` exit
   // without registering child IPC handlers, causing hello timeouts.
-  const extensionPath = path.resolve(import.meta.dirname, "../subagent/index.js");
+  const extensionPath = path.resolve(import.meta.dirname, "../subagent/index.ts");
 
   // Create IPC hub
   const hub = new SubagentHub(socketPath, agentId, nonce);
