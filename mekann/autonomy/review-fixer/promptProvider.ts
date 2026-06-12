@@ -15,9 +15,14 @@ export function registerReviewFixerPromptProvider(): void {
         cacheIntent: "prefer_cache",
         content: [
           "review_fixer tool は issue worktree で PR 作成前に使用する同期 review + edit ツールです。",
-          "issue worktree (branch issue-<number>) で実装を完了した場合、commit / push / PR 作成する前に必ず review_fixer tool を実行してください。",
-          "review_fixer が完了したら、その結果を確認してから commit / push / PR 作成に進んでください。",
+          "",
+          "【GATE】issue worktree (branch issue-<number>) で実装を完了した場合、commit / push / PR 作成する前に review_fixer tool を必ず実行すること。これは強制 gate であり、省略不可。",
+          "- 実装完了 → review_fixer 実行 → 結果確認 → commit / push / PR 作成 の順序を守ること。",
+          "- review_fixer を実行せずに commit / push / PR 作成に進んではならない。",
+          "- blocked issue では review_fixer を実行しないこと。",
+          "",
           "review_fixer は child Pi を起動するため、実行中は他の操作ができません。",
+          "review_fixer が完了したら、返された structured result の findings / changes / verification を確認してから次の step に進んでください。",
         ].join("\n"),
       }];
     },

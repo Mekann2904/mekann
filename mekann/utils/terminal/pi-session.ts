@@ -8,6 +8,8 @@ export interface PiSessionLaunchRequest {
 	title: string;
 	/** Node binary used by the currently running Pi process. Avoids shell PATH/version drift. */
 	nodeBin?: string;
+	/** Additional system prompt for the launched Pi session. */
+	appendSystemPrompt?: string;
 	/** Keep the window open after Pi exits. Intended for debugging only. */
 	hold?: boolean;
 }
@@ -29,7 +31,11 @@ export async function launchPiSessionInKittySplit(request: PiSessionLaunchReques
 	const nodeBin = request.nodeBin || await resolveBin("node");
 	const piBin = await resolveBin("pi");
 	const shell = process.env.SHELL || "/bin/sh";
-	const command = `exec ${quoteShell(nodeBin)} ${quoteShell(piBin)} --name ${quoteShell(request.title)}`;
+	const piArgs = [quoteShell(piBin), "--name", quoteShell(request.title)];
+	if (request.appendSystemPrompt) {
+		piArgs.push("--append-system-prompt", quoteShell(request.appendSystemPrompt));
+	}
+	const command = `exec ${quoteShell(nodeBin)} ${piArgs.join(" ")}`;
 
 	const args = [
 		"@", "launch",
