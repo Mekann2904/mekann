@@ -58,7 +58,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
   if (process.env.MEKANN_TEST_ENABLE_SUBAGENT !== "1" && !isFeatureEnabled("subagent")) return;
 
   registerSubagentPromptProvider();
-  if (process.env.PI_SUBAGENT_ROLE === "child") {
+  if (process.env.PI_SUBAGENT_ROLE === "child" || process.env.PI_SUBAGENT_ROLE === "review-fixer") {
     const g = globalThis as typeof globalThis & { __piSubagentChildStarted?: boolean };
     if (!g.__piSubagentChildStarted) {
       g.__piSubagentChildStarted = true;

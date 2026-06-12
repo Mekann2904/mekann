@@ -1,30 +1,21 @@
 /**
  * Review fixer child Pi lifecycle.
  *
- * Handles spawning a child Pi with PI_SUBAGENT_ROLE=review-fixer,
- * waiting for completion, and collecting the structured result.
+ * Spawns a child Pi in a Kitty split using the subagent IPC infrastructure,
+ * waits for completion synchronously, and collects the structured result.
  */
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { fileURLToPath } from "node:url";
+import crypto from "node:crypto";
+import os from "node:os";
+import path from "node:path";
+import { mkdir, unlink } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { SubagentHub, type ChildToParent } from "../subagent/ipc.js";
+import { KittyController } from "../subagent/kittyControl.js";
 import type { ReviewFixerResult, ReviewFixerSettings } from "./types.js";
 import type { ResolvedIssueContext } from "./issueContext.js";
 import { buildChildPrompt } from "./childPrompt.js";
-
-const execFileAsync = promisify(execFile);
-
-function getExtensionPath(): string {
-  // Resolve to the mekann extension root so child Pi loads the same extensions.
-  try {
-    return path.resolve(fileURLToPath(import.meta.url), "../../..");
-  } catch {
-    return "";
-  }
-}
 
 /**
  * Get git status snapshot for comparing before/after.
@@ -38,10 +29,9 @@ function snapshotChangedFiles(cwd: string): Set<string> {
   }
 }
 
-import { execFileSync } from "node:child_process";
-
 /**
- * Spawn a child Pi process for the review fixer and wait for completion.
+ * Spawn a child Pi process in a Kitty split and wait synchronously for completion.
+ * Uses the same IPC / Kitty infrastructure as the subagent feature.
  */
 export async function runChildReviewFixer(
   issueContext: ResolvedIssueContext,
@@ -49,65 +39,115 @@ export async function runChildReviewFixer(
   cwd: string,
   ctx: ExtensionContext,
 ): Promise<{ result: ReviewFixerResult | null; changedFiles: string[]; error?: string }> {
-  const extensionPath = getExtensionPath();
-  const prompt = buildChildPrompt(issueContext, cwd);
+  const agentId = `rf_${Date.now().toString(36)}`;
+  const agentPath = `/root/review-fixer-${issueContext.number}`;
+  const logDir = path.join(os.tmpdir(), "pi-review-fixer");
+  const socketPath = path.join(logDir, `${agentId}.sock`);
+  const logPath = path.join(logDir, `${agentId}.log`);
+  const nonce = crypto.randomBytes(24).toString("base64url");
+  const title = `review-fixer #${issueContext.number}`;
 
   // Snapshot before
   const filesBefore = snapshotChangedFiles(cwd);
 
-  // Resolve model arguments
-  const modelArgs: string[] = [];
-  if (settings.model) {
-    modelArgs.push("--model", `${settings.model.provider}/${settings.model.modelId}`);
-  }
-  if (settings.reasoningEffort) {
-    modelArgs.push("--effort", settings.reasoningEffort);
-  }
+  // Build the child prompt
+  const prompt = buildChildPrompt(issueContext, cwd);
 
-  // Build the child Pi command.
-  // The child runs with the same cwd and receives the review prompt as its initial user message.
-  const env: Record<string, string> = {
-    ...process.env as Record<string, string>,
-    PI_SUBAGENT_ROLE: "review-fixer",
-    PI_REVIEW_FIXER_MAX_RETRIES: String(settings.maxFixRetries),
-    PI_REVIEW_FIXER_INITIAL_MESSAGE: prompt,
-  };
+  // Resolve model
+  const modelId = settings.model
+    ? `${settings.model.provider}/${settings.model.modelId}`
+    : (ctx.model?.provider && ctx.model?.id ? `${ctx.model.provider}/${ctx.model.id}` : undefined);
+
+  const thinkingLevel = settings.reasoningEffort;
+  const extensionPath = path.resolve(import.meta.dirname, "../../..");
+
+  // Create IPC hub
+  const hub = new SubagentHub(socketPath, agentId, nonce);
+  const kitty = new KittyController();
+
+  // Collect result from child
+  let childFinalText: string | null = null;
+  let childError: string | null = null;
+  let childCompleted = false;
+
+  hub.onMessage((msg: ChildToParent) => {
+    if (msg.type === "final" && msg.agentId === agentId) {
+      childFinalText = msg.message;
+      childCompleted = true;
+    }
+    if (msg.type === "error" && msg.agentId === agentId) {
+      childError = childError ? `${childError}; ${msg.message}` : msg.message;
+    }
+  });
 
   try {
-    const extensionArgs = extensionPath ? ["-e", extensionPath] : [];
-    const childArgs = [
-      ...extensionArgs,
-      ...modelArgs,
-      "--prompt", prompt,
-      "--no-interactive",
-    ];
+    // Start IPC server
+    await hub.start();
 
-    // Use the pi command to launch child.
-    const piCommand = process.env.PI_REVIEW_FIXER_PI_COMMAND || "pi";
-
-    const { stdout, stderr } = await execFileAsync(piCommand, childArgs, {
+    // Launch child Pi in Kitty split
+    const display = await kitty.launchPiSplit({
+      agentId,
+      agentPath,
       cwd,
-      env,
-      timeout: 600_000, // 10 minute timeout
-      maxBuffer: 10 * 1024 * 1024,
+      socketPath,
+      initialMessage: prompt,
+      logPath,
+      title,
+      piCommand: "pi",
+      extensionPath,
+      modelId,
+      thinkingLevel,
+      nonce,
     });
 
-    // Extract the structured result from child output
-    const result = extractResult(stdout || stderr);
+    // Wait for hello
+    await hub.waitForHello(agentId, 10_000);
+
+    // Wait synchronously for child completion.
+    // The child Pi runs thermo-nuclear review + edits + verification,
+    // then sends a "final" IPC message with the structured JSON result.
+    // Timeout after 10 minutes.
+    const COMPLETION_TIMEOUT_MS = 600_000;
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (!childCompleted) reject(new Error("Review fixer child timed out"));
+      }, COMPLETION_TIMEOUT_MS);
+
+      const off = hub.onMessage((msg: ChildToParent) => {
+        if (msg.type === "final" && msg.agentId === agentId) {
+          clearTimeout(timer);
+          off();
+          resolve();
+        }
+        if (msg.type === "status" && msg.agentId === agentId && (msg.status === "errored" || msg.status === "shutdown")) {
+          clearTimeout(timer);
+          off();
+          if (!childCompleted) reject(new Error(`Child exited with status: ${msg.status}`));
+        }
+      });
+    });
+
+    // Extract result from child's final message
+    const result = extractResult(childFinalText ?? "");
 
     // Compute changed files
     const filesAfter = snapshotChangedFiles(cwd);
-    const changedFiles = [...filesAfter].filter((f) => !filesBefore.has(f) || true); // All current changed files
-    // Actually: we want files that changed due to child edits. Since child works on same workspace,
-    // we report all currently changed files.
     const allChangedFiles = [...filesAfter];
 
-    return { result, changedFiles: allChangedFiles };
+    // Close Kitty split
+    try { await kitty.close(display); } catch { /* ignore */ }
+
+    return {
+      result,
+      changedFiles: allChangedFiles,
+      error: childError ?? undefined,
+    };
   } catch (err: any) {
-    // Even on error, check what changed
     const filesAfter = snapshotChangedFiles(cwd);
     const errorMessage = err instanceof Error ? err.message : String(err);
     return { result: null, changedFiles: [...filesAfter], error: errorMessage };
+  } finally {
+    await hub.stop().catch(() => undefined);
   }
 }
 
@@ -115,14 +155,15 @@ export async function runChildReviewFixer(
  * Extract the structured JSON result from child Pi output.
  */
 function extractResult(output: string): ReviewFixerResult | null {
-  // Try to find JSON in the output
-  // First try: entire output is JSON
+  if (!output) return null;
+
+  // Try: entire output is JSON
   try {
     const parsed = JSON.parse(output.trim());
     if (parsed.schema === "review-fixer.result.v1") return parsed as ReviewFixerResult;
   } catch { /* not raw JSON */ }
 
-  // Second try: extract from markdown code blocks
+  // Try: extract from markdown code blocks
   const jsonBlockMatch = output.match(/```(?:json)?\s*\n([\s\S]*?)```/);
   if (jsonBlockMatch) {
     try {
@@ -131,7 +172,7 @@ function extractResult(output: string): ReviewFixerResult | null {
     } catch { /* not valid JSON */ }
   }
 
-  // Third try: find any JSON object with the right schema
+  // Try: find any JSON object with the right schema
   const jsonMatch = output.match(/\{[\s\S]*?"schema"\s*:\s*"review-fixer\.result\.v1"[\s\S]*?\}/);
   if (jsonMatch) {
     try {

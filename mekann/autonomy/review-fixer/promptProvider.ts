@@ -15,7 +15,8 @@ export function registerReviewFixerPromptProvider(): void {
         cacheIntent: "prefer_cache",
         content: [
           "review_fixer tool は issue worktree で PR 作成前に使用する同期 review + edit ツールです。",
-          "実装完了後、PR を作成する前に review_fixer を実行してコード品質を最善化してください。",
+          "issue worktree (branch issue-<number>) で実装を完了した場合、commit / push / PR 作成する前に必ず review_fixer tool を実行してください。",
+          "review_fixer が完了したら、その結果を確認してから commit / push / PR 作成に進んでください。",
           "review_fixer は child Pi を起動するため、実行中は他の操作ができません。",
         ].join("\n"),
       }];
