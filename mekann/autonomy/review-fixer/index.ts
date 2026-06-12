@@ -84,6 +84,7 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
       if (!issueContext) {
         return {
           content: [{ type: "text" as const, text: "Review fixer failed: could not resolve issue context. Ensure you are on an issue worktree (branch issue-<number>) and the GitHub issue exists." }],
+          details: undefined,
           isError: true,
         };
       }
@@ -93,6 +94,7 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
       if (blockReason) {
         return {
           content: [{ type: "text" as const, text: `Review fixer blocked: ${blockReason}` }],
+          details: undefined,
           isError: true,
         };
       }
@@ -136,6 +138,7 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
             type: "text" as const,
             text: `Review fixer failed: ${error}\n\nChanged files: none`,
           }],
+          details: undefined,
           isError: true,
         };
       }

@@ -7,7 +7,7 @@ export function registerReviewFixerPromptProvider(): void {
       return [{
         id: "review-fixer:policy",
         source: "review-fixer",
-        kind: "review_fixer_policy",
+        kind: "tool_policy",
         stability: "stable",
         scope: "global",
         priority: 351,
