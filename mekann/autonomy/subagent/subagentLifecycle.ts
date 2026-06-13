@@ -1,11 +1,13 @@
 /**
- * SubagentLifecycle — thin facade over SpawnQueue, RuntimeStore,
- * SubagentFinalizer, and SubagentSpawner.
+ * SubagentLifecycle — facade over SpawnQueue, RuntimeStore,
+ * SubagentFinalizer, SubagentSpawner, and SubagentSurfaceSync.
  *
- * Owns the spawn-to-final-result seam and keeps runtime maps private.
+ * Owns the spawn-to-final-result seam, keeps runtime maps private,
+ * and optionally drives tool surface visibility reactively from
+ * lifecycle state changes.
  */
 
-import type { AgentSession, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, AgentSession, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentRuntime, SpawnResult } from "./types.js";
 import type { FinalizeSubagentInput, QueuedSpawnDelegation, SpawnDelegationAdapters, SpawnDelegationInput } from "./subagentLifecycleTypes.js";
 import type { SubagentHub } from "./ipc.js";
@@ -16,6 +18,7 @@ import { SpawnQueue } from "./spawnQueue.js";
 import { RuntimeStore } from "./runtimeStore.js";
 import { SubagentFinalizer } from "./subagentFinalizer.js";
 import { SubagentSpawner, type CloseRuntimeAdapters } from "./subagentSpawner.js";
+import { createSurfaceSyncSubscriber, syncSubagentToolSurface } from "./subagentSurfaceSync.js";
 
 // Re-export shared types for existing consumers.
 export type { QueuedSpawnDelegation, SpawnDelegationAdapters, SpawnDelegationInput, FinalizeSubagentInput } from "./subagentLifecycleTypes.js";
@@ -27,12 +30,15 @@ export class SubagentLifecycle {
   private readonly finalizer: SubagentFinalizer;
   private spawner!: SubagentSpawner;
   private adaptersInitialized = false;
+  private surfaceSyncUnsubscribe?: () => void;
+  private _cwd: string;
 
   constructor(
     private readonly registry: AgentRegistry,
     private readonly mailbox: Mailbox,
     cwd = process.cwd(),
   ) {
+    this._cwd = cwd;
     this.finalizer = new SubagentFinalizer(registry, mailbox, cwd);
     this._runtimes = new RuntimeStore();
     this.resultStore = this.finalizer.resultStore;
@@ -140,5 +146,36 @@ export class SubagentLifecycle {
 
   async closeRuntime(agentPath: string, adapters: CloseRuntimeAdapters): Promise<void> {
     return this.spawner.closeRuntime(agentPath, adapters);
+  }
+
+  // ─── Tool surface sync ─────────────────────────────────────────
+
+  /**
+   * Enable reactive tool surface sync. The lifecycle subscribes to
+   * registry events and updates Pi's active tool set automatically.
+   * Call this once after initAdapters(). Call disableSurfaceSync()
+   * on shutdown.
+   */
+  enableSurfaceSync(pi: ExtensionAPI): void {
+    if (this.surfaceSyncUnsubscribe) return;
+    this.surfaceSyncUnsubscribe = createSurfaceSyncSubscriber(
+      pi,
+      this.registry,
+      (cwd) => this.resultStoreFor(cwd),
+      () => this._cwd,
+    );
+  }
+
+  disableSurfaceSync(): void {
+    this.surfaceSyncUnsubscribe?.();
+    this.surfaceSyncUnsubscribe = undefined;
+  }
+
+  /**
+   * One-shot surface sync. Called from index.ts after tool invocations
+   * for backwards compatibility when reactive sync is not enabled.
+   */
+  syncSurface(pi: ExtensionAPI): void {
+    syncSubagentToolSurface(pi, this.registry.list(), this.resultStoreFor(this._cwd));
   }
 }

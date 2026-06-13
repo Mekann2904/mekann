@@ -107,7 +107,7 @@ export class AgentControl {
   private defaultReasoningEffort: string;
   private sessionSpawnCount = 0;
   readonly resultStore: SubagentResultStore;
-  private readonly lifecycle: SubagentLifecycle;
+  readonly lifecycle: SubagentLifecycle;
   private drainQueueOnClose = true;
 
   constructor(
