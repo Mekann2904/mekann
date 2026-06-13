@@ -181,4 +181,38 @@ describe("SubagentLifecycle", () => {
     expect(registry.get("/root/queued")?.status).toBe("pending_init");
     expect(lifecycle.runtimeForSession("/root/queued")).toBeDefined();
   });
+
+  it("registerRetryLink links retry spawn to original result", () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), "sl-"));
+    try {
+      const registry = new AgentRegistry(4, 3);
+      const mailbox = new Mailbox();
+      registerAgent(registry, cwd);
+      const lifecycle = new SubagentLifecycle(registry, mailbox, cwd);
+
+      lifecycle.handleFinalText({
+        agentId: "a1", agentPath: "/root/task", callerPath: "/root", status: "completed", cwd,
+        finalText: JSON.stringify({ schema: "subagent.result.v1", outcome: "no_change", summary: "nothing to change" }),
+      });
+
+      const originalId = lifecycle.resultStoreFor(cwd).list()[0].result_id;
+      lifecycle.registerRetryLink("/root/retry_task", originalId);
+
+      const retryReservation = registry.reserveSpawnSlot("/root/retry_task");
+      registry.registerAgent({
+        agentId: "retry1", sessionId: "s_retry", agentPath: "/root/retry_task", status: "completed",
+        lastTaskMessage: "retry", createdAt: Date.now(), updatedAt: Date.now(),
+        depth: 1, open: true, cancellationRequested: false, workspaceCwd: cwd,
+      }, retryReservation);
+
+      lifecycle.handleFinalText({
+        agentId: "retry1", agentPath: "/root/retry_task", callerPath: "/root", status: "completed", cwd,
+        finalText: JSON.stringify({ schema: "subagent.result.v1", outcome: "observation", summary: "retried", findings: [] }),
+      });
+
+      expect(lifecycle.resultStoreFor(cwd).list()).toHaveLength(2);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
 });
