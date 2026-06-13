@@ -89,9 +89,9 @@ export default function dashboard(pi: ExtensionAPI): void {
 			const { assembleDashboardRenderModel } = assembler;
 			const model = await assembleDashboardRenderModel(ctx.cwd);
 			ctx.ui.setFooter(() => ({ render: () => [], invalidate: () => {} }));
+			let cancelPlacement: (() => void) | undefined;
 			try {
 				let imagesPlaced = false;
-				let cancelPlacement: (() => void) | undefined;
 				await ctx.ui.custom<void>((tui, _theme, _keybindings, done) => {
 					const component = createDashboardPiComponent(model, () =>
 						done(undefined),

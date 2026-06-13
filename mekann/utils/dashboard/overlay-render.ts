@@ -13,7 +13,6 @@ import {
 	type OverlayRenderingOutput,
 } from "./rendering-pipeline.js";
 
-export type { OverlayRenderResult } from "./rendering-pipeline.js";
 export type { OverlayRenderingOutput } from "./rendering-pipeline.js";
 
 // ── Public API ────────────────────────────────────────────────────────
