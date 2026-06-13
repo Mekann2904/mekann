@@ -17,6 +17,7 @@ import { DEFAULT_SANDBOX_MODE, parseSandboxMode, modeLabel, SANDBOX_PUSH_PROFILE
 import { SafetyProfileState } from "../policy-core/safetyProfile.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import { featureBooleanValue, isFeatureEnabled } from "../../settings/enabled.js";
+import { setToolsActive } from "../../settings/toolSurface.js";
 import { SandboxExecutionControl, SANDBOX_BLOCK_HINT } from "./executionControl.js";
 import { formatSandboxRuntimeStatus, type SandboxRuntimeStatus } from "./runtimeStatus.js";
 import { appendWorkspaceBashAllowlistCommand, getBashAllowlist, getBashMode, isBashCommandAllowed, setWorkspaceBashMode, type BashMode } from "./bashPolicy.js";
@@ -28,10 +29,12 @@ const SANDBOX_PROMPT_POLICY = [
 	"Sandbox policy:",
 	"- The bash tool may be sandboxed depending on the active mode: read_only, workspace_write, or yolo.",
 	"- In read_only or workspace_write mode, if a legitimate command is blocked by the sandbox, use request_elevation instead of repeatedly retrying the same command.",
-	"- Do not use request_elevation in yolo mode; the sandbox is already disabled there, so use bash directly.",
+	"- In yolo mode, request_elevation is not provided because the sandbox is already disabled; use bash directly.",
 	"- Never use request_elevation for dangerous, destructive, or unnecessary operations.",
 	"- When requesting elevation, explain why the command must run outside the sandbox.",
 ].join("\n");
+
+const ELEVATION_TOOL_NAMES = ["request_elevation"] as const;
 
 export default function sandboxExtension(pi: ExtensionAPI): void {
 	const enabledBySetting = isFeatureEnabled("sandbox");
@@ -77,9 +80,14 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		pi.appendEntry("sandbox-profile-override-rejected", { at: Date.now(), owner: event.owner, token: event.token, profile: event.profile, ...extra, reason });
 	}
 
+	function syncElevationToolSurface(): void {
+		setToolsActive(pi, ELEVATION_TOOL_NAMES, sandboxEnabled && !explicitlyDisabled && effectiveBashMode() !== "yolo");
+	}
+
 	function disableSandbox(reason: string, level: "error" | "warning" = "error") {
 		sandboxEnabled = false;
 		resetYoloApproval();
+		syncElevationToolSurface();
 		if (lastCtx) { lastCtx.ui.setWidget("sandbox", undefined); lastCtx.ui.notify(reason, level); }
 	}
 
@@ -306,6 +314,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					if (!ok) { ctx.ui.notify("bash mode 変更はキャンセルされました", "info"); return; }
 				}
 				setWorkspaceBashMode(ctx.cwd ?? currentCwd ?? process.cwd(), newBashMode);
+				syncElevationToolSurface();
 				refreshStatusBar();
 				ctx.ui.notify(`bash mode を変更しました: ${newBashMode}`, "info");
 				return;
@@ -324,6 +333,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 					// Override active — save base, defer approval
 					safetyProfile.setBaseMode(newMode);
 					resetYoloApproval();
+					syncElevationToolSurface();
 					refreshStatusBar();
 					ctx.ui.notify("base モードを yolo に設定しました。override 終了後、bash tool 実行時に yolo 承認を求めます。direct bash は承認済みになるまで拒否されます。", "info");
 					return;
@@ -338,6 +348,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			}
 
 			safetyProfile.setBaseMode(newMode);
+			syncElevationToolSurface();
 			refreshStatusBar();
 			ctx.ui.notify(`サンドボックスモードを変更しました: ${effectiveMode()}`, "info");
 		})();
@@ -355,6 +366,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 
 	// ─── Status bar ──────────────────────────────────────────────────
 	function updateStatusBar(ctx: any): void {
+		syncElevationToolSurface();
 		if (explicitlyDisabled || !sandboxEnabled) { ctx.ui.setWidget("sandbox", undefined); return; }
 		let label = "";
 		if (safetyProfile.modeStatus) {
@@ -428,6 +440,7 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		}
 
 		sandboxEnabled = true;
+		syncElevationToolSurface();
 		refreshStatusBar();
 		ctx.ui.notify(`サンドボックス有効: ${modeLabel(effectiveMode())}`, "info");
 	});
@@ -442,12 +455,14 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 			logProfileRejection(event, decision.reason, { requestedMode: decision.requestedMode, baseMode: safetyProfile.getBaseMode() });
 			return;
 		}
+		syncElevationToolSurface();
 		refreshStatusBar();
 	});
 	pi.events.on(SANDBOX_POP_PROFILE_EVENT, (data: unknown) => {
 		const event = data as SandboxPopProfileEvent;
 		if (!event.token) return;
 		safetyProfile.popProfile(event.owner, event.token);
+		syncElevationToolSurface();
 		refreshStatusBar();
 	});
 	// Listen for modes status updates to render a combined status line
@@ -475,5 +490,6 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		safetyProfile.rightStatus = undefined;
 		lastCtx = undefined;
 		resetYoloApproval();
+		syncElevationToolSurface();
 	});
 }

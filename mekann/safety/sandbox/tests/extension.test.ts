@@ -103,6 +103,7 @@ function createMockApi() {
 	const commands: Record<string, { handler: Function; getArgumentCompletions?: Function }> = {};
 	let flags: Record<string, unknown> = {};
 	const registeredTools: Array<Record<string, any>> = [];
+	let activeTools: string[] = [];
 	const registeredFlags: Array<{ name: string; config: unknown }> = [];
 	const eventHandlers: Record<string, Function> = {};
 
@@ -112,6 +113,7 @@ function createMockApi() {
 		}),
 		registerTool: vi.fn((tool: Record<string, any>) => {
 			registeredTools.push(tool);
+			if (typeof tool.name === "string" && !activeTools.includes(tool.name)) activeTools.push(tool.name);
 		}),
 		registerCommand: vi.fn((name: string, config: { handler: Function; getArgumentCompletions?: Function }) => {
 			commands[name] = config;
@@ -120,7 +122,8 @@ function createMockApi() {
 			hooks[event] = handler;
 		}),
 		getFlag: (name: string) => flags[name],
-		setActiveTools: vi.fn(),
+		getActiveTools: vi.fn(() => activeTools),
+		setActiveTools: vi.fn((tools: string[]) => { activeTools = tools; }),
 		sendUserMessage: vi.fn(),
 		appendEntry: vi.fn(),
 		events: {
@@ -136,6 +139,7 @@ function createMockApi() {
 		get _commands() { return commands; },
 		set _flags(f: Record<string, unknown>) { flags = f; },
 		get _registeredTools() { return registeredTools; },
+		get _activeTools() { return activeTools; },
 		get _registeredFlags() { return registeredFlags; },
 		get _eventHandlers() { return eventHandlers; },
 	};
@@ -986,6 +990,35 @@ describe("buildCurrentPolicy: all mode paths", () => {
 		expect(result).toBeDefined();
 
 		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+	});
+
+	it("yolo モードでは request_elevation を active tool surface から外す", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "yolo" };
+		await loadExtension(mock);
+		expect(mock._activeTools).toContain("request_elevation");
+
+		await mock._hooks.session_start({}, createMockCtx());
+		expect(mock._activeTools).not.toContain("request_elevation");
+
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(false);
+	});
+
+	it("read_only モードでは request_elevation を active tool surface に残す", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+
+		const mock = createMockApi();
+		mock._flags = { "sandbox-mode": "read_only" };
+		await loadExtension(mock);
+		await mock._hooks.session_start({}, createMockCtx());
+
+		expect(mock._activeTools).toContain("request_elevation");
+
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(false);
 	});
 });
 
