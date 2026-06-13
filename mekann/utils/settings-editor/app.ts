@@ -18,6 +18,16 @@ import {
 	type SettingsEditorMode,
 } from "./state.js";
 import {
+	buildFeatureGroups,
+	featureTitle,
+	modeFromSetting,
+	settingsColumns,
+	supportedThinking,
+	valueText,
+	type FeatureGroup,
+	type SettingsColumns,
+} from "./viewModel.js";
+import {
 	C,
 	ContentHeader,
 	ColumnHeader,
@@ -30,13 +40,7 @@ import {
 	SettingRow,
 	Sidebar,
 	StatusBar,
-	buildFeatureGroups,
 	el,
-	featureTitle,
-	modeFromSetting,
-	settingsColumns,
-	supportedThinking,
-	valueText,
 	type AppMode,
 	type ApplyResult,
 	type SettingsEditorAppProps,
