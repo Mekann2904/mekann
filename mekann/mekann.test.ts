@@ -142,6 +142,14 @@ describe("mekann integrated extension", () => {
 		expect(() => contextLedger.default(makePi() as any)).not.toThrow();
 	});
 
+	it("issue worktree prompt requires phased review-fixer workflow", () => {
+		const source = read("mekann/utils/issue/cli.ts");
+		expect(source).toContain("Phase 1 — issue対応");
+		expect(source).toContain("Phase 2 — review_fixerによる調査と修正");
+		expect(source).toContain("Phase 3 — git add commit push pr");
+		expect(source).toContain("Do not commit, push, or create a PR before review_fixer has completed successfully.");
+	});
+
 	it("keeps command ownership separated across modules", () => {
 		const owners = new Map<string, string>();
 		for (const [rel, expected] of Object.entries(EXPECTED_COMMANDS_BY_MODULE)) {
