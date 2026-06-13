@@ -175,6 +175,7 @@ export function featureTitle(feature: string): string {
 		case "modes": return "Collaboration Modes";
 		case "sandbox": return "Sandbox";
 		case "subagent": return "Subagent";
+		case "review-fixer": return "Review Fixer";
 		case "command-normalization": return "Command Normalization";
 		case "output-gate": return "Output Gate";
 		case "codex-shared": return "Codex Shared";
@@ -192,14 +193,15 @@ function featureOrder(feature: string): number {
 		"modes": 0,
 		"sandbox": 1,
 		"subagent": 2,
-		"command-normalization": 3,
-		"output-gate": 4,
-		"codex-shared": 5,
-		"codex-web-search": 6,
-		"codex-limits": 7,
-		"dashboard": 8,
-		"model-optimizer": 9,
-		"terminal": 10,
+		"review-fixer": 3,
+		"command-normalization": 4,
+		"output-gate": 5,
+		"codex-shared": 6,
+		"codex-web-search": 7,
+		"codex-limits": 8,
+		"dashboard": 9,
+		"model-optimizer": 10,
+		"terminal": 11,
 	};
 	return order[feature] ?? 99;
 }
