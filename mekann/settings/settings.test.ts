@@ -42,7 +42,7 @@ describe("mekann settings core", () => {
 });
 
 describe("settings registry", () => {
-  const featureNames = ["modes", "sandbox", "subagent", "command-normalization", "output-gate", "codex-shared", "codex-web-search", "codex-limits", "dashboard", "model-optimizer", "terminal"];
+  const featureNames = ["modes", "sandbox", "subagent", "review-fixer", "command-normalization", "output-gate", "codex-shared", "codex-web-search", "codex-limits", "dashboard", "model-optimizer", "terminal"];
 
   it("registers all expected features", () => {
     const registered = mekannSettingsSchemas.map((s) => s.feature);

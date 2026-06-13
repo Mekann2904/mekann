@@ -12,6 +12,7 @@ const EXPECTED_TOOLS_BY_MODULE: Record<string, string[]> = {
 	"autonomy/subagent/index.ts": [
 		"delegate_agent", "spawn_agent", "message_agent", "wait_agent", "list_agents", "agent_results", "close_agent",
 	],
+	"autonomy/review-fixer/index.ts": ["review_fixer"],
 	"autonomy/autoresearch/toolsRegistration.ts": [
 		"autoresearch_evaluate_query", "autoresearch_init", "autoresearch_run", "autoresearch_log",
 		"autoresearch_plan", "autoresearch_approve", "autoresearch_candidate_escrow",
@@ -42,6 +43,7 @@ const EXPECTED_PROMPT_PROVIDERS_BY_MODULE: Record<string, string[]> = {
 	"safety/modes/index.ts": ["modes"],
 	"autonomy/goal/index.ts": ["goal"],
 	"autonomy/subagent/promptProvider.ts": ["subagent"],
+	"autonomy/review-fixer/promptProvider.ts": ["review-fixer"],
 	"autonomy/autoresearch/promptProvider.ts": ["autoresearch"],
 };
 
@@ -100,10 +102,10 @@ describe("mekann integrated extension", () => {
 		expect(source.indexOf("gitSafety(pi);")).toBeGreaterThan(source.indexOf("modes(pi);"));
 	});
 
-	it("keeps autonomy modules in goal, subagent, autoresearch order", () => {
+	it("keeps autonomy modules in goal, subagent, review-fixer, autoresearch order", () => {
 		const source = read("mekann/autonomy/index.ts");
-		const calls = [...source.matchAll(/await (goal|subagent|autoresearch)\(pi\);/g)].map((m) => m[1]);
-		expect(calls).toEqual(["goal", "subagent", "autoresearch"]);
+		const calls = [...source.matchAll(/await (goal|subagent|reviewFixer|autoresearch)\(pi\);/g)].map((m) => m[1]);
+		expect(calls).toEqual(["goal", "subagent", "reviewFixer", "autoresearch"]);
 	});
 
 	it("keeps tool ownership separated across modules", () => {
@@ -138,6 +140,14 @@ describe("mekann integrated extension", () => {
 		expect(() => autoresearch.default(makePi() as any)).not.toThrow();
 		expect(() => outputGate.default(makePi() as any)).not.toThrow();
 		expect(() => contextLedger.default(makePi() as any)).not.toThrow();
+	});
+
+	it("issue worktree prompt requires phased review-fixer workflow", () => {
+		const source = read("mekann/utils/issue/cli.ts");
+		expect(source).toContain("Phase 1 — issue対応");
+		expect(source).toContain("Phase 2 — review_fixerによる調査と修正");
+		expect(source).toContain("Phase 3 — git add commit push pr");
+		expect(source).toContain("Do not commit, push, or create a PR before review_fixer has completed successfully.");
 	});
 
 	it("keeps command ownership separated across modules", () => {

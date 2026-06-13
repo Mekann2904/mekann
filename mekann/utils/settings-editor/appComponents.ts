@@ -3,6 +3,28 @@ import type { ScrollBoxRenderable } from "@opentui/core";
 import type { EffectiveSetting, SettingsScope } from "../../settings/types.js";
 import type { ModelCatalogItem } from "./model-ipc.js";
 import { ALL_FEATURE, itemId, type DraftChange, type SettingsEditorMode } from "./state.js";
+import {
+	buildFeatureGroups,
+	countDiagnosticsForFeature,
+	countDraftsForFeature,
+	displaySettingKey,
+	displaySettingValue,
+	featureTitle,
+	modeLabel,
+	modeFromSetting,
+	pad,
+	resolveDisplayValue,
+	resolveModelMatch,
+	resolveRawValue,
+	resolveThinkingEnumDisplay,
+	resolveThinkingModelLabel,
+	settingsColumns,
+	supportedThinking,
+	truncate,
+	valueText,
+	type FeatureGroup,
+	type SettingsColumns,
+} from "./viewModel.js";
 
 // ─── createElement shorthand ──────────────────────────────────────
 
@@ -32,99 +54,8 @@ export interface SettingsEditorAppProps {
 
 export type AppMode = SettingsEditorMode;
 
-// ─── Helpers ──────────────────────────────────────────────────────
-
-export function valueText(value: unknown): string {
-	if (value === undefined) return "(unset)";
-	if (value === null) return "(null)";
-	if (value && typeof value === "object") {
-		const v = value as Record<string, unknown>;
-		if (typeof v.provider === "string" && typeof v.modelId === "string")
-			return `${v.provider}/${v.modelId}`;
-		return JSON.stringify(value);
-	}
-	return String(value);
-}
-
-function modeLabel(mode: string): string {
-	switch (mode) {
-		case "main": return "Main";
-		case "sub": return "Subagent";
-		case "auto": return "Auto";
-		case "read_only": return "Read-only";
-		default: return mode;
-	}
-}
-
-export function modeFromSetting(item: EffectiveSetting): string | undefined {
-	if (item.feature !== "modes") return undefined;
-	return item.key.split(".")[1];
-}
-
-function displaySettingKey(item: EffectiveSetting): string {
-	if (item.feature === "modes") {
-		const [kind, mode] = item.key.split(".");
-		if (kind === "models" && mode) return "Model";
-		if (kind === "thinking" && mode) return "Thinking";
-	}
-	return item.key;
-}
-
-function displaySettingValue(item: EffectiveSetting, raw: string): string {
-	if (item.feature === "modes" && raw === "(unset)") {
-		if (item.key.startsWith("models.")) return "inherit current model";
-		if (item.key.startsWith("thinking.")) return "inherit current thinking";
-	}
-	return raw;
-}
-
-function pad(s: string, n: number): string {
-	if (n <= 0) return "";
-	if (s.length >= n) return truncate(s, Math.max(1, n - 1)) + " ";
-	return s + " ".repeat(n - s.length);
-}
-
-function truncate(s: string, max: number): string {
-	if (max <= 0) return "";
-	if (s.length <= max) return s;
-	return s.slice(0, Math.max(0, max - 1)) + "…";
-}
-
-export interface SettingsColumns {
-	key: number;
-	value: number;
-	source: number;
-}
-
-export function settingsColumns(contentWidth: number): SettingsColumns {
-	// Row padding (left 3 + right 1) and type icon take 6 cells.
-	const available = Math.max(12, contentWidth - 6);
-	const source = Math.max(4, Math.min(10, Math.floor(available * 0.18)));
-	const key = Math.max(7, Math.min(24, Math.floor(available * 0.38)));
-	const value = Math.max(1, available - key - source);
-	return { key, value, source };
-}
-
-export function supportedThinking(
-	models: ModelCatalogItem[],
-	item: EffectiveSetting,
-	items: EffectiveSetting[],
-	drafts: Record<string, DraftChange>,
-): string[] {
-	const mode = item.key.split(".")[1];
-	const modelItem = items.find(
-		(i) => i.feature === "modes" && i.key === `models.${mode}`,
-	);
-	// Check draft first, then effective value
-	const draft = modelItem ? drafts[itemId(modelItem)] : undefined;
-	const modelKey = draft?.raw ?? valueText(modelItem?.effectiveValue);
-	const model = models.find(
-		(m) => `${m.provider}/${m.modelId}` === modelKey,
-	);
-	return model?.supportedThinkingLevels?.length
-		? model.supportedThinkingLevels
-		: (item.schema.enumValues ?? []);
-}
+// Re-export view model types for consumers that import from appComponents.
+export type { FeatureGroup, SettingsColumns } from "./viewModel.js";
 
 // ─── Tokyo Night dark palette (refined) ────────────────────────────
 
@@ -166,85 +97,13 @@ export const C = {
 	rowOddBg: "#11111b",
 };
 
-// ─── Feature group helpers ────────────────────────────────────────
+// ─── Feature group helpers (UI-only) ─────────────────────────────
 
 function featureIcon(_feature: string): string { return ""; }
-
-export function featureTitle(feature: string): string {
-	switch (feature) {
-		case "modes": return "Collaboration Modes";
-		case "sandbox": return "Sandbox";
-		case "subagent": return "Subagent";
-		case "command-normalization": return "Command Normalization";
-		case "output-gate": return "Output Gate";
-		case "codex-shared": return "Codex Shared";
-		case "codex-web-search": return "Codex Web Search";
-		case "codex-limits": return "Codex Limits";
-		case "dashboard": return "Dashboard";
-		case "model-optimizer": return "Model Optimizer";
-		case "terminal": return "Terminal";
-		default: return feature;
-	}
-}
-
-function featureOrder(feature: string): number {
-	const order: Record<string, number> = {
-		"modes": 0,
-		"sandbox": 1,
-		"subagent": 2,
-		"command-normalization": 3,
-		"output-gate": 4,
-		"codex-shared": 5,
-		"codex-web-search": 6,
-		"codex-limits": 7,
-		"dashboard": 8,
-		"model-optimizer": 9,
-		"terminal": 10,
-	};
-	return order[feature] ?? 99;
-}
-
 function typeIcon(_type: string): string { return ""; }
-
-export interface FeatureGroup {
-	feature: string;
-	items: EffectiveSetting[];
-	startIndex: number;
-}
-
-export function buildFeatureGroups(items: EffectiveSetting[]): FeatureGroup[] {
-	const groups: FeatureGroup[] = [];
-	let current: FeatureGroup | null = null;
-	for (let i = 0; i < items.length; i++) {
-		const item = items[i];
-		if (!current || current.feature !== item.feature) {
-			current = { feature: item.feature, items: [], startIndex: i };
-			groups.push(current);
-		}
-		current.items.push(item);
-	}
-	groups.sort((a, b) => featureOrder(a.feature) - featureOrder(b.feature));
-	return groups;
-}
 
 function isLeftMouse(event: any): boolean {
 	return event?.button === "left" || event?.button === 0 || event?.button === undefined;
-}
-
-function countDraftsForFeature(drafts: Record<string, DraftChange>, feature: string): number {
-	let count = 0;
-	for (const key of Object.keys(drafts)) {
-		if (drafts[key].feature === feature) count++;
-	}
-	return count;
-}
-
-function countDiagnosticsForFeature(items: EffectiveSetting[]): number {
-	let count = 0;
-	for (const item of items) {
-		count += item.diagnostics.length;
-	}
-	return count;
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────
@@ -470,7 +329,7 @@ export function DetailPanel(p: {
 	const id = itemId(p.item);
 	const shown = p.draft?.raw ?? valueText(p.item.effectiveValue);
 	const isModel = p.item.schema.type === "modelRef";
-	const modelMatch = isModel ? p.models.find((m) => `${m.provider}/${m.modelId}` === shown) : null;
+	const modelMatch = isModel ? resolveModelMatch(shown, p.models) : null;
 
 	const children: React.ReactNode[] = [
 		// Title row: feature + key + type
@@ -506,20 +365,9 @@ export function DetailPanel(p: {
 		children.push(el("text", { fg: C.orange, content: "⚠ Restart required for changes to take effect" }));
 	}
 
-	// Enum options (use model-specific thinking levels for thinking settings)
-	if (p.item.schema.enumValues && p.item.schema.enumValues.length > 0) {
-		let enumDisplay = p.item.schema.enumValues;
-		if (p.item.feature === "modes" && p.item.key.startsWith("thinking.")) {
-			const mode = p.item.key.split(".")[1];
-			const modelItem = p.allItems.find((i) => i.feature === "modes" && i.key === `models.${mode}`);
-			if (modelItem) {
-				const modelKey = p.drafts[itemId(modelItem)]?.raw ?? valueText(modelItem.effectiveValue);
-				const thinkingModel = p.models.find((m) => `${m.provider}/${m.modelId}` === modelKey);
-				if (thinkingModel?.supportedThinkingLevels?.length) {
-					enumDisplay = thinkingModel.supportedThinkingLevels;
-				}
-			}
-		}
+	// Enum options (resolved via view model)
+	const enumDisplay = resolveThinkingEnumDisplay(p.item, p.allItems, p.drafts, p.models);
+	if (enumDisplay.length > 0) {
 		children.push(
 			el("box", { style: { flexDirection: "row" } },
 				el("text", { fg: C.fgDim, content: "Options: " }),
@@ -544,14 +392,8 @@ export function DetailPanel(p: {
 
 	// For thinking settings, show which model drives the options
 	if (p.item.feature === "modes" && p.item.key.startsWith("thinking.")) {
-		const mode = p.item.key.split(".")[1];
-		const modelItem = p.allItems.find((i) => i.feature === "modes" && i.key === `models.${mode}`);
-		if (modelItem) {
-			const modelKey = p.drafts[itemId(modelItem)]?.raw ?? valueText(modelItem.effectiveValue);
-			const thinkingModel = p.models.find((m) => `${m.provider}/${m.modelId}` === modelKey);
-			const label = thinkingModel ? `${thinkingModel.label} (${thinkingModel.providerLabel})` : modelKey;
-			children.push(el("text", { fg: C.fgDim, content: `Model:   ${label}` }));
-		}
+		const label = resolveThinkingModelLabel(p.item, p.allItems, p.drafts, p.models);
+		if (label) children.push(el("text", { fg: C.fgDim, content: `Model:   ${label}` }));
 	}
 
 	// Diagnostics

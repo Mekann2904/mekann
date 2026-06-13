@@ -61,11 +61,11 @@ describe("registerReviewFixerPromptProvider", () => {
     expect(content).toContain("結果確認");
   });
 
-  it("prescribes the correct ordering: implement → review_fixer → commit/push/PR", async () => {
+  it("prescribes the phased issue workflow", async () => {
     const { registerReviewFixerPromptProvider } = await import("./promptProvider.js");
     registerReviewFixerPromptProvider();
     const content = registeredProviders[0].getFragments()[0].content;
-    // Check the ordering instruction exists
-    expect(content).toContain("実装完了 → review_fixer 実行 → 結果確認 → commit / push / PR 作成");
+    expect(content).toContain("issue対応 → review_fixerによる調査と修正 → git add commit push pr");
+    expect(content).toContain("各フェーズ開始時に現在のフェーズを短く宣言");
   });
 });
