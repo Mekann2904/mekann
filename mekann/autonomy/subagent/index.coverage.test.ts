@@ -354,6 +354,36 @@ describe("startChildMode", () => {
     }
   });
 
+  it("initializes child mode even when the parent-visible subagent feature is disabled", async () => {
+    const savedEnv = { ...process.env };
+    process.env.PI_SUBAGENT_ROLE = "child";
+    process.env.PI_SUBAGENT_ID = "child-disabled-feature";
+    process.env.PI_SUBAGENT_PATH = "/root/review-fixer";
+    process.env.PI_SUBAGENT_PARENT_SOCKET = "/tmp/test-socket-disabled-feature";
+    delete process.env.MEKANN_TEST_ENABLE_SUBAGENT;
+    delete (globalThis as any).__piSubagentChildStarted;
+
+    vi.resetModules();
+    setupSDKMock();
+    vi.doMock("../../settings/enabled.js", () => ({
+      isFeatureEnabled: vi.fn(() => false),
+      featureRawConfig: vi.fn(() => ({ enabled: false })),
+    }));
+    const { mockClientInstance } = setupChildDeps();
+
+    try {
+      const mock = createChildMockApi();
+      const { default: subagentExtension } = await import("./index.js");
+      await subagentExtension(mock as any);
+
+      expect(mockClientInstance.connect).toHaveBeenCalled();
+      expect(mockClientInstance.onMessage).toHaveBeenCalled();
+      expect(mock._registeredTools).toHaveLength(0);
+    } finally {
+      process.env = savedEnv;
+    }
+  });
+
   it("child mode handles session_start and sends hello", async () => {
     const savedEnv = { ...process.env };
     process.env.PI_SUBAGENT_ROLE = "child";
