@@ -1,6 +1,7 @@
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdir, appendFile, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import type { AgentDisplayRef } from "./types.js";
 import { KittyControl } from "../../utils/terminal/kitty/index.js";
@@ -34,15 +35,16 @@ export class KittyController {
     this.kitty = new KittyControl(kittenBin);
   }
 
-  private buildChildScript(params: LaunchPiWindowParams): string {
+  private buildChildScript(params: LaunchPiWindowParams & { initialMessagePath?: string }): string {
     const piCommand = (params.piCommand ?? "pi").trim() || "pi";
     const extensionArgs = params.extensionPath ? ` -e ${shellQuote(params.extensionPath)}` : "";
     const subModeArgs = " --sub";
     const modelArgs = params.modelId ? ` --model ${shellQuote(params.modelId)}` : "";
     const thinkingArgs = params.thinkingLevel ? ` --thinking ${shellQuote(params.thinkingLevel)}` : "";
+    const initialPromptArg = params.initialMessagePath ? ` ${shellQuote(`@${params.initialMessagePath}`)}` : "";
     const logPath = params.logPath;
     const logFn = logPath ? `log(){ printf '%s\\n' "$*" >> ${shellQuote(logPath)}; }` : `log(){ :; }`;
-    const command = `${piCommand}${extensionArgs}${subModeArgs}${modelArgs}${thinkingArgs}`;
+    const command = `${piCommand}${extensionArgs}${subModeArgs}${modelArgs}${thinkingArgs}${initialPromptArg}`;
     // Keep the child Pi attached directly to the kitty TTY. Piping through tee
     // makes stdout non-TTY, which breaks Pi's interactive TUI rendering/input.
     // Log structured lifecycle lines via log()/IPC instead of capturing raw TUI.
@@ -54,7 +56,7 @@ export class KittyController {
       `export PI_SUBAGENT_ID=${shellQuote(params.agentId)}`,
       `export PI_SUBAGENT_PATH=${shellQuote(params.agentPath)}`,
       `export PI_SUBAGENT_PARENT_SOCKET=${shellQuote(params.socketPath)}`,
-      `export PI_SUBAGENT_INITIAL_MESSAGE=${shellQuote(params.initialMessage)}`,
+      `export PI_SUBAGENT_INITIAL_MESSAGE=${shellQuote(params.initialMessagePath ? "" : params.initialMessage)}`,
       ...(params.nonce ? [`export PI_SUBAGENT_NONCE=${shellQuote(params.nonce)}`] : []),
       ...(params.modelId ? [`export PI_SUBAGENT_MODEL=${shellQuote(params.modelId)}`] : []),
       ...(params.thinkingLevel ? [`export PI_SUBAGENT_THINKING=${shellQuote(params.thinkingLevel)}`] : []),
@@ -68,14 +70,26 @@ export class KittyController {
     ].join("; ");
   }
 
-  async launchPiWindow(params: LaunchPiWindowParams): Promise<AgentDisplayRef> {
-    const title = params.title ?? `pi subagent ${params.agentPath}`;
+  private async prepareLaunchFiles(params: LaunchPiWindowParams): Promise<LaunchPiWindowParams & { initialMessagePath?: string }> {
     const logPath = params.logPath;
     if (logPath) {
       await mkdir(path.dirname(logPath), { recursive: true });
       await writeFile(logPath, "", { flag: "a" });
     }
-    const script = this.buildChildScript(params);
+    if (!params.initialMessage) return params;
+    const initialMessagePath = logPath
+      ? path.join(path.dirname(logPath), `${path.basename(logPath, path.extname(logPath))}.prompt.md`)
+      : path.join(os.tmpdir(), `pi-subagent-${params.agentId}.prompt.md`);
+    await mkdir(path.dirname(initialMessagePath), { recursive: true });
+    await writeFile(initialMessagePath, params.initialMessage, "utf8");
+    return { ...params, initialMessagePath };
+  }
+
+  async launchPiWindow(params: LaunchPiWindowParams): Promise<AgentDisplayRef> {
+    const title = params.title ?? `pi subagent ${params.agentPath}`;
+    const prepared = await this.prepareLaunchFiles(params);
+    const logPath = params.logPath;
+    const script = this.buildChildScript(prepared);
     const { stdout } = await execFile(this.kittenBin, [
       "@", "launch",
       "--type=os-window",
@@ -94,12 +108,9 @@ export class KittyController {
 
   async launchPiSplit(params: LaunchPiWindowParams): Promise<AgentDisplayRef> {
     const title = params.title ?? `pi subagent ${params.agentPath}`;
+    const prepared = await this.prepareLaunchFiles(params);
     const logPath = params.logPath;
-    if (logPath) {
-      await mkdir(path.dirname(logPath), { recursive: true });
-      await writeFile(logPath, "", { flag: "a" });
-    }
-    const script = this.buildChildScript(params);
+    const script = this.buildChildScript(prepared);
     const location = params.splitDirection
       ? params.splitDirection === "horizontal" ? "vsplit" : "hsplit"
       : await this.kitty.longerSideSplitLocation();
