@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { parseDashboardArgs } from "./args.js";
 import { installDashboardCleanup } from "./cleanup.js";
-import { collectDashboardData } from "./data.js";
+import { assembleDashboardRenderModel } from "./view-model-assembler.js";
 import { renderDashboardText } from "./render.js";
 
 async function main(): Promise<void> {
@@ -15,7 +15,7 @@ async function main(): Promise<void> {
 	if (args.value.images) installDashboardCleanup();
 	const terminalWidth = process.stdout.columns || 140;
 	const terminalHeight = process.stdout.rows || 40;
-	const data = await collectDashboardData({
+	const model = await assembleDashboardRenderModel({
 		cwd: args.value.cwd,
 		images: args.value.images,
 		avatar: args.value.avatar,
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
 		process.exitCode = 1;
 		return;
 	}
-	console.log(renderDashboardText(data, terminalWidth));
+	console.log(renderDashboardText(model, terminalWidth));
 }
 
 void main().catch((error) => {
