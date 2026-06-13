@@ -9,7 +9,10 @@
  * No Pi framework imports.
  */
 
-import type { DashboardRenderModel } from "./view-model-assembler.js";
+import type {
+	DashboardImagePlacement,
+	DashboardRenderModel,
+} from "./view-model-assembler.js";
 import { box, contributionText, padEnd } from "./layout.js";
 import {
 	truncateToWidth,
@@ -26,12 +29,8 @@ import {
 // Types
 // ---------------------------------------------------------------------------
 
-/** An image with an absolute position within the rendered line grid. */
-export interface DashboardPositionedImage {
-	kind: "avatar" | "contributionGraph";
-	path: string;
-	columns: number;
-	rows: number;
+/** An image placement intent resolved to an absolute line-grid position. */
+export interface DashboardPositionedImage extends DashboardImagePlacement {
 	/** 0-based row in the lines array where the image top edge sits. */
 	startRow: number;
 	/** 1-based column offset for the image left edge. */
@@ -78,10 +77,7 @@ export function renderOverlayPipeline(
 		if (images.avatar) {
 			for (let i = 0; i < images.avatar.rows; i++) lines.push("");
 			imagePlacements.push({
-				kind: "avatar",
-				path: images.avatar.path,
-				columns: images.avatar.columns,
-				rows: images.avatar.rows,
+				...images.avatar,
 				startRow: 0,
 				startCol: IMAGE_START_COL,
 			});
@@ -128,10 +124,7 @@ export function renderOverlayPipeline(
 		const graphStartRow = lines.length;
 		for (let i = 0; i < images.contributionGraph.rows; i++) lines.push("");
 		imagePlacements.push({
-			kind: "contributionGraph",
-			path: images.contributionGraph.path,
-			columns: images.contributionGraph.columns,
-			rows: images.contributionGraph.rows,
+			...images.contributionGraph,
 			startRow: graphStartRow,
 			startCol: IMAGE_START_COL,
 		});

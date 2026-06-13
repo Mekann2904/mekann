@@ -9,7 +9,7 @@ vi.mock("./image-pipeline.js", () => ({
 
 import { renderKittyImage } from "./image-pipeline.js";
 
-const mockRenderKittyImage = vi.mocked(renderKittyImage);
+const mockRenderKittyImage = renderKittyImage as ReturnType<typeof vi.fn>;
 
 describe("scheduleKittyPlacements", () => {
 	beforeEach(() => {
