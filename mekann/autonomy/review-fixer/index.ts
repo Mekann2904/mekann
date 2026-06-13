@@ -24,6 +24,8 @@ import { registerReviewFixerPromptProvider } from "./promptProvider.js";
 import { snapshotContentHashes, computeChangedFiles } from "./changedFiles.js";
 
 export function extractReviewFixerResult(output: string | undefined): ReviewFixerResult | null {
+  // Legacy helper kept for callers/tests that still parse old structured output.
+  // The review_fixer workflow now returns the child Pi's normal skill output.
   if (!output) return null;
   const json = extractJSONWithSchema(output, "review-fixer.result.v1");
   if (!json) return null;
@@ -137,11 +139,6 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
         cost_intent: "expensive",
       }, ctx);
       const result = extractReviewFixerResult(delegate.final_result);
-      const contractError = result
-        ? undefined
-        : delegate.status === "errored"
-          ? `subagent status: ${delegate.status}`
-          : `structured result missing: child Pi did not return valid review-fixer.result.v1 JSON. Raw output length: ${(delegate.final_result ?? "").length} chars. This is a FAILURE — do not treat as success.`;
 
       // 6. Snapshot content hashes after
       const hashesAfter = snapshotContentHashes(ctx.cwd);
@@ -151,24 +148,20 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
       } catch { /* ignore */ }
 
       // 7. Build response
-      if (!result) {
-        const reason = contractError ?? "structured result missing: child Pi did not return valid review-fixer.result.v1 JSON.";
+      if (delegate.status === "errored") {
         return {
           content: [{
             type: "text" as const,
             text: [
               `## Review Fixer FAILED for Issue #${issueContext.number}`,
               "",
-              `**Status**: ❌ FAILED — ${reason}`,
-              `**Subagent status**: ${delegate.status}`,
-              "",
-              "This is a contract violation. The child Pi must output review-fixer.result.v1 JSON.",
+              `**Status**: FAILED — subagent status: ${delegate.status}`,
               "Do NOT proceed with commit / push / PR creation. Re-run review_fixer or investigate the failure.",
             ].join("\n"),
           }],
           details: {
             issue: { number: issueContext.number, title: issueContext.title, url: issueContext.url },
-            childResult: null,
+            childResult: result,
             subagent: { agent_id: delegate.agent_id, task_name: delegate.task_name, status: delegate.status },
             rawOutputLength: (delegate.final_result ?? "").length,
             statusBefore: statusBefore.trim(),
@@ -192,32 +185,20 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
         statusAfter: statusAfter.trim(),
       };
 
-      // Format human-readable summary (result is guaranteed non-null here)
       const summaryLines: string[] = [];
       summaryLines.push(`## Review Fixer Result for Issue #${issueContext.number}`);
       summaryLines.push("");
-
-      summaryLines.push(`**Status**: ${result.status}`);
-      summaryLines.push(`**Findings**: ${result.findings.length} (${result.findings.filter((f) => f.severity === "blocker").length} blockers, ${result.findings.filter((f) => f.severity === "major").length} major, ${result.findings.filter((f) => f.severity === "minor").length} minor)`);
-      summaryLines.push(`**Files changed**: ${result.changes.files_changed.length > 0 ? result.changes.files_changed.join(", ") : "none"}`);
-      summaryLines.push(`**Structural changes**: ${result.changes.structural_changes.length > 0 ? result.changes.structural_changes.join("; ") : "none"}`);
-      summaryLines.push(`**Behavior changes**: ${result.changes.behavior_changes.length > 0 ? result.changes.behavior_changes.join("; ") : "none"}`);
-      summaryLines.push(`**Tests modified**: ${result.changes.tests_added_or_modified.length > 0 ? result.changes.tests_added_or_modified.join(", ") : "none"}`);
-      summaryLines.push(`**Verification**: ${result.verification.all_passed ? "✅ All passed" : "❌ Some failed"} (${result.verification.commands_run.length} commands)`);
-      summaryLines.push(`**Remaining risks**: ${result.remaining_risks.length > 0 ? result.remaining_risks.join("; ") : "none"}`);
-      summaryLines.push(`**Next steps**: ${result.parent_next_steps}`);
-
-      if (effectiveChangedFiles.length > 0) {
-        summaryLines.push("");
-        summaryLines.push(`**New workspace changes**: ${effectiveChangedFiles.join(", ")}`);
-      }
-
-      const reviewFailed = result.status === "failed" || !result.verification.all_passed;
+      summaryLines.push(`**Subagent status**: ${delegate.status}`);
+      summaryLines.push(`**New workspace changes**: ${effectiveChangedFiles.length > 0 ? effectiveChangedFiles.join(", ") : "none"}`);
+      summaryLines.push("");
+      summaryLines.push("## Child Pi output");
+      summaryLines.push("");
+      summaryLines.push((delegate.final_result ?? "(no final output)").trim() || "(no final output)");
 
       return {
         content: [{ type: "text" as const, text: summaryLines.join("\n") }],
         details,
-        isError: reviewFailed,
+        isError: false,
       };
     },
   });
