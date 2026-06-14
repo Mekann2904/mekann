@@ -1,31 +1,41 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-
-const execFileMock = vi.fn();
-
-vi.mock("node:child_process", () => ({
-	execFile: execFileMock,
-}));
+import { mkdtempSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 describe("GitHub dashboard fallback", () => {
+	const originalFetch = globalThis.fetch;
+	const originalPath = process.env.PATH;
+	let tempDir: string | undefined;
+
 	beforeEach(() => {
-		execFileMock.mockReset();
+		globalThis.fetch = originalFetch;
+		tempDir = mkdtempSync(join(tmpdir(), "mekann-gh-test-"));
+		process.env.PATH = `${tempDir}:${originalPath ?? ""}`;
 	});
 
 	afterEach(() => {
-		vi.unstubAllGlobals();
+		globalThis.fetch = originalFetch;
+		process.env.PATH = originalPath;
+		if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+		tempDir = undefined;
 	});
 
+	function writeFailingGh(stderr: string): void {
+		if (!tempDir) throw new Error("tempDir not initialized");
+		const path = join(tempDir, "gh");
+		writeFileSync(path, `#!/bin/sh\nprintf '%s\\n' ${JSON.stringify(stderr)} >&2\nexit 1\n`);
+		chmodSync(path, 0o755);
+	}
+
 	it("uses GH_TOKEN as a fallback when gh is unauthenticated", async () => {
-		execFileMock.mockImplementation((_cmd, _args, _opts, cb) => {
-			const error = new Error("Command failed: gh api graphql\nTo get started with GitHub CLI, please run: gh auth login\nAlternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token.");
-			cb(error, "", "");
-		});
+		writeFailingGh("Command failed: gh api graphql\nTo get started with GitHub CLI, please run: gh auth login\nAlternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token.");
 
 		const fetchMock = vi.fn(async (_url, init: RequestInit) => {
 			expect(init.headers).toMatchObject({ authorization: "Bearer gh-token" });
 			return new Response(JSON.stringify({ data: { viewer: { login: "me", contributionsCollection: { contributionCalendar: { weeks: [] } } } } }), { status: 200 });
 		});
-		vi.stubGlobal("fetch", fetchMock);
+		globalThis.fetch = fetchMock as typeof fetch;
 
 		const { collectGitHubDashboard } = await import("./github.js");
 		const result = await collectGitHubDashboard({ GH_TOKEN: "gh-token" }, new Date("2026-05-31T00:00:00Z"));
@@ -36,9 +46,7 @@ describe("GitHub dashboard fallback", () => {
 	});
 
 	it("returns a short actionable auth error without echoing the GraphQL query", async () => {
-		execFileMock.mockImplementation((_cmd, _args, _opts, cb) => {
-			cb(new Error("Command failed: gh api graphql -f query=query { viewer { login contributionsCollection { contributionCalendar { weeks { contributionDays { date contributionCount contributionLevel } } } } } }\nTo get started with GitHub CLI, please run: gh auth login"), "", "");
-		});
+		writeFailingGh("Command failed: gh api graphql -f query=query { viewer { login contributionsCollection { contributionCalendar { weeks { contributionDays { date contributionCount contributionLevel } } } } } }\nTo get started with GitHub CLI, please run: gh auth login");
 
 		const { collectGitHubDashboard } = await import("./github.js");
 		const result = await collectGitHubDashboard({}, new Date("2026-05-31T00:00:00Z"));
