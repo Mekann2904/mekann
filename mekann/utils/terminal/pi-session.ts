@@ -10,6 +10,8 @@ export interface PiSessionLaunchRequest {
 	nodeBin?: string;
 	/** Additional system prompt for the launched Pi session. */
 	appendSystemPrompt?: string;
+	/** Initial user message sent to the launched Pi session. */
+	initialMessage?: string;
 	/** Keep the window open after Pi exits. Intended for debugging only. */
 	hold?: boolean;
 }
@@ -34,6 +36,11 @@ export async function launchPiSessionInKittySplit(request: PiSessionLaunchReques
 	const piArgs = [quoteShell(piBin), "--name", quoteShell(request.title)];
 	if (request.appendSystemPrompt) {
 		piArgs.push("--append-system-prompt", quoteShell(request.appendSystemPrompt));
+	}
+	if (request.initialMessage) {
+		// Positional argument becomes the first user message in interactive mode.
+		// Placed last so it follows options and @file arguments.
+		piArgs.push(quoteShell(request.initialMessage));
 	}
 	const command = `exec ${quoteShell(nodeBin)} ${piArgs.join(" ")}`;
 

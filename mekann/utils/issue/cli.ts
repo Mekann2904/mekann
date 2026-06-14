@@ -26,6 +26,10 @@ export function buildIssueSessionSystemPrompt(issueNumber: number): string {
 	].join("\n");
 }
 
+export function buildIssueSessionInitialMessage(issueNumber: number): string {
+	return `issue-${issueNumber}に対応してください`;
+}
+
 async function main(): Promise<void> {
 	const args = parseIssueArgs(process.argv.slice(2));
 	if (!args.ok) {
@@ -150,6 +154,7 @@ async function runInteractive(): Promise<void> {
 				title: `Issue #${issue.number}`,
 				nodeBin: process.env.MEKANN_NODE_BIN,
 				appendSystemPrompt: buildIssueSessionSystemPrompt(issue.number),
+				initialMessage: buildIssueSessionInitialMessage(issue.number),
 				hold: process.env.MEKANN_ISSUE_DEBUG === "1",
 			});
 			process.exit(0);
