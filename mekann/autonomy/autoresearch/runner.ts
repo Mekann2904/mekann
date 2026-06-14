@@ -863,10 +863,34 @@ export function loadRunFromArtifact(
 // ---------------------------------------------------------------------------
 
 /**
- * `git add -A` (excluding .pi/) → staged diff check → commit.
- * .pi/ は監査用 artifact であり git 管理対象外。
+ * Root-level autoresearch report artifacts.
+ *
+ * These are audit/publish artifacts (generated reports and benchmark/checks wrappers), NOT
+ * candidate patches. They are deliberately kept out of {@link gitAutoCommit} so the candidate-
+ * patch commit boundary stays clean. Stage them explicitly via
+ * {@link stageAutoresearchReportArtifacts} only when a report commit is intended.
  */
-export function gitAutoCommit(cwd: string, message: string): { committed: boolean; commit?: string; error?: string } {
+const ROOT_AUTORESEARCH_REPORT_ARTIFACTS = [
+	"autoresearch.jsonl",
+	"autoresearch.md",
+	"autoresearch.sh",
+	"autoresearch.checks.sh",
+] as const;
+
+/**
+ * 候補パッチを stage して commit する。
+ *
+ * 責務は「候補パッチの commit」のみ。`git add -A` したあと、internal/audit 系パス
+ * (`.pi/`, `.autoresearch/`, `autoresearch.plan.md`) を unstage してから commit する。
+ *
+ * root 直下の autoresearch report artifact (`autoresearch.jsonl`, `autoresearch.md`,
+ * `autoresearch.sh`, `autoresearch.checks.sh`) は監査/publish 用であり候補パッチではない
+ * ため、ここでは暗黙に stage しない。それらを同じ commit に含めたい場合だけ
+ * `includeAutoresearchReportArtifacts: true` を明示すること。
+ *
+ * `.pi/` は監査用 artifact であり git 管理対象外。
+ */
+export function gitAutoCommit(cwd: string, message: string, options: { includeAutoresearchReportArtifacts?: boolean } = {}): { committed: boolean; commit?: string; error?: string } {
 	try {
 		// Check if we're in a git repo first. If not, no error — just nothing to commit.
 		gitCheckSync(["rev-parse", "--git-dir"], cwd);
@@ -878,18 +902,12 @@ export function gitAutoCommit(cwd: string, message: string): { committed: boolea
 		// Internal artifacts are discussion/audit state, not candidate patches.
 		// Avoid pathspec magic exclusions here: older Git versions and some shells/environments
 		// have proven brittle with `:(exclude)` during auto-commit. Stage normally, then
-		// unstage internal paths using portable pathspecs.
+		// unstage internal paths (audit dirs + root report artifacts) using portable pathspecs.
 		execFileSync("git", ["add", "-A", "--", "."], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] });
-		execFileSync("git", ["reset", "--", ".pi", ".autoresearch", "autoresearch.plan.md"], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] });
-
-		const rootAutoresearchFiles = [
-			"autoresearch.jsonl",
-			"autoresearch.md",
-			"autoresearch.sh",
-			"autoresearch.checks.sh",
-		].filter((f) => fs.existsSync(path.join(cwd, f)));
-		if (rootAutoresearchFiles.length > 0) {
-			execFileSync("git", ["add", "-f", "--", ...rootAutoresearchFiles], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] });
+		execFileSync("git", ["reset", "--", ".pi", ".autoresearch", "autoresearch.plan.md", ...ROOT_AUTORESEARCH_REPORT_ARTIFACTS], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] });
+		if (options.includeAutoresearchReportArtifacts) {
+			const stagedReports = stageAutoresearchReportArtifacts(cwd);
+			if (stagedReports.error) return { committed: false, error: stagedReports.error };
 		}
 
 		try {
@@ -902,6 +920,37 @@ export function gitAutoCommit(cwd: string, message: string): { committed: boolea
 		return { committed: true, commit: getGitShortHash(cwd) };
 	} catch (e) {
 		return { committed: false, error: e instanceof Error ? e.message : String(e) };
+	}
+}
+
+/**
+ * root 直下の autoresearch report artifact を明示的に stage する。
+ *
+ * これは候補パッチの staging ではなく、監査/publish 用 report artifact の明示的な
+ * export step である。`-f` で ignore を貫通する挙動はこの関数に閉じ込めている。
+ * report artifact だけを別途 publish したい場合は、この関数を呼んでから任意の commit
+ * 手順で commit すること。候補パッチ commit に明示的に同梱したい場合は
+ * {@link gitAutoCommit} に `includeAutoresearchReportArtifacts: true` を渡すこと。
+ *
+ * 戻り値 `staged` は実際に stage した (存在した) ファイル名のリスト。
+ */
+export function stageAutoresearchReportArtifacts(cwd: string): { staged: string[]; error?: string } {
+	try {
+		gitCheckSync(["rev-parse", "--git-dir"], cwd);
+	} catch {
+		return { staged: [] };
+	}
+
+	const existing = ROOT_AUTORESEARCH_REPORT_ARTIFACTS.filter((f) => fs.existsSync(path.join(cwd, f)));
+	if (existing.length === 0) {
+		return { staged: [] };
+	}
+
+	try {
+		execFileSync("git", ["add", "-f", "--", ...existing], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] });
+		return { staged: [...existing] };
+	} catch (e) {
+		return { staged: [], error: e instanceof Error ? e.message : String(e) };
 	}
 }
 

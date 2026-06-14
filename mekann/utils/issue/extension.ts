@@ -1,8 +1,15 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { execFileSync } from "node:child_process";
-import { launchExternalUi } from "../terminal/launch.js";
+import { detectTerminalEmulatorAdapters, launchExternalUi } from "../terminal/index.js";
+import { decideTuiPlacement, type SupportedTuiPlacements } from "../tui/index.js";
 import { getRepoInfo, listExistingWorktrees, parseIssueNumberFromBranch, removeWorktree } from "./worktree.js";
 import { createIssue, getIssueStatus, searchOpenIssues } from "./github.js";
+
+/** The issue list is an External UI feature: External split UI only, never pass-through. */
+const ISSUE_LIST_PLACEMENT: SupportedTuiPlacements = {
+	kind: "external-ui-feature",
+	placements: ["external-split"],
+};
 
 function checkPrerequisites(ctx: ExtensionContext): string | null {
 	if (!process.env.KITTY_WINDOW_ID) return "Kitty terminal is required for /issue.";
@@ -37,6 +44,18 @@ export default function issueWorktree(pi: ExtensionAPI): void {
 			const cliPath = new URL("./cli.ts", import.meta.url).pathname;
 			// Pass the current Pi runtime so the nested session does not pick up an incompatible node from shell PATH.
 			const envVar = `MEKANN_NODE_BIN=${JSON.stringify(process.execPath)}`;
+
+			const placement = decideTuiPlacement({
+				feature: ISSUE_LIST_PLACEMENT,
+				capability: { split: detectTerminalEmulatorAdapters().some((a) => a.capabilities().split) },
+				preference: "split-longer-side",
+				isIdle: ctx.isIdle(),
+			});
+			if (placement.status !== "ok") {
+				ctx.ui.notify(`Issue list requires an external split UI: ${placement.reason}`, "error");
+				return;
+			}
+
 			const result = await launchExternalUi({
 				cwd: ctx.cwd,
 				title: "Issues",
