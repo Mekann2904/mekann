@@ -65,6 +65,23 @@ describe("KittyController", () => {
       expect(result.windowId).not.toContain("tee -a");
       expect(result.windowId).toContain("pi");
     });
+
+    it("passes the initial prompt as a pi CLI @file argument instead of delayed child injection", async () => {
+      const { mkdtempSync, readFileSync, rmSync } = await import("node:fs");
+      const { tmpdir } = await import("node:os");
+      const path = await import("node:path");
+      const tmp = mkdtempSync(path.join(tmpdir(), "kitty-prompt-"));
+      const logPath = path.join(tmp, "subagent.log");
+      try {
+        const result = await controller.launchPiWindow({ ...baseParams, initialMessage: "initial prompt body", logPath });
+        const promptPath = path.join(tmp, "subagent.prompt.md");
+        expect(readFileSync(promptPath, "utf8")).toBe("initial prompt body");
+        expect(result.windowId).toContain(`@${promptPath}`);
+        expect(result.windowId).toContain("PI_SUBAGENT_INITIAL_MESSAGE=''");
+      } finally {
+        try { rmSync(tmp, { recursive: true }); } catch {}
+      }
+    });
   });
 
   describe("launchPiSplit", () => {
