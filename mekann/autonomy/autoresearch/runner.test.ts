@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { truncateTail, runCommand, runChecks, generatePiRunId, generateRunId, parseExternalInfo, filterSecrets, createRunArtifactDir, writeRunArtifacts, writeChecksArtifacts, loadRunFromArtifact, getGitFullHash, isGitDirty, getChangedFiles, gitAutoCommit, gitAutoRevert, hasCompleteMarker, loopFollowUpMessage, markArtifactComplete } from "./runner.js";
+import { truncateTail, runCommand, runChecks, generatePiRunId, generateRunId, parseExternalInfo, filterSecrets, createRunArtifactDir, writeRunArtifacts, writeChecksArtifacts, loadRunFromArtifact, getGitFullHash, isGitDirty, getChangedFiles, gitAutoCommit, stageAutoresearchReportArtifacts, gitAutoRevert, hasCompleteMarker, loopFollowUpMessage, markArtifactComplete } from "./runner.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as childProcess from "node:child_process";
@@ -573,6 +573,104 @@ describe("gitAutoCommit and gitAutoRevert", () => {
 	it("gitAutoCommit returns committed:false for non-git dir", () => {
 		const result = gitAutoCommit("/tmp/nonexistent-git-dir-" + Date.now(), "test");
 		expect(result.committed).toBe(false);
+	});
+
+	it("gitAutoCommit does not implicitly stage root autoresearch report artifacts", () => {
+		const cwd = createTempGitRepo();
+		try {
+			// Root report artifacts (audit/publish), not candidate patches.
+			fs.writeFileSync(path.join(cwd, "autoresearch.md"), "# report\n");
+			fs.writeFileSync(path.join(cwd, "autoresearch.jsonl"), "{\"run\":1}\n");
+			fs.writeFileSync(path.join(cwd, "autoresearch.sh"), "#!/usr/bin/env bash\necho hi\n");
+			fs.writeFileSync(path.join(cwd, "autoresearch.checks.sh"), "#!/usr/bin/env bash\necho ok\n");
+			// A genuine candidate patch.
+			fs.writeFileSync(path.join(cwd, "src.txt"), "candidate\n");
+
+			const result = gitAutoCommit(cwd, "test: candidate only");
+			expect(result.committed).toBe(true);
+
+			const committedFiles = childProcess.execFileSync(
+				"git", ["show", "--name-only", "--pretty=format:", "HEAD"],
+				{ cwd, encoding: "utf8" },
+			).trim();
+			expect(committedFiles).toContain("src.txt");
+			expect(committedFiles).not.toContain("autoresearch.md");
+			expect(committedFiles).not.toContain("autoresearch.jsonl");
+			expect(committedFiles).not.toContain("autoresearch.sh");
+			expect(committedFiles).not.toContain("autoresearch.checks.sh");
+			// Files remain on disk, just not staged/committed.
+			expect(fs.existsSync(path.join(cwd, "autoresearch.md"))).toBe(true);
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("gitAutoCommit includes root autoresearch report artifacts only when explicitly requested", () => {
+		const cwd = createTempGitRepo();
+		try {
+			fs.writeFileSync(path.join(cwd, ".gitignore"), "autoresearch.md\n");
+			childProcess.execFileSync("git", ["add", ".gitignore"], { cwd });
+			childProcess.execFileSync("git", ["commit", "-m", "add gitignore"], { cwd });
+
+			fs.writeFileSync(path.join(cwd, "autoresearch.md"), "# report\n");
+			fs.writeFileSync(path.join(cwd, "src.txt"), "candidate\n");
+
+			const result = gitAutoCommit(cwd, "test: candidate with explicit report", { includeAutoresearchReportArtifacts: true });
+			expect(result.committed).toBe(true);
+
+			const committedFiles = childProcess.execFileSync(
+				"git", ["show", "--name-only", "--pretty=format:", "HEAD"],
+				{ cwd, encoding: "utf8" },
+			).trim();
+			expect(committedFiles).toContain("src.txt");
+			expect(committedFiles).toContain("autoresearch.md");
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("stageAutoresearchReportArtifacts stages only existing root report artifacts", () => {
+		const cwd = createTempGitRepo();
+		try {
+			// .gitignore'd to prove -f bypasses ignore when explicitly requested.
+			fs.writeFileSync(path.join(cwd, ".gitignore"), "autoresearch.md\nautoresearch.jsonl\n");
+			childProcess.execFileSync("git", ["add", ".gitignore"], { cwd });
+			childProcess.execFileSync("git", ["commit", "-m", "add gitignore"], { cwd });
+
+			fs.writeFileSync(path.join(cwd, "autoresearch.md"), "# report\n");
+			fs.writeFileSync(path.join(cwd, "autoresearch.jsonl"), "{\"run\":1}\n");
+			// autoresearch.sh / autoresearch.checks.sh intentionally absent.
+
+			const result = stageAutoresearchReportArtifacts(cwd);
+			expect(result.error).toBeUndefined();
+			expect(result.staged.sort()).toEqual(["autoresearch.jsonl", "autoresearch.md"]);
+
+			const staged = childProcess.execFileSync(
+				"git", ["diff", "--cached", "--name-only"],
+				{ cwd, encoding: "utf8" },
+			).trim().split("\n").filter(Boolean);
+			expect(staged).toContain("autoresearch.md");
+			expect(staged).toContain("autoresearch.jsonl");
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("stageAutoresearchReportArtifacts stages nothing when no report artifacts exist", () => {
+		const cwd = createTempGitRepo();
+		try {
+			const result = stageAutoresearchReportArtifacts(cwd);
+			expect(result.error).toBeUndefined();
+			expect(result.staged).toEqual([]);
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("stageAutoresearchReportArtifacts returns empty staged for non-git dir", () => {
+		const result = stageAutoresearchReportArtifacts("/tmp/nonexistent-git-dir-" + Date.now());
+		expect(result.staged).toEqual([]);
+		expect(result.error).toBeUndefined();
 	});
 
 	it("gitAutoRevert reverts src/autoresearch.ts", () => {
