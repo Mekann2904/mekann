@@ -145,6 +145,16 @@ instead of the temp dir, and in a worktree `git config --local` writes to the
 and leaving `core.bare=true` behind. Once polluted, `git push` is blocked by the
 pre-push hook (`scripts/check-git-local-safety.sh`) until cleaned.
 
+The actual trigger in practice is more specific: when `git push` runs the pre-push
+hook from a linked worktree, git exports **`GIT_DIR`** (pointing at the worktree's
+git dir) into the hook environment. Child `git` processes spawned by tests honor
+`GIT_DIR` over their cwd, so `git init`/`git add`/`git commit` operate on the
+developer's real repo — creating bogus `"initial"` commits that delete hundreds of
+files and polluting the shared config. The autoresearch vitest setup
+(`mekann/autonomy/autoresearch/vitest.setup.ts`) deletes the inherited `GIT_*`
+context variables (`GIT_DIR`, `GIT_WORK_TREE`, ...) so test git commands always
+operate on the explicit temp cwd, even inside a pre-push hook.
+
 Instead, provide the test identity through **environment variables**. They are
 inherited by every child `git` process (including production `gitAutoCommit` in
 `autoresearch/runner.ts`, which inherits `process.env`) without writing anywhere:

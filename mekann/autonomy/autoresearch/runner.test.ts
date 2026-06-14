@@ -713,6 +713,19 @@ describe("gitAutoCommit and gitAutoRevert", () => {
 		}
 	});
 
+	it("vitest setup neutralizes inherited git context env (issue #39)", () => {
+		// During `git push`, the pre-push hook runs with GIT_DIR pointing at the
+		// worktree's git dir. If those leak into child git processes, tests operate
+		// on the developer's real repo (bogus commits + config pollution).
+		// vitest.setup.ts must strip them so test git commands honor only the cwd.
+		expect(process.env.GIT_DIR).toBeUndefined();
+		expect(process.env.GIT_WORK_TREE).toBeUndefined();
+		expect(process.env.GIT_INDEX_FILE).toBeUndefined();
+		// Identity is injected via env (not config).
+		expect(process.env.GIT_AUTHOR_EMAIL).toBe("test@example.com");
+		expect(process.env.GIT_COMMITTER_NAME).toBe("Test User");
+	});
+
 	it("stageAutoresearchReportArtifacts stages only existing root report artifacts", () => {
 		const cwd = createTempGitRepo();
 		try {
