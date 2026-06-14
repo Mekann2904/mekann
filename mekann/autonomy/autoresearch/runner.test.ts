@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { truncateTail, runCommand, runChecks, generatePiRunId, generateRunId, parseExternalInfo, filterSecrets, createRunArtifactDir, writeRunArtifacts, writeChecksArtifacts, loadRunFromArtifact, getGitFullHash, isGitDirty, getChangedFiles, gitAutoCommit, gitAutoRevert, hasCompleteMarker, loopFollowUpMessage, markArtifactComplete } from "./runner.js";
+import { truncateTail, runCommand, runChecks, generatePiRunId, generateRunId, parseExternalInfo, filterSecrets, createRunArtifactDir, writeRunArtifacts, writeChecksArtifacts, loadRunFromArtifact, getGitFullHash, isGitDirty, getChangedFiles, gitAutoCommit, gitAutoRevert, hasCompleteMarker, loopFollowUpMessage, markArtifactComplete, type RunManifest } from "./runner.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as childProcess from "node:child_process";
@@ -712,6 +712,281 @@ describe("writeChecksArtifacts: edge cases", () => {
 		const manifest = JSON.parse(fs.readFileSync(path.join(tmpChecksDir, "manifest.json"), "utf8"));
 		expect(manifest.checks).toBeDefined();
 		expect(manifest.checks.passed).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// RunManifest: body isolation (issue #30)
+// ---------------------------------------------------------------------------
+
+describe("RunManifest: body isolation (issue #30)", () => {
+	let tmpDir: string;
+
+	beforeEach(() => {
+		tmpDir = `/tmp/test-manifest-isolation-${Date.now()}`;
+		fs.mkdirSync(tmpDir, { recursive: true });
+	});
+
+	afterEach(() => {
+		fs.rmSync(tmpDir, { recursive: true, force: true });
+	});
+
+	function readManifest(runDir: string): Record<string, unknown> {
+		return JSON.parse(fs.readFileSync(path.join(runDir, "manifest.json"), "utf8"));
+	}
+
+	it("writeRunArtifacts omits stdout/stderr/output/parsedMetrics from manifest", async () => {
+		const runDir = createRunArtifactDir(tmpDir, "sess1", "run1", "echo test", Date.now());
+		const result = await runCommand("echo hello", tmpDir, 5000);
+		writeRunArtifacts(runDir, result, "run1", Date.now(), Date.now());
+
+		const manifest = readManifest(runDir);
+		expect(manifest.stdout).toBeUndefined();
+		expect(manifest.stderr).toBeUndefined();
+		expect(manifest.output).toBeUndefined();
+		expect(manifest.parsedMetrics).toBeUndefined();
+		expect(manifest.schemaVersion).toBe(1);
+		expect(manifest.piRunId).toBe("run1");
+		expect(manifest.command).toBe("echo hello");
+	});
+
+	it("stdout.log/stderr.log are still written with filterSecrets applied", async () => {
+		const runDir = createRunArtifactDir(tmpDir, "sess1", "run1", "echo test", Date.now());
+		const result = await runCommand('echo "out" && echo "err" >&2 && echo "API_KEY=sk-secret-12345"', tmpDir, 5000);
+		writeRunArtifacts(runDir, result, "run1", Date.now(), Date.now());
+
+		const stdoutLog = fs.readFileSync(path.join(runDir, "stdout.log"), "utf8");
+		expect(stdoutLog).toContain("out");
+		// secret is redacted in the log body file
+		expect(stdoutLog).not.toContain("sk-secret-12345");
+		expect(stdoutLog).toContain("***REDACTED***");
+	});
+
+	it("secret in stdout body does not leak into manifest", async () => {
+		const runDir = createRunArtifactDir(tmpDir, "sess1", "run1", "cat secret file", Date.now());
+		const secretFile = path.join(tmpDir, "secret-source.txt");
+		fs.writeFileSync(secretFile, "API_KEY=sk-leak-xyz\n", "utf8");
+		// `cat` reads the secret file → the secret appears in the stdout BODY but
+		// NOT in the command string, so it must never reach the metadata manifest.
+		const result = await runCommand(`cat "${secretFile}"`, tmpDir, 5000);
+		writeRunArtifacts(runDir, result, "run1", Date.now(), Date.now());
+
+		expect(result.stdout).toContain("sk-leak-xyz"); // sanity: secret is in stdout body
+		const raw = fs.readFileSync(path.join(runDir, "manifest.json"), "utf8");
+		expect(raw).not.toContain("sk-leak-xyz");
+	});
+
+	it("writeChecksArtifacts stores only checks summary (no body) in manifest", async () => {
+		const runDir = createRunArtifactDir(tmpDir, "sess1", "run1", "echo test", Date.now());
+		const result = await runCommand("echo hello", tmpDir, 5000);
+		writeRunArtifacts(runDir, result, "run1", Date.now(), Date.now());
+
+		writeChecksArtifacts(runDir, {
+			passed: true,
+			timedOut: false,
+			output: "CHECKS BODY OUTPUT",
+			stdout: "CHECKS STDOUT",
+			stderr: "CHECKS STDERR",
+			durationSeconds: 7,
+		});
+
+		const manifest = readManifest(runDir);
+		expect(manifest.checks).toBeDefined();
+		const checks = manifest.checks as Record<string, unknown>;
+		expect(checks.passed).toBe(true);
+		expect(checks.durationSeconds).toBe(7);
+		expect(checks.logFilesWritten).toBe(true);
+		// No body fields in the embedded checks summary
+		expect(checks.stdout).toBeUndefined();
+		expect(checks.stderr).toBeUndefined();
+		expect(checks.output).toBeUndefined();
+		// The raw manifest file must not contain the checks body text
+		const raw = fs.readFileSync(path.join(runDir, "manifest.json"), "utf8");
+		expect(raw).not.toContain("CHECKS BODY OUTPUT");
+		expect(raw).not.toContain("CHECKS STDOUT");
+		expect(raw).not.toContain("CHECKS STDERR");
+
+		// checks-result.json still holds the filtered body (separate file)
+		const checksBody = JSON.parse(fs.readFileSync(path.join(runDir, "checks-result.json"), "utf8"));
+		expect(checksBody.output).toBe("CHECKS BODY OUTPUT");
+		// checks logs are filterSecrets'd and written
+		expect(fs.existsSync(path.join(runDir, "checks.stdout.log"))).toBe(true);
+		expect(fs.existsSync(path.join(runDir, "checks.stderr.log"))).toBe(true);
+	});
+
+	it("checks.stdout.log/checks.stderr.log are filterSecrets'd", () => {
+		const runDir = createRunArtifactDir(tmpDir, "sess1", "run1", "echo test", Date.now());
+		writeChecksArtifacts(runDir, {
+			passed: true,
+			timedOut: false,
+			output: "ok",
+			stdout: "TOKEN=tok-leak-99",
+			stderr: "PASSWORD=pw-leak",
+			durationSeconds: 1,
+		});
+
+		expect(fs.readFileSync(path.join(runDir, "checks.stdout.log"), "utf8")).not.toContain("tok-leak-99");
+		expect(fs.readFileSync(path.join(runDir, "checks.stderr.log"), "utf8")).not.toContain("pw-leak");
+	});
+
+	it("loadRunFromArtifact restores status/timing/metrics/checks/external refs", async () => {
+		const runDir = createRunArtifactDir(tmpDir, "sess1", "run-ext", 'echo "METRIC score=42"', 1000);
+		const result = await runCommand('echo "METRIC score=42"', tmpDir, 5000);
+		// Inject external refs to verify round-trip through the metadata manifest.
+		result.externalRunId = "ext-run-1";
+		result.externalArtifactDir = "/tmp/ext-art";
+		result.externalSummaryPath = "/tmp/ext-summary.json";
+		result.logFilesWritten = true;
+		result.streamError = null;
+		writeRunArtifacts(runDir, result, "run-ext", 1000, 2000, 5);
+		writeChecksArtifacts(runDir, { passed: true, timedOut: false, output: "ok", stdout: "ok", stderr: "", durationSeconds: 3 });
+		markArtifactComplete(runDir);
+
+		const loaded = loadRunFromArtifact(tmpDir, "sess1", "run-ext");
+		expect(loaded).not.toBeNull();
+		expect(loaded!.result.command).toBe('echo "METRIC score=42"');
+		expect(loaded!.result.parsedMetrics).toMatchObject({ score: 42 });
+		expect(loaded!.result.exitCode).toBe(0);
+		expect(loaded!.result.passed).toBe(true);
+		expect(loaded!.result.timedOut).toBe(false);
+		expect(loaded!.result.checks.passed).toBe(true);
+		expect(loaded!.result.externalRunId).toBe("ext-run-1");
+		expect(loaded!.result.externalArtifactDir).toBe("/tmp/ext-art");
+		expect(loaded!.result.externalSummaryPath).toBe("/tmp/ext-summary.json");
+		expect(loaded!.startedAt).toBe(1000);
+		expect(loaded!.completedAt).toBe(2000);
+		expect(loaded!.runSeq).toBe(5);
+		// Loaded RunResult never carries body (loaded from metadata-only manifest)
+		expect(loaded!.result.stdout).toBe("");
+		expect(loaded!.result.stderr).toBe("");
+		expect(loaded!.result.output).toBe("");
+	});
+
+	it("loadRunFromArtifact restores checks summary from manifest when checks-result.json missing", async () => {
+		const runDir = createRunArtifactDir(tmpDir, "sess1", "run-cs", "echo test", Date.now());
+		const result = await runCommand("echo ok", tmpDir, 5000);
+		writeRunArtifacts(runDir, result, "run-cs", Date.now(), Date.now());
+		writeChecksArtifacts(runDir, { passed: false, timedOut: true, output: "timeout body", stdout: "", stderr: "", durationSeconds: 9 });
+		// Simulate loss of the body file: only the manifest summary survives.
+		fs.rmSync(path.join(runDir, "checks-result.json"));
+
+		const loaded = loadRunFromArtifact(tmpDir, "sess1", "run-cs");
+		expect(loaded).not.toBeNull();
+		expect(loaded!.result.checks.passed).toBe(false);
+		expect(loaded!.result.checks.timedOut).toBe(true);
+		expect(loaded!.result.checks.durationSeconds).toBe(9);
+		// No body is reconstructed from metadata
+		expect(loaded!.result.checks.output).toBe("");
+	});
+
+	it("loadRunFromArtifact reads legacy manifest parsedMetrics only as a fallback", () => {
+		const runDir = createRunArtifactDir(tmpDir, "sess1", "run-legacy-metrics", "echo test", Date.now());
+		fs.writeFileSync(path.join(runDir, "manifest.json"), JSON.stringify({
+			piRunId: "run-legacy-metrics",
+			command: "echo test",
+			exitCode: 0,
+			timedOut: false,
+			durationSeconds: 1,
+			logFilesWritten: true,
+			streamError: null,
+			startedAt: 1,
+			completedAt: 2,
+			parsedMetrics: { score: 42, ignored: "not-a-number" },
+			stdout: "legacy body",
+		}), "utf8");
+
+		const loaded = loadRunFromArtifact(tmpDir, "sess1", "run-legacy-metrics");
+		expect(loaded).not.toBeNull();
+		expect(loaded!.result.parsedMetrics).toEqual({ score: 42 });
+		expect(loaded!.result.stdout).toBe("");
+	});
+
+	it("legacy manifest with embedded body fields is stripped on re-write", () => {
+		const runDir = createRunArtifactDir(tmpDir, "sess1", "run-leg", "echo test", Date.now());
+		// Simulate an old-style manifest that leaked bodies via `...result`.
+		const legacy = {
+			piRunId: "run-leg",
+			command: "echo test",
+			exitCode: 0,
+			timedOut: false,
+			logFilesWritten: true,
+			streamError: null,
+			startedAt: 1,
+			completedAt: 2,
+			runSeq: 3,
+			stdout: "LEAKED STDOUT",
+			stderr: "LEAKED STDERR",
+			output: "LEAKED OUTPUT",
+			parsedMetrics: { leaked: 1 },
+			checks: { passed: true, timedOut: false, output: "LEAKED CHECKS", stdout: "cs", stderr: "", durationSeconds: 1 },
+		};
+		fs.writeFileSync(path.join(runDir, "manifest.json"), JSON.stringify(legacy, null, 2), "utf8");
+
+		// Re-writing via writeChecksArtifacts must normalize away the bodies.
+		writeChecksArtifacts(runDir, { passed: true, timedOut: false, output: "new", stdout: "", stderr: "", durationSeconds: 2 });
+
+		const raw = fs.readFileSync(path.join(runDir, "manifest.json"), "utf8");
+		expect(raw).not.toContain("LEAKED STDOUT");
+		expect(raw).not.toContain("LEAKED STDERR");
+		expect(raw).not.toContain("LEAKED OUTPUT");
+		expect(raw).not.toContain("LEAKED CHECKS");
+		const manifest = JSON.parse(raw);
+		expect(manifest.schemaVersion).toBe(1);
+		expect(manifest.stdout).toBeUndefined();
+		expect(manifest.stderr).toBeUndefined();
+		expect(manifest.output).toBeUndefined();
+		expect(manifest.parsedMetrics).toBeUndefined();
+		// Preserved metadata
+		expect(manifest.piRunId).toBe("run-leg");
+		expect(manifest.runSeq).toBe(3);
+		expect(manifest.checks.passed).toBe(true);
+	});
+
+	it("artifactComplete semantics: false with stream error, true when clean", async () => {
+		const runDirErr = createRunArtifactDir(tmpDir, "sess1", "run-err", "echo test", Date.now());
+		const resultErr = await runCommand("echo ok", tmpDir, 5000);
+		resultErr.logFilesWritten = false;
+		resultErr.streamError = "EACCES";
+		writeRunArtifacts(runDirErr, resultErr, "run-err", Date.now(), Date.now());
+		markArtifactComplete(runDirErr);
+		expect(readManifest(runDirErr).artifactComplete).toBe(false);
+
+		const runDirOk = createRunArtifactDir(tmpDir, "sess1", "run-ok", "echo test", Date.now());
+		const resultOk = await runCommand("echo ok", tmpDir, 5000);
+		resultOk.logFilesWritten = true;
+		resultOk.streamError = null;
+		writeRunArtifacts(runDirOk, resultOk, "run-ok", Date.now(), Date.now());
+		markArtifactComplete(runDirOk);
+		expect(readManifest(runDirOk).artifactComplete).toBe(true);
+	});
+
+	it("RunManifest type exposes only metadata fields (no body keys)", () => {
+		// Compile-time guard: RunManifest only carries metadata. A `...result`
+		// spread would bring stdout/stderr/output/parsedMetrics, none of which
+		// exist on this type, so it cannot be cleanly reintroduced.
+		const manifest: RunManifest = {
+			schemaVersion: 1,
+			piRunId: "type-check",
+			command: "echo",
+			startedAt: 1,
+			completedAt: 2,
+			durationSeconds: 1,
+			exitCode: 0,
+			timedOut: false,
+			signal: null,
+			artifactComplete: true,
+			logFilesWritten: true,
+			streamError: null,
+			stdoutLogSize: 10,
+			stderrLogSize: 0,
+			externalRunId: null,
+			externalArtifactDir: null,
+			externalSummaryPath: null,
+			externalViewlogPath: null,
+			externalMetricsPath: null,
+		};
+		expect(manifest.schemaVersion).toBe(1);
+		expect(manifest.piRunId).toBe("type-check");
 	});
 });
 

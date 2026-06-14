@@ -3237,7 +3237,15 @@ describe("autoresearchExtension", () => {
 
 			const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 			expect(manifest.piRunId).toBe(piRunId);
-			expect(manifest.parsedMetrics).toMatchObject({ ms: 42 });
+			// parsedMetrics lives in metrics.json, NOT the manifest (safe schema).
+			const metricsPath = path.join(path.dirname(manifestPath), "metrics.json");
+			const metrics = JSON.parse(fs.readFileSync(metricsPath, "utf8"));
+			expect(metrics).toMatchObject({ ms: 42 });
+			// Manifest must never embed run log bodies.
+			expect(manifest.stdout).toBeUndefined();
+			expect(manifest.stderr).toBeUndefined();
+			expect(manifest.output).toBeUndefined();
+			expect(manifest.parsedMetrics).toBeUndefined();
 
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
