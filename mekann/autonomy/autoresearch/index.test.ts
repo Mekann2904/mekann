@@ -49,7 +49,7 @@ interface MockCtx {
 	ui: MockUi;
 }
 
-/** Init git repo with user config for test isolation. */
+/** Init git repo. Test identity comes from env vars (vitest.setup.ts, issue #39). */
 function gitInitForTest(cwd: string): void {
 	try {
 		childProcess.execFileSync("git", ["init", "-b", "main"], { cwd, stdio: "ignore" });
@@ -57,8 +57,6 @@ function gitInitForTest(cwd: string): void {
 		childProcess.execFileSync("git", ["init"], { cwd, stdio: "ignore" });
 		childProcess.execFileSync("git", ["checkout", "-b", "main"], { cwd, stdio: "ignore" });
 	}
-	childProcess.execFileSync("git", ["config", "user.email", "test@example.com"], { cwd, stdio: "ignore" });
-	childProcess.execFileSync("git", ["config", "user.name", "Test User"], { cwd, stdio: "ignore" });
 }
 
 function createMockPi() {

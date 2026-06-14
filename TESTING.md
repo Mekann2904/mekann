@@ -135,3 +135,40 @@ git push --no-verify
 2. **Extension handlers**: Mock `ExtensionAPI` and test behavior
 3. **Integration tests**: Use `describeMac` / `itSandbox` pattern for macOS-only tests
 4. **Coverage**: Run `npx vitest run --coverage` to identify gaps
+
+### Git identity in tests (do NOT use `git config`)
+
+Tests that spin up temporary git repos must NEVER call `git config user.email/name`.
+Under parallel-execution race conditions the cwd can resolve to a linked worktree
+instead of the temp dir, and in a worktree `git config --local` writes to the
+**shared main-repo config** (`.git/config`), polluting the developer's real identity
+and leaving `core.bare=true` behind. Once polluted, `git push` is blocked by the
+pre-push hook (`scripts/check-git-local-safety.sh`) until cleaned.
+
+Instead, provide the test identity through **environment variables**. They are
+inherited by every child `git` process (including production `gitAutoCommit` in
+`autoresearch/runner.ts`, which inherits `process.env`) without writing anywhere:
+
+```ts
+// In a vitest setup file (see mekann/autonomy/autoresearch/vitest.setup.ts):
+process.env.GIT_AUTHOR_NAME = "Test User";
+process.env.GIT_AUTHOR_EMAIL = "test@example.com";
+process.env.GIT_COMMITTER_NAME = "Test User";
+process.env.GIT_COMMITTER_EMAIL = "test@example.com";
+```
+
+For a one-off command, use `git -c user.email=... -c user.name=... <cmd>` or pass
+the same env vars to the spawn — both avoid touching any config file.
+
+If a worktree ever does get polluted, recover from the **shared** config with
+`--file` (NOT `--local`, which targets the per-worktree config):
+
+```bash
+npm run check:git-local-safety -- --fix
+# or manually:
+git config --file "$(git rev-parse --git-common-dir)/config" --unset core.bare
+git config --file "$(git rev-parse --git-common-dir)/config" --unset user.email
+git config --file "$(git rev-parse --git-common-dir)/config" --unset user.name
+```
+
+See issue #39 for the full background.
