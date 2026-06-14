@@ -46,12 +46,8 @@ const GIT_AUTOCOMMIT_MAX_DELETIONS = 50;
 
 /** Count currently-staged deleted files (diff-filter=D on the cached diff). */
 function countStagedDeletions(cwd: string): number {
-	try {
-		const out = execFileSync("git", ["diff", "--cached", "--name-only", "--diff-filter=D"], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] });
-		return out.split("\n").filter(Boolean).length;
-	} catch {
-		return 0;
-	}
+	const out = execFileSync("git", ["diff", "--cached", "--name-only", "--diff-filter=D"], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] });
+	return out.split("\n").filter(Boolean).length;
 }
 
 export interface ChecksResult {
