@@ -11,8 +11,7 @@ describe("renderDashboardText", () => {
 				activitySummary: { status: "placeholder", message: "Activity summary: coming next" },
 				codexUsage: { status: "placeholder", message: "Codex usage summary: coming next" },
 			},
-			avatarResult: undefined,
-			graphPath: undefined,
+			images: {},
 		}, 100);
 		expect(text).toContain("┌─ PROFILE");
 		expect(text).toContain("┌─ CONTRIBUTION GRAPH");
