@@ -16,42 +16,37 @@
  *   /goal resume                — Resume a paused goal
  *   /goal clear                 — Delete the goal
  *   /goal budget <n|none>       — Set or clear token budget
+ *
+ * This module is a thin composition root: it owns the `goals` feature flag,
+ * the shared `store` / `runtime` state, and the `isEnabled` gate, then wires
+ * the focused modules (`goalWidget`, `goalEvents`, `goalTools`,
+ * `goalPromptProvider`, `goalLifecycle`, `command`) together. Implementation
+ * detail for UI / events / tools / prompts / lifecycle lives in those modules.
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@earendil-works/pi-ai";
-import {
-  GoalStore,
-  GoalError,
-  type GoalStateEntry,
-  type Goal,
-  remainingTokens,
-} from "./state.js";
-import { GoalRuntime } from "./runtime.js";
-import { registerPromptProvider } from "../../core/prompt-core/index.js";
-import { featureStringValue } from "../../settings/enabled.js";
-import { setToolsActive } from "../../settings/toolSurface.js";
-import { renderWidget, renderGoalPolicy, renderGoalObjectiveContext, renderGoalRuntimeState } from "./prompts.js";
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import type { GoalStateEntry, GoalStore } from "./state.js";
+import type { GoalRuntime } from "./runtime.js";
 import { registerGoalCommand } from "./command.js";
-import { recordGoalEvent, type GoalAction } from "./context-events.js";
-import { MODE_STATUS_EVENT } from "../../safety/policy-core/modes.js";
-
+import { createGoalWidgetController } from "./goalWidget.js";
+import { createGoalEmitters } from "./goalEvents.js";
+import { registerGoalTools } from "./goalTools.js";
+import { registerGoalPromptProvider } from "./goalPromptProvider.js";
+import { registerGoalLifecycle } from "./goalLifecycle.js";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
+/** Custom-entry type used to persist goal state in the session branch. */
 const CUSTOM_TYPE = "goal-state";
-const GOAL_TOOL_NAMES = ["get_goal", "create_goal", "update_goal"] as const;
-void MODE_STATUS_EVENT;
 
 // ---------------------------------------------------------------------------
-// Extension factory
+// Extension factory (composition root)
 // ---------------------------------------------------------------------------
 
 export default function goalExtension(pi: ExtensionAPI): void {
+  // Shared feature state, owned here and observed/mutated by the modules below.
   let store: GoalStore | null = null;
   let runtime: GoalRuntime | null = null;
 
@@ -63,7 +58,18 @@ export default function goalExtension(pi: ExtensionAPI): void {
     default: true,
   });
 
-  // ─── Helpers ──────────────────────────────────────────────────
+  // ─── Shared-state accessors ───────────────────────────────────
+
+  const getStore = (): GoalStore | null => store;
+  const getRuntime = (): GoalRuntime | null => runtime;
+  const setStore = (next: GoalStore | null): void => {
+    store = next;
+  };
+  const setRuntime = (next: GoalRuntime | null): void => {
+    runtime = next;
+  };
+
+  // ─── Feature gates & persistence ──────────────────────────────
 
   function persist(entry: GoalStateEntry): void {
     pi.appendEntry(CUSTOM_TYPE, entry);
@@ -75,360 +81,38 @@ export default function goalExtension(pi: ExtensionAPI): void {
     return true;
   }
 
-  const DISABLED_RESPONSE = {
-    content: [{ type: "text" as const, text: "Goals feature is disabled or session is not persisted." }],
-    details: {},
-  };
+  // ─── Wire focused modules ─────────────────────────────────────
 
-  function shouldExposeGoalTools(): boolean {
-    const surface = featureStringValue("goal", "toolSurface", "slash");
-    if (surface === "always") return true;
-    if (surface === "active") {
-      const goal = store?.getGoal();
-      return goal?.status === "active";
-    }
-    return false;
-  }
+  // UI widget + model-tool surface control
+  const widget = createGoalWidgetController(pi, getStore);
 
-  function syncGoalToolSurface(): void {
-    setToolsActive(pi, GOAL_TOOL_NAMES, shouldExposeGoalTools());
-  }
+  // goal:updated / goal:cleared emitters + ledger recording
+  const { emitUpdated, emitCleared } = createGoalEmitters(pi, widget.updateWidget);
 
-  function updateWidget(ctx: ExtensionContext): void {
-    syncGoalToolSurface();
-    if (!ctx.hasUI) return;
-    const goal = store?.getGoal() ?? null;
-    const lines = renderWidget(goal);
-    ctx.ui.setWidget("goal", lines ? (_tui: unknown, _theme: any) => ({
-      invalidate() {},
-      render(width: number): string[] {
-        return lines.map(l => truncateToWidth(l, width));
-      },
-    }) : undefined);
-  }
+  // get_goal / create_goal / update_goal
+  registerGoalTools({ pi, getStore, getRuntime, isEnabled, emitUpdated });
 
-  function emitUpdated(ctx: ExtensionContext, goal: Goal, action: GoalAction = "updated", source: "user" | "tool" | "runtime" = "user"): void {
-    const cwd = (ctx as any)?.cwd ?? process.cwd();
-    recordGoalEvent({
-      action,
-      goal,
-      cwd,
-      sessionId: (ctx as any)?.sessionId,
-      turnId: (ctx as any)?.turnId,
-      branchId: (ctx as any)?.branchId,
-      source,
-    }).catch(() => {});
-    pi.events.emit("goal:updated", { thread_id: goal.thread_id, goal });
-    updateWidget(ctx);
-  }
+  // Prompt fragment provider (goal policy / objective / runtime state)
+  registerGoalPromptProvider(getStore);
 
-  function emitCleared(ctx: ExtensionContext, threadId: string, goal?: Goal | null, source: "user" | "runtime" = "user"): void {
-    const cwd = (ctx as any)?.cwd ?? process.cwd();
-    recordGoalEvent({
-      action: "cleared",
-      goal: goal ?? null,
-      cwd,
-      sessionId: (ctx as any)?.sessionId,
-      turnId: (ctx as any)?.turnId,
-      branchId: (ctx as any)?.branchId,
-      source,
-    }).catch(() => {});
-    pi.events.emit("goal:cleared", { thread_id: threadId });
-    updateWidget(ctx);
-  }
-
-  // ─── Session lifecycle ────────────────────────────────────────
-
-  pi.on("session_start", async (_event, ctx) => {
-    if (!isEnabled(ctx)) {
-      store = null;
-      runtime = null;
-      ctx.ui.setWidget("goal", undefined);
-      return;
-    }
-
-    // Reconstruct from session custom entries
-    const branch = ctx.sessionManager.getBranch();
-    const goalEntries: GoalStateEntry[] = [];
-    // branch is leaf→root; reverse for chronological (root→leaf) replay
-    for (let i = branch.length - 1; i >= 0; i--) {
-      const entry = branch[i];
-      if (entry.type === "custom" && entry.customType === CUSTOM_TYPE) {
-        goalEntries.push(entry.data as GoalStateEntry);
-      }
-    }
-    store = GoalStore.fromEntries(goalEntries, persist);
-    runtime = new GoalRuntime(store, pi, (action, goal) => {
-      const cwd = (ctx as any)?.cwd ?? process.cwd();
-      recordGoalEvent({
-        action: action as GoalAction,
-        goal,
-        cwd,
-        sessionId: (ctx as any)?.sessionId,
-        turnId: (ctx as any)?.turnId,
-        branchId: (ctx as any)?.branchId,
-        source: "runtime",
-      }).catch(() => {});
-    });
-    runtime.onSessionStart(ctx);
-    updateWidget(ctx);
+  // session_start replay + agent lifecycle hooks
+  registerGoalLifecycle({
+    pi,
+    getStore,
+    getRuntime,
+    setStore,
+    setRuntime,
+    isEnabled,
+    persist,
+    customType: CUSTOM_TYPE,
+    syncToolSurface: widget.syncToolSurface,
+    updateWidget: widget.updateWidget,
   });
 
-  pi.on("session_shutdown", async () => {
-    runtime?.onSessionShutdown();
-    store = null;
-    runtime = null;
-    syncGoalToolSurface();
-  });
-
-  // ─── Agent lifecycle ──────────────────────────────────────────
-
-  pi.on("agent_start", async () => {
-    runtime?.onAgentStart();
-  });
-
-  pi.on("turn_start", async (event, ctx) => {
-    runtime?.onTurnStart(event, ctx);
-  });
-
-  pi.on("message_end", async (event, ctx) => {
-    runtime?.onMessageEnd(event, ctx);
-    updateWidget(ctx);
-  });
-
-  pi.on("tool_execution_end", async (event, ctx) => {
-    runtime?.onToolExecutionEnd(event, ctx);
-    updateWidget(ctx);
-  });
-
-  pi.on("turn_end", async (event, ctx) => {
-    runtime?.onTurnEnd(event, ctx);
-    updateWidget(ctx);
-  });
-
-  pi.on("agent_end", async (event, ctx) => {
-    runtime?.onAgentEnd(event, ctx);
-    updateWidget(ctx);
-    // Consider idle continuation after agent finishes
-    if (runtime && store) {
-      runtime.maybeContinueIfIdle(ctx);
-    }
-  });
-
-  // ─── Prompt fragments ─────────────────────────────────────
-
-  registerPromptProvider({
-    id: "goal",
-    getFragments() {
-      const goal = store?.getGoal();
-      if (!goal || goal.status !== "active") return [];
-      return [
-        {
-          id: "goal:policy",
-          source: "goal",
-          kind: "goal_policy",
-          stability: "stable",
-          scope: "global",
-          priority: 300,
-          version: "v1",
-          cacheIntent: "prefer_cache",
-          content: renderGoalPolicy(),
-        },
-        {
-          id: "goal:objective",
-          source: "goal",
-          kind: "goal_objective",
-          stability: "semi_stable",
-          scope: "session",
-          priority: 310,
-          version: "v1",
-          cacheIntent: "neutral",
-          content: renderGoalObjectiveContext(goal),
-        },
-        {
-          id: "goal:runtime-state",
-          source: "goal",
-          kind: "goal_runtime_state",
-          stability: "dynamic",
-          scope: "turn",
-          priority: 700,
-          version: "v1",
-          cacheIntent: "avoid_cache",
-          content: renderGoalRuntimeState(goal),
-        },
-      ];
-    },
-  });
-
-  // ─── Model tools ──────────────────────────────────────────────
-
-  // get_goal
-  pi.registerTool({
-    name: "get_goal",
-    label: "Get current goal",
-    description:
-      "Get the current thread goal, including objective, status, and remaining token budget.",
-    promptSnippet: "Check current goal status and remaining budget",
-    promptGuidelines: [
-      "Use get_goal to check the current goal status before deciding whether to continue or complete.",
-    ],
-    parameters: Type.Object({}),
-    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-      if (!isEnabled(ctx) || !store) return DISABLED_RESPONSE;
-      const goal = store.getGoal();
-      if (!goal) {
-        return {
-          content: [{ type: "text" as const, text: "No active goal." }],
-          details: {},
-        };
-      }
-      const remaining = remainingTokens(goal);
-      return {
-        content: [{
-          type: "text" as const,
-          text: [
-            `Goal: ${goal.objective}`,
-            `Status: ${goal.status}`,
-            `Tokens used: ${goal.tokens_used}`,
-            ...(goal.token_budget !== null
-              ? [`Token budget: ${goal.token_budget}`, `Remaining tokens: ${remaining}`]
-              : []),
-            `Time used: ${goal.time_used_seconds}s`,
-          ].join("\n"),
-        }],
-        details: { goal, remaining_tokens: remaining },
-      };
-    },
-  });
-
-  // create_goal
-  pi.registerTool({
-    name: "create_goal",
-    label: "Create a goal",
-    description:
-      "Create a new thread goal with an objective and optional token budget. " +
-      "Only use this when the user explicitly requests goal creation. " +
-      "Fails if a goal already exists.",
-    promptSnippet: "Create a new goal when explicitly requested",
-    promptGuidelines: [
-      "Use create_goal only when the user explicitly asks to set a goal.",
-      "Do NOT create goals autonomously for ordinary tasks.",
-      "If a goal already exists, report the error to the user.",
-    ],
-    parameters: Type.Object({
-      objective: Type.String({ description: "The goal objective" }),
-      token_budget: Type.Optional(
-        Type.Integer({
-          minimum: 1,
-          description: "Optional positive integer token budget.",
-        }),
-      ),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      if (!isEnabled(ctx) || !store || !runtime) return DISABLED_RESPONSE;
-      try {
-        const goal = store.createGoal(
-          ctx.sessionManager.getSessionId(),
-          params.objective,
-          params.token_budget ?? null,
-          "tool",
-        );
-        runtime.onExternalSet(goal);
-        emitUpdated(ctx, goal, "set", "tool");
-        return {
-          content: [{ type: "text" as const, text: `Goal created: ${goal.objective}` }],
-          details: { goal },
-        };
-      } catch (e) {
-        const msg = e instanceof GoalError ? e.message : "Failed to create goal";
-        return {
-          content: [{ type: "text" as const, text: `[ERROR] ${msg}` }],
-          details: { error: msg },
-        };
-      }
-    },
-  });
-
-  // update_goal
-  pi.registerTool({
-    name: "update_goal",
-    label: "Update goal",
-    description:
-      "Update the existing goal. Use only to mark the goal achieved or genuinely blocked. " +
-      "Set status='complete' only when the objective has actually been achieved and no required work remains. " +
-      "Set status='blocked' only when the same blocking condition has repeated for at least three consecutive goal turns and no meaningful progress is possible without user input or an external-state change. " +
-      "Pause, resume, budget-limited, and usage-limited status changes are controlled by the user or runtime.",
-    promptSnippet: "Mark goal as complete or strictly blocked",
-    promptGuidelines: [
-      "Use update_goal with status='complete' ONLY when authoritative current-state evidence proves every requirement is satisfied.",
-      "Use update_goal with status='blocked' ONLY after the same blocker recurs for at least three consecutive goal turns and you are truly at an impasse.",
-      "Do NOT use blocked merely because the work is hard, slow, uncertain, incomplete, or would benefit from clarification.",
-      "Do NOT mark goals as complete prematurely or because you are stopping work/budget is nearly exhausted.",
-      "You cannot pause, resume, clear, or set budget_limited/usage_limited via this tool.",
-    ],
-    parameters: Type.Object({
-      status: StringEnum(["complete", "blocked"] as const, {
-        description: "Set to 'complete' only when fully achieved; set to 'blocked' only after the strict three-consecutive-goal-turn blocked audit is satisfied",
-      }) as any,
-      expected_goal_id: Type.Optional(
-        Type.String({ description: "Optional: expected goal_id for optimistic concurrency" }),
-      ),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      if (!isEnabled(ctx) || !store || !runtime) return DISABLED_RESPONSE;
-      try {
-        const status = params.status as "complete" | "blocked";
-        const patch: { status: "complete" | "blocked" } = { status };
-
-        // Reject if goal status is already complete
-        const current = store.getGoal();
-        if (!current) {
-          return {
-            content: [{ type: "text" as const, text: "[ERROR] No goal to update" }],
-            details: { error: "No goal to update" },
-          };
-        }
-        if (current.status === "complete" || current.status === "blocked") {
-          return {
-            content: [{ type: "text" as const, text: `[ERROR] Goal is already ${current.status}` }],
-            details: { error: `Goal is already ${current.status}` },
-          };
-        }
-
-        // Flush wall-clock accounting before completing
-        runtime.onExternalMutationStarting();
-        const previousGoal = store.getGoal();
-
-        const goal = store.updateGoal(patch, params.expected_goal_id as string | undefined, "tool");
-
-        // Suppress budget steering since this is a terminal model-declared status.
-        runtime.suppressBudgetSteering();
-        // Synchronize runtime state (clears active_goal_id, wall-clock baseline)
-        runtime.onExternalSet(goal, previousGoal);
-
-        emitUpdated(ctx, goal, status === "complete" ? "completed" : "blocked", "tool");
-        const usageReport = `Final usage: ${goal.tokens_used} tokens, ${goal.time_used_seconds}s`;
-        const statusText = status === "complete" ? "complete" : "blocked";
-
-        return {
-          content: [{ type: "text" as const, text: `Goal marked as ${statusText}. ${usageReport}` }],
-          details: { goal, final_usage: { tokens: goal.tokens_used, time: goal.time_used_seconds } },
-        };
-      } catch (e) {
-        const msg = e instanceof GoalError ? e.message : "Failed to update goal";
-        return {
-          content: [{ type: "text" as const, text: `[ERROR] ${msg}` }],
-          details: { error: msg },
-        };
-      }
-    },
-  });
-
-  // ─── /goal command ────────────────────────────────────────────
-
+  // /goal command
   registerGoalCommand(pi, {
-    getStore: () => store,
-    getRuntime: () => runtime,
+    getStore,
+    getRuntime,
     isEnabled,
     emitUpdated,
     emitCleared,
