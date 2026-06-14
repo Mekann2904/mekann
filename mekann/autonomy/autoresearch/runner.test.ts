@@ -7,9 +7,8 @@ import * as os from "node:os";
 
 function createTempGitRepo(): string {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "autoresearch-git-"));
+	// Test git identity is injected via env vars in vitest.setup.ts (issue #39).
 	childProcess.execFileSync("git", ["init", "-b", "main"], { cwd: dir });
-	childProcess.execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: dir });
-	childProcess.execFileSync("git", ["config", "user.name", "Test User"], { cwd: dir });
 	fs.writeFileSync(path.join(dir, "README.md"), "test\n");
 	childProcess.execFileSync("git", ["add", "-A"], { cwd: dir });
 	childProcess.execFileSync("git", ["commit", "-m", "init"], { cwd: dir });
@@ -627,6 +626,104 @@ describe("gitAutoCommit and gitAutoRevert", () => {
 		} finally {
 			fs.rmSync(cwd, { recursive: true, force: true });
 		}
+	});
+
+	it("gitAutoCommit refuses a catastrophic mass deletion (issue #39 safety guard)", () => {
+		const cwd = createTempGitRepo();
+		try {
+			// Seed many tracked files, commit them, then delete them on disk to mimic a
+			// corrupted worktree index (the catastrophic scenario in issue #39).
+			const seedCount = 60;
+			for (let i = 0; i < seedCount; i++) {
+				fs.writeFileSync(path.join(cwd, `file-${i}.txt`), `content ${i}\n`);
+			}
+			childProcess.execFileSync("git", ["add", "-A"], { cwd });
+			childProcess.execFileSync("git", ["commit", "-m", "seed many files"], { cwd });
+			for (let i = 0; i < seedCount; i++) {
+				fs.unlinkSync(path.join(cwd, `file-${i}.txt`));
+			}
+
+			// gitAutoCommit runs `git add -A` (staging 60 deletions) and must refuse.
+			const result = gitAutoCommit(cwd, "should be refused");
+			expect(result.committed).toBe(false);
+			expect(result.error).toMatch(/safety guard/i);
+
+			// The catastrophic commit must NOT have been created: files stay tracked at HEAD.
+			const headFiles = childProcess.execFileSync(
+				"git", ["ls-tree", "-r", "--name-only", "HEAD"],
+				{ cwd, encoding: "utf8" },
+			);
+			expect(headFiles).toContain("file-0.txt");
+			expect(headFiles).toContain(`file-${seedCount - 1}.txt`);
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("gitAutoCommit allowDestructiveCommit bypasses the safety guard", () => {
+		const cwd = createTempGitRepo();
+		try {
+			const seedCount = 60;
+			for (let i = 0; i < seedCount; i++) {
+				fs.writeFileSync(path.join(cwd, `file-${i}.txt`), `content ${i}\n`);
+			}
+			childProcess.execFileSync("git", ["add", "-A"], { cwd });
+			childProcess.execFileSync("git", ["commit", "-m", "seed many files"], { cwd });
+			for (let i = 0; i < seedCount; i++) {
+				fs.unlinkSync(path.join(cwd, `file-${i}.txt`));
+			}
+
+			const result = gitAutoCommit(cwd, "intentional bulk deletion", { allowDestructiveCommit: true });
+			expect(result.committed).toBe(true);
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("gitAutoCommit commits a normal small change without tripping the guard", () => {
+		const cwd = createTempGitRepo();
+		try {
+			// A few small edits (including a single deletion) must not trip the guard.
+			fs.writeFileSync(path.join(cwd, "a.txt"), "a\n");
+			fs.writeFileSync(path.join(cwd, "b.txt"), "b\n");
+			fs.unlinkSync(path.join(cwd, "README.md"));
+			const result = gitAutoCommit(cwd, "small change with one deletion");
+			expect(result.committed).toBe(true);
+			expect(result.error).toBeUndefined();
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("createTempGitRepo does not write test identity to git config (issue #39)", () => {
+		// Proves the env-var approach: identity must come from GIT_AUTHOR_*/GIT_COMMITTER_*
+		// and never be persisted to any config file.
+		const cwd = createTempGitRepo();
+		try {
+			const configPath = path.join(cwd, ".git", "config");
+			const config = fs.readFileSync(configPath, "utf8");
+			expect(config).not.toContain("test@example.com");
+			expect(config).not.toContain("Test User");
+			expect(config).not.toContain("core.bare");
+			// And the repo is not bare.
+			const isBare = childProcess.execFileSync("git", ["rev-parse", "--is-bare-repository"], { cwd, encoding: "utf8" }).trim();
+			expect(isBare).toBe("false");
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("vitest setup neutralizes inherited git context env (issue #39)", () => {
+		// During `git push`, the pre-push hook runs with GIT_DIR pointing at the
+		// worktree's git dir. If those leak into child git processes, tests operate
+		// on the developer's real repo (bogus commits + config pollution).
+		// vitest.setup.ts must strip them so test git commands honor only the cwd.
+		expect(process.env.GIT_DIR).toBeUndefined();
+		expect(process.env.GIT_WORK_TREE).toBeUndefined();
+		expect(process.env.GIT_INDEX_FILE).toBeUndefined();
+		// Identity is injected via env (not config).
+		expect(process.env.GIT_AUTHOR_EMAIL).toBe("test@example.com");
+		expect(process.env.GIT_COMMITTER_NAME).toBe("Test User");
 	});
 
 	it("stageAutoresearchReportArtifacts stages only existing root report artifacts", () => {

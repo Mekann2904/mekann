@@ -10,9 +10,8 @@ import { applyCandidate, applyCandidateIsolated, assertCandidateReadyForRun, can
 
 function tmpRepo(): string {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arc-test-"));
+	// Test git identity is injected via env vars in vitest.setup.ts (issue #39).
 	execFileSync("git", ["init"], { cwd: dir, stdio: "ignore" });
-	execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: dir });
-	execFileSync("git", ["config", "user.name", "Test"], { cwd: dir });
 	fs.writeFileSync(path.join(dir, "README.md"), "base\n");
 	execFileSync("git", ["add", "README.md"], { cwd: dir });
 	execFileSync("git", ["commit", "-m", "initial"], { cwd: dir, stdio: "ignore" });
