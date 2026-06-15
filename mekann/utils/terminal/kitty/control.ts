@@ -97,21 +97,37 @@ export class KittyControl {
 	}
 
 	async findIssuePiAnchorWindowId(): Promise<number | undefined> {
+		const windows = await this.listAllWindows();
+		const pane = pickWidestIssuePiPane(windows);
+		return typeof pane?.id === "number" ? pane.id : undefined;
+	}
+
+	/**
+	 * True when a Kitty pane titled `Issue #<issueNumber>` is currently open.
+	 * Used by issue orchestration (issue #71) for double-launch prevention.
+	 * Returns false when not in Kitty or the lookup fails (safe side).
+	 */
+	async hasIssuePiPane(issueNumber: number): Promise<boolean> {
+		if (!this.isKittyEnvironment()) return false;
+		const windows = await this.listAllWindows();
+		const pattern = new RegExp(`^Issue #${issueNumber}(\\D|$)`);
+		return windows.some((window) => typeof window.title === "string" && pattern.test(window.title));
+	}
+
+	/** Fetch and parse all windows from `kitty @ ls`. Empty on failure. */
+	private async listAllWindows(): Promise<KittyWindowLike[]> {
 		let stdout = "";
 		try {
 			const result = await execFile(this.kittenBin, ["@", "ls"], { timeout: 2000 });
 			stdout = result.stdout;
 		} catch {
-			return undefined;
+			return [];
 		}
-		if (!stdout) return undefined;
-
+		if (!stdout) return [];
 		try {
-			const windows = collectKittyWindows(JSON.parse(stdout));
-			const pane = pickWidestIssuePiPane(windows);
-			return typeof pane?.id === "number" ? pane.id : undefined;
+			return collectKittyWindows(JSON.parse(stdout));
 		} catch {
-			return undefined;
+			return [];
 		}
 	}
 

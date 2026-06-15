@@ -19,6 +19,7 @@ const UTILS_FEATURES: UtilsFeatureLoader[] = [
 	{ feature: "settings-editor", importLabel: "import:utils/settings-editor", load: () => import("./settings-editor/index.js") },
 	{ feature: "startup-clear", importLabel: "import:utils/startup-clear", alwaysEnabled: true, load: () => import("./terminal/startup-clear.js") },
 	{ feature: "issue-worktree", importLabel: "import:utils/issue", load: () => import("./issue/extension.js") },
+	{ feature: "issue-orchestration", importLabel: "import:utils/issue-orchestration", load: () => import("./issue/orchestration/extension.js") },
 	{ feature: "issue-workflow", importLabel: "import:utils/issue-workflow", load: () => import("./issue-workflow/index.js") },
 	{ feature: "voice-notify", importLabel: "import:utils/voice-notify", load: () => import("./voice-notify/index.js") },
 	{ feature: "pr-workflow", importLabel: "import:utils/pr-workflow", load: () => import("./pr-workflow/index.js") },

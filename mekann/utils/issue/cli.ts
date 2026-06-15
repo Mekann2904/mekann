@@ -4,32 +4,21 @@
  *
  * Interactive mode: OpenTUI issue list → create worktree → launch pi in Kitty split
  * Direct mode: --issue N → create worktree and print its path
+ * Orchestrate mode: <parent-number> → GitHub-truth orchestration of sub-issues (issue #71)
  * Cleanup: remove worktrees whose issues are closed
  */
 
 import { parseIssueArgs } from "./args.js";
 import { addDependencyStatus, listOpenIssues, type IssueDependencyStatus, type IssueWithStatus, getIssueStatus, getIssueDependencyStatus } from "./github.js";
-import { getRepoInfo, createWorktree, removeWorktree, worktreeDir, listExistingWorktrees, issueBranch, parseIssueNumberFromBranch, type WorktreeInfo } from "./worktree.js";
+import { getRepoInfo, createWorktree, removeWorktree, worktreeDir, listExistingWorktrees, issueBranch, parseIssueNumberFromBranch, type WorktreeInfo, type RepoInfo } from "./worktree.js";
 import { mountIssueList } from "./app.js";
 import { launchPiSessionInKittySplit } from "../terminal/pi-session.js";
+import { createOrchestrationDeps } from "./orchestration/deps.js";
+import { startOrchestration, type LaunchWorkPi } from "./orchestration/lifecycle.js";
+import { buildIssueSessionSystemPrompt, buildIssueSessionInitialMessage } from "./prompts.js";
+import { bulkLaunchIssues, type BulkLaunchDeps } from "./bulk-launch.js";
 
-export function buildIssueSessionSystemPrompt(issueNumber: number): string {
-	return [
-		`You are working in an issue worktree for GitHub issue #${issueNumber}.`,
-		"Follow this issue workflow in explicit phases when the user asks you to implement or fix the issue:",
-		"Phase 1 — issue対応: read the issue, confirm dependency status if needed, understand acceptance criteria, then implement/fix the issue in this session.",
-		"Phase 2 — review_fixerによる調査と修正: immediately invoke the review_fixer tool yourself. Inspect its structured result, address any required follow-up, and rerun review_fixer if the result says the gate failed or the user asks for another pass.",
-		"Phase 3 — issue_workflow (status → diff → commit → push → create_pr): only after review_fixer succeeds, use the issue_workflow tool to inspect status/diff, then commit, push the issue branch, and create the PR. Always go through issue_workflow; do NOT run git/gh via the bash tool (git-safety intercepts it and commit/PR messages get mangled by shell expansion).",
-		"create_pr should produce a ready (non-draft) PR; review_fixer has already gated implementation quality.",
-		"Do not collapse these phases. Announce the current phase briefly before acting so the user can follow progress.",
-		"Do not merely recommend review_fixer after implementation; invoke it yourself unless the issue is blocked or the user explicitly forbids it.",
-		"Do not commit, push, or create a PR before review_fixer has completed successfully.",
-	].join("\n");
-}
-
-export function buildIssueSessionInitialMessage(issueNumber: number): string {
-	return `issue-${issueNumber}に対応してください`;
-}
+export { buildIssueSessionSystemPrompt, buildIssueSessionInitialMessage } from "./prompts.js";
 
 async function main(): Promise<void> {
 	const args = parseIssueArgs(process.argv.slice(2));
@@ -46,6 +35,11 @@ async function main(): Promise<void> {
 
 	if (args.value.mode === "direct") {
 		await runDirect(args.value.issueNumber!);
+		return;
+	}
+
+	if (args.value.mode === "orchestrate") {
+		await runOrchestration(args.value.issueNumber!);
 		return;
 	}
 
@@ -99,6 +93,74 @@ async function runDirect(issueNumber: number): Promise<void> {
 	console.log(wt.path);
 }
 
+/**
+ * Resolve a child's worktree path, creating it if needed (reusing existing).
+ * Shared by orchestration launches so the CLI and the shutdown hook stay in sync.
+ */
+function resolveChildWorktreePath(repoRoot: string, child: number): string {
+	const branch = issueBranch(child);
+	const dir = worktreeDir(repoRoot, branch);
+	const existing = listExistingWorktrees(repoRoot).find((worktree) => worktree.branch === branch);
+	return existing ? existing.path : createWorktree(repoRoot, branch, dir).path;
+}
+
+/**
+ * Build the Work Pi launcher for an orchestrated child. Propagates orchestration
+ * env markers so the child's session_shutdown hook can continue the chain.
+ */
+function buildOrchestrationLauncher(parent: number, repoRoot: string): LaunchWorkPi {
+	return async (options) => {
+		const wtPath = resolveChildWorktreePath(repoRoot, options.child);
+		await launchPiSessionInKittySplit({
+			cwd: wtPath,
+			title: options.title,
+			nodeBin: process.env.MEKANN_NODE_BIN,
+			appendSystemPrompt: buildIssueSessionSystemPrompt(options.child),
+			initialMessage: buildIssueSessionInitialMessage(options.child),
+			orchestrationParent: options.parent,
+			orchestrationChild: options.child,
+			hold: process.env.MEKANN_ISSUE_DEBUG === "1",
+		});
+	};
+}
+
+/**
+ * Orchestrate a parent PRD/epic issue (issue #71).
+ *
+ * Snapshot children from GitHub truth, start the first startable child's Work
+ * Pi (marked with orchestration env vars), then exit. The Work Pi's own session
+ * shutdown hook continues the chain after its PR is merged.
+ */
+async function runOrchestration(parentNumber: number): Promise<void> {
+	const repoInfo = getRepoInfo();
+	if (!repoInfo) { console.error("Not in git repo."); process.exitCode = 1; return; }
+
+	const deps = createOrchestrationDeps({ remote: repoInfo.remote, repoRoot: repoInfo.root });
+	const launchWorkPi = buildOrchestrationLauncher(parentNumber, repoInfo.root);
+
+	try {
+		const outcome = await startOrchestration(parentNumber, repoInfo.root, deps, launchWorkPi);
+		console.log(outcome.message);
+		if (outcome.kind === "no-children") process.exitCode = 0;
+	} catch (error) {
+		console.error(error instanceof Error ? error.message : String(error));
+		process.exitCode = 1;
+	}
+}
+
+/**
+ * List sub-issues, returning [] on any error (e.g. parent has no children,
+ * gh unavailable). Used in the interactive list to detect whether a selected
+ * issue is a parent that should be orchestrated rather than opened directly.
+ */
+async function safeListSubIssues(deps: ReturnType<typeof createOrchestrationDeps>, parentNumber: number): Promise<{ number: number }[]> {
+	try {
+		return await deps.listSubIssues(parentNumber);
+	} catch {
+		return [];
+	}
+}
+
 async function runInteractive(): Promise<void> {
 	const repoInfo = getRepoInfo();
 	if (!repoInfo) { console.error("Not in git repo."); process.exitCode = 1; return; }
@@ -128,36 +190,51 @@ async function runInteractive(): Promise<void> {
 	const renderer = await createCliRenderer({ exitOnCtrlC: false });
 
 	await mountIssueList(renderer, issuesWithStatus, {
-		onSelect: async (issue: IssueWithStatus) => {
-			if (!ensureIssueCanStart(issue.number, issue)) return;
+		onSelect: async (toOpen: IssueWithStatus[]) => {
+			// Pre-flight: every issue must be startable. Slice 1 assumes all
+			// succeed; blocked-rejection at mark time is slice 2 (PRD #66).
+			for (const issue of toOpen) {
+				if (!ensureIssueCanStart(issue.number, issue)) return;
+			}
 
-			const branch = issueBranch(issue.number);
-			const dir = worktreeDir(repoInfo.root, branch);
+			// Close the list immediately on confirmed start so launch/orchestration
+			// work never blocks the UI. Failed pre-flight preserves the legacy list.
+			renderer.destroy();
 
-			let wtPath: string;
-			if (issue.hasWorktree && issue.worktreePath) {
-				wtPath = issue.worktreePath;
-			} else {
-				try {
-					const wt = createWorktree(repoInfo.root, branch, dir);
-					wtPath = wt.path;
-				} catch (err) {
-					console.error(`Failed to create worktree: ${(err as Error).message}`);
-					renderer.destroy();
-					process.exit(1);
+			// Orchestration special case: only meaningful for a single selected
+			// parent PRD/epic. Preserves the exact legacy single-select behavior.
+			// A bulk-selected batch always opens each issue directly.
+			if (toOpen.length === 1) {
+				const issue = toOpen[0];
+				const deps = createOrchestrationDeps({ remote: repoInfo.remote, repoRoot: repoInfo.root });
+				const children = await safeListSubIssues(deps, issue.number);
+				if (children.length > 0) {
+					const launchWorkPi = buildOrchestrationLauncher(issue.number, repoInfo.root);
+					try {
+						const outcome = await startOrchestration(issue.number, repoInfo.root, deps, launchWorkPi);
+						console.log(outcome.message);
+					} catch (error) {
+						console.error(error instanceof Error ? error.message : String(error));
+						process.exitCode = 1;
+					}
+					process.exit(process.exitCode ?? 0);
 					return;
 				}
 			}
 
-			renderer.destroy();
-			await launchPiSessionInKittySplit({
-				cwd: wtPath,
-				title: `Issue #${issue.number}`,
-				nodeBin: process.env.MEKANN_NODE_BIN,
-				appendSystemPrompt: buildIssueSessionSystemPrompt(issue.number),
-				initialMessage: buildIssueSessionInitialMessage(issue.number),
-				hold: process.env.MEKANN_ISSUE_DEBUG === "1",
-			});
+			// Direct launch path: one issue (length-1 array) or many (bulk).
+			const requests = toOpen.map((issue) => ({
+				issueNumber: issue.number,
+				hasWorktree: issue.hasWorktree,
+				worktreePath: issue.worktreePath,
+			}));
+			try {
+				await bulkLaunchIssues(requests, createBulkLaunchDeps(repoInfo));
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : String(error));
+				process.exit(1);
+				return;
+			}
 			process.exit(0);
 		},
 		onCancel: () => {
@@ -165,6 +242,36 @@ async function runInteractive(): Promise<void> {
 			process.exit(0);
 		},
 	});
+}
+
+/**
+ * Production wiring for {@link bulkLaunchIssues}. Worktree creation reuses an
+ * existing worktree for the issue branch when present, otherwise creates a new
+ * one. Each Pi session launches in its own Kitty split, which re-resolves the
+ * widest Issue Pi anchor every call (ADR-0021: Main Pi is never the anchor).
+ */
+function createBulkLaunchDeps(repoInfo: RepoInfo): BulkLaunchDeps {
+	return {
+		createWorktree(issueNumber: number): string {
+			const branch = issueBranch(issueNumber);
+			const dir = worktreeDir(repoInfo.root, branch);
+			try {
+				return createWorktree(repoInfo.root, branch, dir).path;
+			} catch (err) {
+				throw new Error(`Failed to create worktree for #${issueNumber}: ${(err as Error).message}`);
+			}
+		},
+		async launchPiSession(issueNumber: number, worktreePath: string): Promise<void> {
+			await launchPiSessionInKittySplit({
+				cwd: worktreePath,
+				title: `Issue #${issueNumber}`,
+				nodeBin: process.env.MEKANN_NODE_BIN,
+				appendSystemPrompt: buildIssueSessionSystemPrompt(issueNumber),
+				initialMessage: buildIssueSessionInitialMessage(issueNumber),
+				hold: process.env.MEKANN_ISSUE_DEBUG === "1",
+			});
+		},
+	};
 }
 
 function ensureIssueCanStart(issueNumber: number, dependencyStatus: IssueDependencyStatus): boolean {

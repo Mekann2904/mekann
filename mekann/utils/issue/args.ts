@@ -1,5 +1,5 @@
 export interface IssueArgs {
-	mode: "interactive" | "direct" | "cleanup";
+	mode: "interactive" | "direct" | "cleanup" | "orchestrate";
 	issueNumber?: number;
 	resultPath?: string;
 }
@@ -39,5 +39,12 @@ export function parseIssueArgs(argv: string[]): { ok: true; value: IssueArgs } |
 		return { ok: true, value: { mode: "direct", issueNumber: num, resultPath } };
 	}
 
-	return { ok: false, error: "Usage: mekann-issue [--issue <number> | cleanup]" };
+	// Bare numeric argument → orchestrate mode (treat the number as a parent
+	// PRD/epic issue and drive its sub-issues). See issue #71.
+	const maybeParent = parseInt(filtered[0], 10);
+	if (!isNaN(maybeParent) && maybeParent > 0 && filtered.length === 1) {
+		return { ok: true, value: { mode: "orchestrate", issueNumber: maybeParent, resultPath } };
+	}
+
+	return { ok: false, error: "Usage: mekann-issue [<parent-number> | --issue <number> | cleanup]" };
 }
