@@ -1,6 +1,7 @@
 import { flattenEffective } from "./effective.js";
 import { mekannSettingsSchemas } from "./registry.js";
 import { getGlobalMekannSettingsPath, getWorkspaceMekannSettingsPath, loadSettings } from "./store.js";
+import type { LoadedSettings } from "./store.js";
 import type { EffectiveSetting, MekannSettingsFile } from "./types.js";
 
 function getPathValue(obj: Record<string, unknown>, key: string): unknown {
@@ -32,13 +33,20 @@ export interface EffectiveFeatureConfig {
 }
 
 /**
- * Deep Module Interface for Mekann settings resolution.
- * Owns global/workspace merge, schema defaults, source, and diagnostics so
- * Feature callers do not repeat `Number(...) || default`-style resolution.
+ * Load the global + workspace settings for a single (cwd, home) pair once,
+ * so resolution and the schema-less compatibility fallback share the same
+ * `LoadedSettings` instead of each reading disk again. (loadSettings itself
+ * is memoized in store.ts; this dedupe cuts the per-call load count from 4 to 2
+ * even on a cold cache.)
  */
-export function resolveEffectiveFeatureConfig(feature: string, cwd = process.cwd(), home?: string): EffectiveFeatureConfig {
-  const global = loadSettings(getGlobalMekannSettingsPath(home));
-  const workspace = loadSettings(getWorkspaceMekannSettingsPath(cwd));
+function loadBoth(cwd: string, home?: string): { global: LoadedSettings; workspace: LoadedSettings } {
+  return {
+    global: loadSettings(getGlobalMekannSettingsPath(home)),
+    workspace: loadSettings(getWorkspaceMekannSettingsPath(cwd)),
+  };
+}
+
+function resolveFrom(feature: string, global: LoadedSettings, workspace: LoadedSettings): EffectiveFeatureConfig {
   const settings = flattenEffective(mekannSettingsSchemas, global, workspace).filter((s) => s.feature === feature);
   const values: Record<string, unknown> = {};
   for (const setting of settings) setPathValue(values, setting.key, setting.effectiveValue);
@@ -50,25 +58,35 @@ export function resolveEffectiveFeatureConfig(feature: string, cwd = process.cwd
   };
 }
 
+/**
+ * Deep Module Interface for Mekann settings resolution.
+ * Owns global/workspace merge, schema defaults, source, and diagnostics so
+ * Feature callers do not repeat `Number(...) || default`-style resolution.
+ */
+export function resolveEffectiveFeatureConfig(feature: string, cwd = process.cwd(), home?: string): EffectiveFeatureConfig {
+  const { global, workspace } = loadBoth(cwd, home);
+  return resolveFrom(feature, global, workspace);
+}
+
 export function featureValue(feature: string, key: string, cwd = process.cwd(), home?: string): unknown {
-  const resolved = resolveEffectiveFeatureConfig(feature, cwd, home);
+  const { global, workspace } = loadBoth(cwd, home);
+  const resolved = resolveFrom(feature, global, workspace);
   const schemaValue = getPathValue(resolved.values, key);
   if (schemaValue !== undefined) return schemaValue;
 
-  // Compatibility for settings that do not yet have a schema.
-  const global = loadSettings(getGlobalMekannSettingsPath(home));
-  const workspace = loadSettings(getWorkspaceMekannSettingsPath(cwd));
+  // Compatibility for settings that do not yet have a schema — reuse the already
+  // loaded global/workspace instead of reading them a second time.
   const w = workspace.settings.features[feature] ?? {};
   const g = global.settings.features[feature] ?? {};
   return getPathValue(w, key) ?? getPathValue(g, key);
 }
 
 export function featureConfig(feature: string, cwd = process.cwd(), home?: string): Record<string, unknown> {
-  const resolved = resolveEffectiveFeatureConfig(feature, cwd, home);
+  const { global, workspace } = loadBoth(cwd, home);
+  const resolved = resolveFrom(feature, global, workspace);
 
-  // Compatibility: include unschematized keys after schema-backed values.
-  const global = loadSettings(getGlobalMekannSettingsPath(home));
-  const workspace = loadSettings(getWorkspaceMekannSettingsPath(cwd));
+  // Compatibility: include unschematized keys after schema-backed values, reusing
+  // the already loaded global/workspace (no second disk read).
   return {
     ...(global.settings.features[feature] ?? {}),
     ...(workspace.settings.features[feature] ?? {}),
