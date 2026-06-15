@@ -41,7 +41,7 @@ function cloneJsonObject(value: Record<string, unknown>): Record<string, unknown
 }
 
 function cloneSettings(settings: MekannSettingsFile): MekannSettingsFile {
-  return { version: settings.version, features: cloneJsonObject(settings.features) };
+  return { version: settings.version, features: cloneJsonObject(settings.features) as Record<string, Record<string, unknown>> };
 }
 
 /**
