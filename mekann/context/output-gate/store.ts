@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as crypto from "node:crypto";
 import * as path from "node:path";
+import * as readline from "node:readline";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
 import { featureConfig } from "../../settings/featureConfig.js";
 
@@ -70,6 +71,19 @@ export interface GateTextOptions {
 	toolCallId?: string;
 	branchId?: string;
 	commandHash?: string;
+	/**
+	 * When set (> 0), artifacts are auto-retained to this many newest entries
+	 * right after a successful save. Keeps manifest.jsonl + artifacts/ bounded
+	 * across long sessions without requiring a manual `/output-gate purge`.
+	 */
+	retentionMaxFiles?: number;
+}
+
+export interface RetainArtifactsResult {
+	/** Entries remaining in the manifest after retention (newest first when compacted). */
+	kept: OutputGateManifestEntry[];
+	/** Number of old artifacts whose files were unlinked. */
+	removed: number;
 }
 
 export interface GatedTextResult {
@@ -243,10 +257,13 @@ export async function saveArtifact(input: SaveArtifactInput): Promise<{ entry: O
 
 export async function readManifest(cwd: string): Promise<OutputGateManifestEntry[]> {
 	const file = manifestPath(cwd);
-	let raw = "";
-	try { raw = await fsp.readFile(file, "utf8"); } catch (error: any) { if (error?.code === "ENOENT") return []; throw error; }
+	try { await fsp.access(file); } catch (error: any) { if (error?.code === "ENOENT") return []; throw error; }
 	const out: OutputGateManifestEntry[] = [];
-	for (const line of raw.split(/\r?\n/)) {
+	const lines = readline.createInterface({
+		input: fs.createReadStream(file, { encoding: "utf8" }),
+		crlfDelay: Infinity,
+	});
+	for await (const line of lines) {
 		if (!line.trim()) continue;
 		try {
 			const entry = JSON.parse(line) as OutputGateManifestEntry;
@@ -254,6 +271,39 @@ export async function readManifest(cwd: string): Promise<OutputGateManifestEntry
 		} catch { /* skip corrupt jsonl */ }
 	}
 	return out;
+}
+
+/**
+ * Compact manifest.jsonl to the `keepCount` newest entries and unlink the
+ * older artifact files. No-op when the manifest is already within the limit.
+ *
+ * Shared by the manual `/output-gate purge` command and the automatic
+ * retention that fires after `saveArtifact`, so both paths stay bounded and
+ * never diverge (no orphan artifacts / no dangling manifest rows).
+ */
+export async function retainArtifacts(cwd: string, keepCount: number): Promise<RetainArtifactsResult> {
+	const normalizedKeepCount = Math.max(0, Math.floor(keepCount));
+	const entries = await readManifest(cwd);
+	if (entries.length <= normalizedKeepCount) return { kept: entries, removed: 0 };
+	const sorted = [...entries].sort((a, b) => b.createdAt - a.createdAt);
+	const toRemove = sorted.slice(normalizedKeepCount);
+	let removed = 0;
+	for (const entry of toRemove) {
+		const abs = resolveArtifactPath(cwd, entry);
+		if (abs) {
+			try {
+				await fsp.unlink(abs);
+				removed++;
+			} catch { /* ignore missing/unlinkable file */ }
+		}
+	}
+	const kept = sorted.slice(0, normalizedKeepCount);
+	await fsp.writeFile(
+		manifestPath(cwd),
+		kept.length ? `${kept.map((e) => JSON.stringify(e)).join("\n")}\n` : "",
+		"utf8",
+	);
+	return { kept, removed };
 }
 
 export function resolveArtifactPath(cwd: string, entry: OutputGateManifestEntry): string | undefined {
@@ -270,6 +320,11 @@ export async function gateTextForLlm(options: GateTextOptions): Promise<GatedTex
 	if (!shouldGateOutput(options.text, { toolName: options.toolName, maxInlineBytes: options.maxInlineBytes })) return { text: options.text, gated: false, handled: false, originalBytes, originalLines };
 	try {
 		const saved = await saveArtifact({ cwd: options.cwd, toolName: options.toolName, text: options.text, source: options.source, sessionId: options.sessionId, turnId: options.turnId, toolCallId: options.toolCallId, branchId: options.branchId, commandHash: options.commandHash });
+		// Best-effort retention: keep manifest.jsonl + artifacts/ bounded across
+		// long sessions. The just-saved entry is the newest, so it is always kept.
+		if (options.retentionMaxFiles && options.retentionMaxFiles > 0) {
+			try { await retainArtifacts(options.cwd, options.retentionMaxFiles); } catch { /* retention must not break gating */ }
+		}
 		const preview = buildPreview(saved.text, options.previewBytes ?? (Number(featureConfig("output-gate").previewBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes));
 		return { text: buildStoredOutputStub(saved.entry, preview), gated: true, handled: true, artifactId: saved.entry.id, originalBytes, originalLines, sha256: saved.entry.sha256, redacted: true };
 	} catch (error: any) {

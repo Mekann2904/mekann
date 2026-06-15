@@ -5,13 +5,13 @@
  * and context-ledger recording seam. No Pi framework imports.
  */
 
-import * as fsp from "node:fs/promises";
 import {
 	gateTextForLlm,
 	manifestPath,
 	outputGateDir,
 	readManifest,
 	resolveArtifactPath,
+	retainArtifacts,
 	shouldGateOutput,
 } from "./store.js";
 import { searchToolOutputs, type SearchToolOutputsInput } from "./search.js";
@@ -124,6 +124,9 @@ export class OutputGateController {
 			turnId: input.turnId,
 			toolCallId: input.toolCallId,
 			branchId: input.branchId,
+			// Auto-retain so long sessions stay bounded without a manual
+			// `/output-gate purge`. Best-effort: handled inside gateTextForLlm.
+			retentionMaxFiles: this.config.artifactRetentionMaxFiles,
 		});
 
 		if (!gated.handled) return undefined;
@@ -272,30 +275,9 @@ export class OutputGateController {
 
 	async purge(cwd: string, keep?: number): Promise<string> {
 		const keepCount = keep ?? this.config.artifactRetentionMaxFiles;
-		const entries = await readManifest(cwd);
-		if (entries.length <= keepCount)
-			return `Only ${entries.length} artifacts, nothing to purge (keep=${keepCount}).`;
-		const sorted = [...entries].sort((a, b) => b.createdAt - a.createdAt);
-		const toRemove = sorted.slice(keepCount);
-		let removed = 0;
-		for (const entry of toRemove) {
-			const abs = resolveArtifactPath(cwd, entry);
-			if (abs) {
-				try {
-					await fsp.unlink(abs);
-					removed++;
-				} catch {
-					/* ignore */
-				}
-			}
-		}
-		// Rewrite manifest with kept entries only
-		const kept = sorted.slice(0, keepCount);
-		await fsp.writeFile(
-			manifestPath(cwd),
-			kept.map((e) => JSON.stringify(e)).join("\n") + "\n",
-			"utf8",
-		);
+		const { kept, removed } = await retainArtifacts(cwd, keepCount);
+		if (removed === 0)
+			return `Only ${kept.length} artifacts, nothing to purge (keep=${keepCount}).`;
 		return `Purged ${removed} artifacts. Kept ${kept.length} (most recent).`;
 	}
 
