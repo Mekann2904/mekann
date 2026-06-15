@@ -441,6 +441,14 @@ _Avoid_: issue tool, issue prompt template
 The batch removal of issue worktrees whose corresponding GitHub issues are closed. Triggered by `/clean-issue-worktrees`, removes both the worktree and the local branch.
 _Avoid_: worktree garbage collection, autoresearch candidate removal
 
+**Main Pi**:
+The Pi session running on the user's primary working branch from which `/issue` is invoked. It is the stable launch context for issue work and must keep a stable terminal region; it is used as the Kitty split source only for the first issue Pi and never thereafter.
+_Avoid_: host session, parent pi, base session
+
+**Issue Pi**:
+A Pi session opened in a Kitty split to work on a single issue's worktree, titled `Issue #<number>`. Multiple issue Pi sessions may be open at once, one per issue. Each is identified by its title prefix so pane management can find them statelessly.
+_Avoid_: worktree session, child pi, issue window
+
 ### Development workflow
 
 **OSS reference library**:
@@ -459,7 +467,10 @@ Developer: "Can this subagent result become an autoresearch candidate?"
 Domain expert: "Only after a trust transition. A patch proposal must pass PatchProposalPolicy, and candidate escrow should preserve it for evaluation without applying it to the main worktree."
 
 Developer: "I want to work on issue #42. Should I use an autoresearch worktree?"
-Domain expert: "No. Autoresearch worktrees are temporary candidate isolation inside `.pi/autoresearch-worktrees/`. For issue work, use `/issue` — it creates an issue worktree in `<project>-worktrees/issue-42/` and opens a fresh pi session in a Kitty split."
+Domain expert: "No. Autoresearch worktrees are temporary candidate isolation inside `.pi/autoresearch-worktrees/`. For issue work, use `/issue` — it creates an issue worktree in `<project>-worktrees/issue-42/` and opens an issue Pi in a Kitty split."
+
+Developer: "I already have issue #42 open. If I run `/issue` again for #43, does my Main Pi shrink again?"
+Domain expert: "No. The Main Pi is split only for the first issue Pi. On the second and later `/issue`, the existing issue Pi region is split instead, so the Main Pi keeps its stable region. Among multiple issue Pi panes, the widest one is used as the split source so no single pane shrinks to nothing."
 
 Developer: "Can `/issue` work without Kitty?"
 Domain expert: "No. Issue worktree management is Kitty-only because it relies on Kitty split to open a separate pi session. Without Kitty the command is not registered."
