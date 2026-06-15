@@ -28,9 +28,15 @@ export default function issueWorktree(pi: ExtensionAPI): void {
 		handler: async (args, ctx) => {
 			const input = (args ?? "").trim();
 
+			// `/issue` (no args) → interactive list.
+			// `/issue <parent-number>` → orchestrate that parent's sub-issues (issue #71).
+			let orchestrateArg = "";
 			if (input !== "") {
-				ctx.ui.notify("Usage: /issue. Use /clean-issue-worktrees to remove closed issue worktrees.", "warning");
-				return;
+				if (!/^\d+$/.test(input)) {
+					ctx.ui.notify("Usage: /issue  (or /issue <parent-number> to orchestrate sub-issues)", "warning");
+					return;
+				}
+				orchestrateArg = ` ${input}`;
 			}
 
 			const error = checkPrerequisites(ctx);
@@ -61,7 +67,7 @@ export default function issueWorktree(pi: ExtensionAPI): void {
 				title: "Issues",
 				copyEnv: true,
 				matchCurrentWindow: true,
-				action: { mode: "shell", command: `${envVar} bun ${JSON.stringify(cliPath)}` },
+				action: { mode: "shell", command: `${envVar} bun ${JSON.stringify(cliPath)}${orchestrateArg}` },
 			});
 
 			if (!result.ok) {

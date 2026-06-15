@@ -144,7 +144,7 @@ describe("mekann integrated extension", () => {
 	});
 
 	it("issue worktree prompt requires phased review-fixer workflow", () => {
-		const source = read("mekann/utils/issue/cli.ts");
+		const source = read("mekann/utils/issue/prompts.ts");
 		expect(source).toContain("Phase 1 — issue対応");
 		expect(source).toContain("Phase 2 — review_fixerによる調査と修正");
 		expect(source).toContain("Phase 3 — issue_workflow (status → diff → commit → push → create_pr)");

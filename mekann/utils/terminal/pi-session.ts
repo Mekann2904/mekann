@@ -15,6 +15,10 @@ export interface PiSessionLaunchRequest {
 	initialMessage?: string;
 	/** Keep the window open after Pi exits. Intended for debugging only. */
 	hold?: boolean;
+	/** Parent issue number when this Work Pi is part of an orchestration (issue #71). */
+	orchestrationParent?: number;
+	/** Child issue number the Work Pi was started for (issue #71). */
+	orchestrationChild?: number;
 }
 
 function quoteShell(value: string): string {
@@ -54,6 +58,16 @@ export async function launchPiSessionInKittySplit(request: PiSessionLaunchReques
 		"--copy-env",
 	];
 	if (request.hold) args.push("--hold");
+	// Issue #71 orchestration markers: propagated as explicit env so a Work Pi can
+	// detect at session_shutdown that it was started as part of an orchestration
+	// and which child it was. Explicit --env is more robust than relying solely
+	// on the launcher process environment.
+	if (typeof request.orchestrationParent === "number") {
+		args.push("--env", `MEKANN_ORCHESTRATION_PARENT=${request.orchestrationParent}`);
+	}
+	if (typeof request.orchestrationChild === "number") {
+		args.push("--env", `MEKANN_ORCHESTRATION_CHILD=${request.orchestrationChild}`);
+	}
 
 	// ADR-0021: protect the Main Pi region. When an Issue Pi pane already exists,
 	// split from the widest one instead of the focused window (Main Pi). On the
