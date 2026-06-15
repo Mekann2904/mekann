@@ -65,7 +65,7 @@ describe("registerReviewFixerPromptProvider", () => {
     const { registerReviewFixerPromptProvider } = await import("./promptProvider.js");
     registerReviewFixerPromptProvider();
     const content = registeredProviders[0].getFragments()[0].content;
-    expect(content).toContain("issue対応 → review_fixerによる調査と修正 → git add commit push pr");
+    expect(content).toContain("issue対応 → review_fixerによる調査と修正 → issue_workflow");
     expect(content).toContain("各フェーズ開始時に現在のフェーズを短く宣言");
   });
 });
