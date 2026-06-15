@@ -33,6 +33,17 @@ GitHub link policy:
 - Before creating a new issue, always check open issues first to avoid duplicates or conflicts. Use \`gh issue list --state open\` or search existing issues. If a similar or overlapping issue already exists, reference it or suggest updating it instead of creating a new one.
 `;
 
+const ISSUE_CREATION_EXTRA = `
+
+Issue creation routing policy:
+- When the user asks to create an issue (or issues), load the matching issue skill via read(SKILL.md) and follow its process instead of drafting issues ad hoc:
+  - \`to-prd\` — the request is a large feature or epic that needs a PRD synthesised from the current conversation context (no user interview; it infers modules and user stories itself).
+  - \`to-issues\` — the request is a plan, spec, or PRD to break into independently-grabbable tracer-bullet vertical slices, published as multiple linked issues in dependency order.
+  - \`triage\` — the request is a single issue to create or triage, an incoming bug/feature request to classify through the state roles, or preparing an issue for a coding agent (with an agent brief).
+- If the intent is ambiguous, ask which outcome is wanted (a single triaged issue / multiple sliced issues / a PRD) before creating anything.
+- All three skills are \`disable-model-invocation: true\`, so explicit load via this policy is the required trigger; do not wait for automatic invocation.
+`;
+
 const PR_WORKFLOW_EXTRA = `
 
 PR workflow routing policy:
@@ -89,6 +100,23 @@ export default function agentGuidelinesExtension(_pi: ExtensionAPI): void {
 				version: "v1",
 				cacheIntent: "prefer_cache",
 				content: GITHUB_LINKS_EXTRA,
+			}];
+		},
+	});
+
+	registerPromptProvider({
+		id: "issue-creation",
+		getFragments() {
+			return [{
+				id: "issue-creation:coding_guidelines",
+				source: "issue-creation",
+				kind: "coding_guidelines",
+				stability: "stable",
+				scope: "global",
+				priority: 132,
+				version: "v1",
+				cacheIntent: "prefer_cache",
+				content: ISSUE_CREATION_EXTRA,
 			}];
 		},
 	});
