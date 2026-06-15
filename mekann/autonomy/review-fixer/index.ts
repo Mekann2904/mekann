@@ -21,6 +21,7 @@ import { loadReviewFixerSettings } from "./settingsLoader.js";
 import { ReviewFixerParamsSchema } from "./schemas.js";
 import { buildChildPrompt } from "./childPrompt.js";
 import { registerReviewFixerPromptProvider } from "./promptProvider.js";
+import { ISSUE_PI_ENV } from "../../utils/terminal/pi-session.js";
 import { snapshotContentHashes, computeChangedFiles } from "./changedFiles.js";
 
 export function extractReviewFixerResult(output: string | undefined): ReviewFixerResult | null {
@@ -46,6 +47,21 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
   // guards on PI_SUBAGENT_ROLE === "child"; review-fixer must do the same.
   // See ADR-0018 and issue #62.
   if (process.env.PI_SUBAGENT_ROLE === "child") return;
+
+  // ── Issue Work Pi scope (ADR-0023) ──────────────────────────────
+  //
+  // review_fixer is an issue-scoped tool: it only runs inside an issue
+  // worktree and its GATE policy fragment is only meaningful there. The
+  // /issue launcher marks Issue Work Pi sessions with MEKANN_ISSUE_PI=1
+  // (see utils/terminal/pi-session.ts). Outside such a session — notably
+  // the Main Pi — skip registering BOTH the tool and the prompt fragment so
+  // the issue workflow does not pollute unrelated sessions.
+  //
+  // The child guard above MUST stay first: the review_fixer child Pi is
+  // launched with --copy-env, so it inherits MEKANN_ISSUE_PI=1 from its
+  // parent. This marker alone cannot prevent the child from re-registering
+  // review_fixer; PI_SUBAGENT_ROLE === "child" is what breaks the recursion.
+  if (process.env[ISSUE_PI_ENV] !== "1") return;
 
   registerReviewFixerPromptProvider();
 

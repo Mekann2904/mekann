@@ -38,6 +38,7 @@ vi.mock("./schemas.js", () => ({
 }));
 
 const originalRole = process.env.PI_SUBAGENT_ROLE;
+const originalIssuePi = process.env.MEKANN_ISSUE_PI;
 
 function makeMockApi() {
   const tools: Array<Record<string, unknown>> = [];
@@ -54,16 +55,22 @@ describe("reviewFixerExtension child-Pi guard", () => {
   beforeEach(() => {
     registeredProviders.length = 0;
     delete process.env.PI_SUBAGENT_ROLE;
+    delete process.env.MEKANN_ISSUE_PI;
     vi.resetModules();
   });
 
   afterEach(() => {
     if (originalRole !== undefined) process.env.PI_SUBAGENT_ROLE = originalRole;
     else delete process.env.PI_SUBAGENT_ROLE;
+    if (originalIssuePi !== undefined) process.env.MEKANN_ISSUE_PI = originalIssuePi;
+    else delete process.env.MEKANN_ISSUE_PI;
   });
 
   it("skips tool registration and policy fragment injection when PI_SUBAGENT_ROLE=child", async () => {
     process.env.PI_SUBAGENT_ROLE = "child";
+    // The child inherits MEKANN_ISSUE_PI=1 from its parent via --copy-env, so
+    // set it here to prove the SUBAGENT guard — not the marker — breaks recursion.
+    process.env.MEKANN_ISSUE_PI = "1";
     const { default: reviewFixerExtension } = await import("./index.js");
     const { api, tools } = makeMockApi();
 
@@ -73,7 +80,19 @@ describe("reviewFixerExtension child-Pi guard", () => {
     expect(registeredProviders).toHaveLength(0);
   });
 
-  it("registers the review_fixer tool and policy fragment in parent mode", async () => {
+  it("does not register the tool or policy fragment outside an Issue Work Pi session", async () => {
+    // No PI_SUBAGENT_ROLE and no MEKANN_ISSUE_PI → Main Pi / unrelated session.
+    const { default: reviewFixerExtension } = await import("./index.js");
+    const { api, tools } = makeMockApi();
+
+    await reviewFixerExtension(api as any);
+
+    expect(tools.find((t) => t.name === "review_fixer")).toBeUndefined();
+    expect(registeredProviders).toHaveLength(0);
+  });
+
+  it("registers the review_fixer tool and policy fragment in an Issue Work Pi session", async () => {
+    process.env.MEKANN_ISSUE_PI = "1";
     const { default: reviewFixerExtension } = await import("./index.js");
     const { api, tools } = makeMockApi();
 
@@ -84,7 +103,8 @@ describe("reviewFixerExtension child-Pi guard", () => {
   });
 
   it("execute refuses to run inside a child Pi (defense-in-depth)", async () => {
-    // Load the extension in parent mode so the tool is registered.
+    // Load the extension in Issue Work Pi mode so the tool is registered.
+    process.env.MEKANN_ISSUE_PI = "1";
     const { default: reviewFixerExtension } = await import("./index.js");
     const { api, tools } = makeMockApi();
     await reviewFixerExtension(api as any);
