@@ -143,17 +143,28 @@ export async function runBenchmark(
  * shared working directory, then build a fresh mock pi + ctx and register
  * the autoresearch extension against that pi. Returns the objects tests
  * bind into their own `let` bindings.
+ *
+ * Pass `{ initGit: false }` when EVERY test in the suite creates its own git
+ * repo via {@link createGitTestDir} and passes an explicit `cwd` to the tools.
+ * Skipping the ~47ms `git init + commit` here avoids wasted work on the
+ * critical path (the shared dir is created but never used as a git repo).
+ * Default is `true` for backward compatibility.
  */
-export function autoresearchTestSetup(): { pi: ReturnType<typeof createMockPi>; ctx: MockCtx } {
+export function autoresearchTestSetup(
+	opts?: { initGit?: boolean },
+): { pi: ReturnType<typeof createMockPi>; ctx: MockCtx } {
 	clearPromptProvidersForTests();
+	const initGit = opts?.initGit ?? true;
 	// Create a unique temp dir for each test and initialize as a clean git repo
 	const testDir = `/tmp/autoresearch-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 	fs.mkdirSync(testDir, { recursive: true });
-	gitInitForTest(testDir);
-	// Make an initial commit so HEAD exists and working tree is clean
-	fs.writeFileSync(path.join(testDir, "README.md"), "# test\n");
-	childProcess.execFileSync("git", ["add", "README.md"], { cwd: testDir, stdio: "ignore" });
-	childProcess.execFileSync("git", ["commit", "-m", "initial"], { cwd: testDir, stdio: "ignore" });
+	if (initGit) {
+		gitInitForTest(testDir);
+		// Make an initial commit so HEAD exists and working tree is clean
+		fs.writeFileSync(path.join(testDir, "README.md"), "# test\n");
+		childProcess.execFileSync("git", ["add", "README.md"], { cwd: testDir, stdio: "ignore" });
+		childProcess.execFileSync("git", ["commit", "-m", "initial"], { cwd: testDir, stdio: "ignore" });
+	}
 
 	_sharedTestDir = testDir;
 	const ctx = createMockCtx();
