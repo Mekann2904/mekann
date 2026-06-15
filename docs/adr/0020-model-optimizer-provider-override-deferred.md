@@ -1,7 +1,9 @@
-# 0015. Defer model-optimizer provider override and prefer lifecycle hooks
+# 0020. Defer model-optimizer provider override and prefer lifecycle hooks
+
+> Originally numbered `0015`. Renumbered to `0020` on 2026-06-15 to resolve an ADR number collision with `0015-main-mode-skill-flow-continuation`.
 
 ## Status
-Accepted
+Superseded by [0016](0016-model-optimizer-api-based-classification.md) — model-optimizer now uses provider-specific modules (see 0016), which absorbs the deferred provider-override question into the module architecture.
 
 ## Context
 The `model-optimizer` feature brings Codex-inspired OpenAI-family behavior into the Mekann pi extension for `openai` and `openai-codex` providers.
