@@ -13,6 +13,7 @@ const EXPECTED_TOOLS_BY_MODULE: Record<string, string[]> = {
 		"delegate_agent", "spawn_agent", "message_agent", "wait_agent", "list_agents", "agent_results", "close_agent",
 	],
 	"autonomy/review-fixer/index.ts": ["review_fixer"],
+	"utils/issue-workflow/index.ts": ["issue_workflow"],
 	"autonomy/autoresearch/toolsRegistration.ts": [
 		"autoresearch_evaluate_query", "autoresearch_init", "autoresearch_run", "autoresearch_log",
 		"autoresearch_plan", "autoresearch_approve", "autoresearch_candidate_escrow",
@@ -146,7 +147,7 @@ describe("mekann integrated extension", () => {
 		const source = read("mekann/utils/issue/cli.ts");
 		expect(source).toContain("Phase 1 — issue対応");
 		expect(source).toContain("Phase 2 — review_fixerによる調査と修正");
-		expect(source).toContain("Phase 3 — git add commit push pr");
+		expect(source).toContain("Phase 3 — issue_workflow (status → diff → commit → push → create_pr)");
 		expect(source).toContain("Do not commit, push, or create a PR before review_fixer has completed successfully.");
 	});
 
