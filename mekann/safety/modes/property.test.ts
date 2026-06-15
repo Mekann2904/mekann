@@ -1,5 +1,5 @@
 /**
- * isReadOnlyCommandIntent (was isSafeCommand) — Property-based テスト。
+ * isReadOnlyCommandIntent — Property-based テスト。
  *
  * fast-check を使い、以下の不変条件 (invariants) を検証する:
  *
@@ -12,13 +12,13 @@
  * これらのテストは LLM によるコード変更時に command intent classification の
  * セマンティクスが意図せず変化することを防ぎ、メンテナンスコストを削減する。
  *
- * Note: isSafeCommand is a UX guard, not a security boundary.
+ * Note: isReadOnlyCommandIntent is a UX guard, not a security boundary.
  * The actual enforcement is the sandbox extension's OS-level policy.
  */
 
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { isSafeCommand, isReadOnlyCommandIntent } from "./utils.js";
+import { isReadOnlyCommandIntent } from "./utils.js";
 
 // ─── Invariant 1: Safe commands never match destructive patterns ──
 
@@ -44,7 +44,7 @@ describe("isReadOnlyCommandIntent: property-based invariants", () => {
 				}),
 				(cmd, arg) => {
 					const command = `${cmd} ${arg}`.trim();
-					const result = isSafeCommand(command);
+					const result = isReadOnlyCommandIntent(command);
 					return result === true;
 				},
 			),
@@ -66,7 +66,7 @@ describe("isReadOnlyCommandIntent: property-based invariants", () => {
 					// Empty prefix+suffix with just meta might not match safe patterns
 					// but should be unsafe due to meta chars
 					if (command.trim().length === 0) return true; // skip empty
-					const result = isSafeCommand(command);
+					const result = isReadOnlyCommandIntent(command);
 					return result === false;
 				},
 			),
@@ -80,9 +80,9 @@ describe("isReadOnlyCommandIntent: property-based invariants", () => {
 			fc.property(
 				fc.string({ maxLength: 100 }).filter(s => s.length > 0),
 				(command) => {
-					const resultWithout = isSafeCommand(command);
+					const resultWithout = isReadOnlyCommandIntent(command);
 					const withRedirect = `${command} 2>/dev/null`;
-					const resultWith = isSafeCommand(withRedirect);
+					const resultWith = isReadOnlyCommandIntent(withRedirect);
 
 					// If the base command is unsafe, adding 2>/dev/null should NOT make it safe
 					// (The stripping only removes the redirect; destructive patterns still match)
@@ -102,8 +102,8 @@ describe("isReadOnlyCommandIntent: property-based invariants", () => {
 			fc.property(
 				fc.string({ maxLength: 200 }),
 				(command) => {
-					const r1 = isSafeCommand(command);
-					const r2 = isSafeCommand(command);
+					const r1 = isReadOnlyCommandIntent(command);
+					const r2 = isReadOnlyCommandIntent(command);
 					return r1 === r2;
 				},
 			),
@@ -124,7 +124,7 @@ describe("isReadOnlyCommandIntent: property-based invariants", () => {
 				(keyword, arg) => {
 					// If keyword appears as a standalone command (not in a safe prefix context)
 					const command = `${keyword} ${arg}`.trim();
-					const result = isSafeCommand(command);
+					const result = isReadOnlyCommandIntent(command);
 					// Destructive keywords should make the command unsafe
 					// UNLESS a safe pattern matches first (e.g., grep is safe even though it contains...)
 					// Actually, none of the destructive keywords overlap with safe prefixes
@@ -147,7 +147,7 @@ describe("isReadOnlyCommandIntent: property-based invariants", () => {
 				fc.string({ maxLength: 30 }),
 				(base, pkg) => {
 					const command = `${base} ${pkg}`;
-					return isSafeCommand(command) === false;
+					return isReadOnlyCommandIntent(command) === false;
 				},
 			),
 		);
@@ -166,7 +166,7 @@ describe("isReadOnlyCommandIntent: property-based invariants", () => {
 			fc.property(
 				fc.constantFrom(...gitUnsafe),
 				(base) => {
-					return isSafeCommand(base) === false;
+					return isReadOnlyCommandIntent(base) === false;
 				},
 			),
 		);
@@ -183,7 +183,7 @@ describe("isReadOnlyCommandIntent: property-based invariants", () => {
 			fc.property(
 				fc.constantFrom(...gitSafe),
 				(base) => {
-					return isSafeCommand(base) === true;
+					return isReadOnlyCommandIntent(base) === true;
 				},
 			),
 		);
@@ -199,7 +199,7 @@ describe("isReadOnlyCommandIntent: property-based invariants", () => {
 				fc.string({ maxLength: 30 }),
 				(editor, file) => {
 					const command = `${editor} ${file}`;
-					return isSafeCommand(command) === false;
+					return isReadOnlyCommandIntent(command) === false;
 				},
 			),
 		);
@@ -213,8 +213,8 @@ describe("isReadOnlyCommandIntent: property-based invariants", () => {
 				fc.boolean(),
 				fc.constantFrom("-delete", "-exec rm {} \\;", "-execdir"),
 				(hasDestructiveFlag, flag) => {
-					const safe = isSafeCommand(`find . -name '*.ts'`);
-					const unsafe = isSafeCommand(`find . -name '*.ts' ${flag}`);
+					const safe = isReadOnlyCommandIntent(`find . -name '*.ts'`);
+					const unsafe = isReadOnlyCommandIntent(`find . -name '*.ts' ${flag}`);
 					return safe === true && unsafe === false;
 				},
 			),
@@ -229,7 +229,7 @@ describe("isReadOnlyCommandIntent: property-based invariants", () => {
 				fc.string({ maxLength: 30 }).filter(s => s.length > 0 && !/[;&|`$\\\n>]/.test(s)),
 				(prefix) => {
 					const command = `${prefix} > output.txt`;
-					return isSafeCommand(command) === false;
+					return isReadOnlyCommandIntent(command) === false;
 				},
 			),
 		);
@@ -245,7 +245,7 @@ describe("isReadOnlyCommandIntent: property-based invariants", () => {
 				(before, after) => {
 					if (before.trim().length === 0 || after.trim().length === 0) return true;
 					const command = `${before}\n${after}`;
-					return isSafeCommand(command) === false;
+					return isReadOnlyCommandIntent(command) === false;
 				},
 			),
 		);

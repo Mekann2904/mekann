@@ -52,8 +52,6 @@ import {
 // ---------------------------------------------------------------------------
 
 export type CacheFriendlyPromptConfig = {
-	/** @deprecated stablePrefixHash is stable-only; base system is tracked by baseSystemHash/providerPrefixHash. */
-	includeBaseSystemPromptInStableHash?: boolean;
 	logRequests: boolean;
 	notifyOnWarnings: boolean;
 	reportMode: ReportGenerationMode;

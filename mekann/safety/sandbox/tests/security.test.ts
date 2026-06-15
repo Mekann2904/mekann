@@ -9,7 +9,7 @@
  * 2. Environment sanitization removes secrets
  * 3. Sandbox mode enforcement (read_only, workspace_write, yolo)
  *
- * Note: Command intent classification (isSafeCommand / classifyCommandIntent)
+ * Note: Command intent classification (isReadOnlyCommandIntent / classifyCommandIntent)
  * was moved to policy-core/ and is tested in modes tests.
  * It is a UX filter, not a security boundary.
  */

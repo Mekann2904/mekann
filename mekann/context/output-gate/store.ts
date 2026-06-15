@@ -14,7 +14,7 @@ export function spreadSessionMeta(input: { sessionId?: string; turnId?: string; 
 	if (input.branchId) out.branchId = input.branchId;
 	return out;
 }
-import { redactSecrets } from "./redact.js";
+import { redactSecrets } from "../tool-output/redact.js";
 import { buildStructuredPreview, type OutputContentType } from "./preview.js";
 
 export interface OutputGateManifestEntry {
