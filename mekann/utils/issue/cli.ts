@@ -228,14 +228,19 @@ async function runInteractive(): Promise<void> {
 				hasWorktree: issue.hasWorktree,
 				worktreePath: issue.worktreePath,
 			}));
-			try {
-				await bulkLaunchIssues(requests, createBulkLaunchDeps(repoInfo));
-			} catch (error) {
-				console.error(error instanceof Error ? error.message : String(error));
-				process.exit(1);
-				return;
+			// bulkLaunchIssues never throws on issue-level failures: a failing issue
+			// (worktree create or Pi launch) is reported in `skipped` and the rest
+			// still launch (issue #68). Surface the skip list, then exit non-zero
+			// only when nothing opened at all.
+			const { skipped } = await bulkLaunchIssues(requests, createBulkLaunchDeps(repoInfo));
+			if (skipped.length > 0) {
+				console.error("Some issues could not be opened:");
+				for (const skip of skipped) {
+					console.error(`  #${skip.issueNumber}: ${skip.reason}`);
+				}
 			}
-			process.exit(0);
+			const launchedCount = requests.length - skipped.length;
+			process.exit(launchedCount > 0 ? 0 : 1);
 		},
 		onCancel: () => {
 			renderer.destroy();
