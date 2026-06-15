@@ -378,6 +378,34 @@ describe("issue_workflow tool registration", () => {
 		}
 	});
 
+	it("does not register the tool in a subagent / review-fixer child Pi even with the marker", async () => {
+		// A review-fixer / subagent child is launched with --copy-env, so it
+		// inherits MEKANN_ISSUE_PI=1 from its Issue Work Pi parent. The child
+		// must not run git/PR actions (Phase 3 is the parent's job), so the
+		// PI_SUBAGENT_ROLE=child guard must take precedence over the marker.
+		const pi: { tools: Record<string, unknown>; registerTool: (t: unknown) => void } = {
+			tools: {},
+			registerTool: (t) => {
+				const def = t as { name: string };
+				pi.tools[def.name] = def;
+			},
+		};
+		const prevIssuePi = process.env.MEKANN_ISSUE_PI;
+		const prevRole = process.env.PI_SUBAGENT_ROLE;
+		process.env.MEKANN_ISSUE_PI = "1";
+		process.env.PI_SUBAGENT_ROLE = "child";
+		try {
+			const { default: issueWorkflowExtension } = await import("./index.js");
+			issueWorkflowExtension(pi as never);
+			expect(pi.tools["issue_workflow"]).toBeUndefined();
+		} finally {
+			if (prevIssuePi === undefined) delete process.env.MEKANN_ISSUE_PI;
+			else process.env.MEKANN_ISSUE_PI = prevIssuePi;
+			if (prevRole === undefined) delete process.env.PI_SUBAGENT_ROLE;
+			else process.env.PI_SUBAGENT_ROLE = prevRole;
+		}
+	});
+
 	it("registers with name issue_workflow and validates in prepareArguments", async () => {
 		const pi: { tools: Record<string, { prepareArguments: (a: unknown) => unknown }>; registerTool: (t: unknown) => void } = {
 			tools: {},

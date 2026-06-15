@@ -56,6 +56,14 @@ function createRunner(): CommandRunner {
 export default function issueWorkflowExtension(pi: ExtensionAPI): void {
 	if (!isFeatureEnabled("issue-workflow")) return;
 
+	// Subagent / review-fixer child Pis are launched with --copy-env, so they
+	// inherit ISSUE_PI_ENV=1 from the Issue Work Pi parent. But the child must
+	// not run git/PR actions — Phase 3 (commit / push / create_pr) is the
+	// parent's job — so skip registration in any child Pi. This mirrors the
+	// review_fixer child guard and makes issue_workflow structurally unusable
+	// for accidental commits inside a review/subagent child. See ADR-0023.
+	if (process.env.PI_SUBAGENT_ROLE === "child") return;
+
 	// The issue_workflow tool is only relevant inside the Pi session launched by
 	// the /issue command (the Issue Work Pi that runs Phase 3). The launcher marks
 	// such sessions with ISSUE_PI_ENV=1, so the tool stays out of the Main Pi and

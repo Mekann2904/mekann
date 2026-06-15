@@ -19,6 +19,7 @@ Issue Work Pi を一意に特定する信号が必要だった。worktree の br
 - **起動時に env marker を注入する**: `launchPiSessionInKittySplit` は Issue Work Pi 起動専用の関数であるため、毎回 `kitten @ launch --env MEKANN_ISSUE_PI=1` を付与する。marker 名は `ISSUE_PI_ENV = "MEKANN_ISSUE_PI"` として同ファイルから export し、読み手と共有して名前の drift を構造的に防ぐ。
 - **ツール登録を marker でガートする**: `issue_workflow` を登録する `issueWorkflowExtension` と `review_fixer` を登録する `reviewFixerExtension` は、ともに `process.env[ISSUE_PI_ENV] !== "1"` のとき early return し、登録しない。`review_fixer` の場合はツールだけでなく `registerReviewFixerPromptProvider()`（GATE policy fragment）の登録もスキップされるため、Main Pi の system prompt から fragment が消える。Main Pi や他の session にはどちらのツールも現れない。
 - **review_fixer の child 再帰ガートを維持する**: `review_fixer` は review 実行のために子 Pi を起動する（`--copy-env` 付き）。子 Pi は親の env を継承するため `MEKANN_ISSUE_PI=1` も受け継ぎ、marker だけでは子での再登録を防げない。そこで `PI_SUBAGENT_ROLE === "child"` ガートを ISSUE_PI ガートの**前**に置き続け、marker 継承にかかわらず子 Pi では review_fixer を登録しない（root → child → grandchild の無限再帰を防止、ADR-0018 / issue #62 の方針を維持）。
+- **issue_workflow にも対称な child ガートを設ける**: subagent / review-fixer の子 Pi はすべて `--copy-env` で `MEKANN_ISSUE_PI=1` を継承するが、git/PR 操作は親 Issue Work Pi の Phase 3 の仕事であり、子で commit / push / create_pr すべきでない。プロンプトで禁止するのは soft constraint であるため、`issue_workflow` にも `review_fixer` と同じ `PI_SUBAGENT_ROLE === "child"` ガートを ISSUE_PI ガートの前に置き、子では構造的にツールを登録しない（defense in depth）。これで 2 つの issue 専用ツールは完全に対称に「子 Pi では登録しない」挙動となる。
 - **既存の安全ゲートは維持する**: この変更は「ツールの表示範囲」だけを絞る。mutating action の worktree ガート（`actions.ts`）や git-safety の bash 承認ゲートはそのまま残す。marker はあくまで表示スコープ用で、認可ではない。
 - **orchestration marker との併存**: orchestration 用の `MEKANN_ORCHESTRATION_PARENT` / `MEKANN_ORCHESTRATION_CHILD` は個別の目的（session_shutdown での chain 継続）のまま残し、`MEKANN_ISSUE_PI` は全起動経路に共通して付与する。orchestration 子も Issue Work Pi であるため、両方の marker が立つ。
 
@@ -32,6 +33,6 @@ Issue Work Pi を一意に特定する信号が必要だった。worktree の br
 
 - Main Pi および `/issue` 由来でない全ての Pi session から `issue_workflow` と `review_fixer`（および review_fixer の GATE policy fragment）が消え、system prompt / ツール一覧のノイズが減る。
 - Issue Work Pi（直接起動・bulk・orchestration 子の全て）では従来通り両ツールが使える。Phase 2/3 のプロンプト（`prompts.ts`・`promptProvider.ts`）は Issue Work Pi 向けのまま変わらない。
-- `review_fixer` の子 Pi は親から `MEKANN_ISSUE_PI=1` を継承するが、`PI_SUBAGENT_ROLE=child` ガートが先に効くため再帰しない。
+- `review_fixer` の子 Pi は親から `MEKANN_ISSUE_PI=1` を継承するが、`PI_SUBAGENT_ROLE=child` ガートが先に効くため review_fixer も issue_workflow も登録されず、再帰しないし子での git/PR 操作も構造的に起こらない。
 - `MEKANN_ISSUE_PI=1` を自前で export した Pi session ではツールが現れる（テストや手動検証で利用可能）。これは env marker が「表示スコープ」の役割であることと整合する。
 - 安全性は低下しない。`issue_workflow` の mutating action の worktree ガート・git-safety の bash ゲート・`review_fixer` の issue context 解決はいずれも変更せず、marker は認可ではなく表示制御に過ぎない。
