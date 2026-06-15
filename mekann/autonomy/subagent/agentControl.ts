@@ -44,6 +44,11 @@ import { evaluateSpawnCost } from "./subagentCostPolicy.js";
 
 // ─── Default config ──────────────────────────────────────────────
 
+// Subagent-spawning tools that must be hidden from children when nesting is
+// disabled, to prevent recursive child creation (spawn_agent) or redundant
+// re-review (review_fixer). See issue #62.
+const NESTING_TOOL_NAMES = new Set(["spawn_agent", "review_fixer"]);
+
 // Includes the root agent. Therefore 3 open agents = root + max 2 subagents.
 const DEFAULT_MAX_AGENTS = MEKANN_SUBAGENT_DEFAULTS.maxOpenAgents;
 const HARD_MAX_OPEN_AGENTS = 8;
@@ -254,8 +259,12 @@ export class AgentControl {
   }
 
   private filterToolsByAuthority(tools: any[], authority: SubagentAuthority): any[] {
-    const withoutNested = this.allowNestedSubagents ? tools : tools.filter((t: any) => (t.name ?? "") !== "spawn_agent");
-    if (authority.mode === "edit") return withoutNested;
+    // Subagent-spawning tools must be hidden when nesting is disabled to
+    // prevent recursive child creation or redundant review-fixer delegation.
+    const authorityScopedTools = this.allowNestedSubagents
+      ? tools
+      : tools.filter((t: any) => !NESTING_TOOL_NAMES.has(t.name ?? ""));
+    if (authority.mode === "edit") return authorityScopedTools;
     // For read_only and propose_patch, only allow non-destructive tools.
     const readOnlyPatterns = [
       /^read$/, /^grep$/, /^glob$/, /^ls$/, /^list$/, /^search$/, /^rg$/, /^find$/,
@@ -263,9 +272,8 @@ export class AgentControl {
       /^codex_web_search$/, /^search_tool_outputs$/, /^search_context_events$/,
       /^summarize_session_context$/, /^request_elevation$/,
     ];
-    return withoutNested.filter((t: any) => {
+    return authorityScopedTools.filter((t: any) => {
       const name: string = t.name ?? "";
-      if (!this.allowNestedSubagents && name === "spawn_agent") return false;
       return readOnlyPatterns.some((pat) => pat.test(name));
     });
   }

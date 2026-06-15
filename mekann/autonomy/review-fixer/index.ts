@@ -36,6 +36,17 @@ export function extractReviewFixerResult(output: string | undefined): ReviewFixe
 export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<void> {
   if (!isFeatureEnabled("review-fixer")) return;
 
+  // ── Self-detection guard (mirror of subagent extension) ──────────
+  //
+  // review_fixer launches a child Pi (external Pi / kitty) that reloads
+  // the whole mekann extension bundle. Without this guard the child would
+  // re-register the review_fixer tool AND re-inject the mandatory GATE
+  // policy fragment, causing the child to call review_fixer again and
+  // recurse (root → child → grandchild). The subagent extension already
+  // guards on PI_SUBAGENT_ROLE === "child"; review-fixer must do the same.
+  // See ADR-0018 and issue #62.
+  if (process.env.PI_SUBAGENT_ROLE === "child") return;
+
   registerReviewFixerPromptProvider();
 
   // ── Subagent runtime dependency boundary ──────────────────────────
@@ -91,6 +102,16 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
       _onUpdate: unknown,
       ctx: ExtensionContext,
     ) => {
+      // 二重防衛 (belt-and-suspenders): even if the top-level guard is
+      // bypassed, refuse to execute inside a child Pi to break recursion.
+      if (process.env.PI_SUBAGENT_ROLE === "child") {
+        return {
+          content: [{ type: "text" as const, text: "review_fixer cannot run inside a child Pi (would recurse). Aborting." }],
+          details: undefined,
+          isError: true,
+        };
+      }
+
       // 1. Load settings
       const settings = loadReviewFixerSettings();
 

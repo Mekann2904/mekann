@@ -49,4 +49,10 @@ describe("buildChildPrompt", () => {
     expect(prompt).toContain("commit / push / PR 作成は行わないでください");
     expect(prompt).toContain("subagent を起動せず");
   });
+
+  it("explicitly prohibits review_fixer to prevent recursive invocation", () => {
+    const prompt = buildChildPrompt(makeIssueContext(), mockCwd, options);
+    expect(prompt).toContain("review_fixer tool を呼び出さないでください");
+    expect(prompt).toContain("再帰呼び出し");
+  });
 });
