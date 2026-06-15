@@ -30,6 +30,9 @@ export async function formatSandboxedBashOutputForLlm(input: {
 			source: { kind: "sandboxed_bash", command: redactSecrets(input.command).text.slice(0, 2000) },
 			maxInlineBytes: Number(featureRawConfig("output-gate").maxInlineBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes,
 			previewBytes: Number(featureRawConfig("output-gate").previewBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes,
+			// Auto-retain sandboxed bash artifacts so long sessions stay bounded
+			// without a manual `/output-gate purge`.
+			retentionMaxFiles: Number(featureRawConfig("output-gate").artifactRetentionMaxFiles) || MEKANN_OUTPUT_GATE_DEFAULTS.artifactRetentionMaxFiles,
 		});
 		const shown = gated.handled ? {
 			text: gated.text,

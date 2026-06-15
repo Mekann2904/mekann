@@ -9,7 +9,7 @@ import {
 	type OutputGateRecorder,
 	extractTextContent,
 } from "./controller.js";
-import { saveArtifact, readManifest, manifestPath } from "./store.js";
+import { saveArtifact, readManifest, manifestPath, artifactsDir, resolveArtifactPath } from "./store.js";
 import type { RecordToolOutputArtifactInput } from "../recording.js";
 
 // ---------------------------------------------------------------------------
@@ -527,5 +527,72 @@ describe("OutputGateController search", () => {
 
 		expect(text).toContain("og_se_1");
 		expect(text).toContain("needle");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// handleToolResult auto-retention
+// ---------------------------------------------------------------------------
+
+describe("OutputGateController handleToolResult auto-retention", () => {
+	it("compacts manifest + artifacts once retention is exceeded (no manual purge)", async () => {
+		const cwd = await tmp();
+		// Small retention so we cross the threshold within the test.
+		const controller = createController({ artifactRetentionMaxFiles: 3 });
+		const big = bigText();
+
+		const ids: string[] = [];
+		for (let i = 0; i < 10; i++) {
+			const result = await controller.handleToolResult({
+				cwd,
+				toolName: "bash",
+				content: [{ type: "text", text: big }],
+			});
+			expect(result?.details.outputGate.stored).toBe(true);
+			ids.push(result!.details.outputGate.artifactId);
+			// createdAt must be strictly increasing for deterministic newest-first ordering.
+			await new Promise((r) => setTimeout(r, 2));
+		}
+
+		const entries = await readManifest(cwd);
+		// Bounded to artifactRetentionMaxFiles without a manual purge.
+		expect(entries).toHaveLength(3);
+		// The most recent 3 artifacts are the ones retained.
+		expect(entries.map((e) => e.id).sort()).toEqual(ids.slice(-3).sort());
+		// Artifact directory stays consistent with the manifest (no orphans).
+		const files = (await fsp.readdir(artifactsDir(cwd))).sort();
+		expect(files).toEqual(entries.map((e) => `${e.id}.txt`).sort());
+	});
+
+	it("does not compact while below the retention threshold", async () => {
+		const cwd = await tmp();
+		const controller = createController({ artifactRetentionMaxFiles: 200 });
+		const big = bigText();
+
+		for (let i = 0; i < 5; i++) {
+			await controller.handleToolResult({
+				cwd,
+				toolName: "bash",
+				content: [{ type: "text", text: big }],
+			});
+		}
+
+		expect((await readManifest(cwd))).toHaveLength(5);
+	});
+
+	it("keeps the just-gated artifact addressable after auto-retention", async () => {
+		const cwd = await tmp();
+		const controller = createController({ artifactRetentionMaxFiles: 1 });
+		const big = bigText();
+
+		await controller.handleToolResult({ cwd, toolName: "bash", content: [{ type: "text", text: big }] });
+		await new Promise((r) => setTimeout(r, 2));
+		const result = await controller.handleToolResult({ cwd, toolName: "bash", content: [{ type: "text", text: big }] });
+
+		const artifactId = result!.details.outputGate.artifactId;
+		const entries = await readManifest(cwd);
+		expect(entries).toHaveLength(1);
+		expect(entries[0].id).toBe(artifactId);
+		expect(resolveArtifactPath(cwd, entries[0])).toBeDefined();
 	});
 });

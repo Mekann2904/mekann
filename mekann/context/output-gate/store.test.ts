@@ -3,7 +3,7 @@ import * as fsp from "node:fs/promises";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { artifactsDir, buildPreview, countLines, createArtifactId, ensureOutputGateDirs, gateTextForLlm, manifestPath, nextArtifactId, outputGateDir, readManifest, resolveArtifactPath, safeUtf8Slice, sanitizeManifestSource, saveArtifact, sha256, shouldGateOutput } from "./store.js";
+import { artifactsDir, buildPreview, countLines, createArtifactId, ensureOutputGateDirs, gateTextForLlm, manifestPath, nextArtifactId, outputGateDir, readManifest, resolveArtifactPath, retainArtifacts, safeUtf8Slice, sanitizeManifestSource, saveArtifact, sha256, shouldGateOutput } from "./store.js";
 
 async function tmp(): Promise<string> { return fsp.mkdtemp(path.join(os.tmpdir(), "og-store-")); }
 
@@ -265,5 +265,117 @@ describe("output-gate store", () => {
 		const { entry } = await saveArtifact({ cwd, toolName: "bash", text: "hello", idGenerator: () => "og_orig_1", redacted: false });
 		expect(entry.bytes).toBeGreaterThan(0);
 		expect(entry.lines).toBeGreaterThanOrEqual(1);
+	});
+});
+
+describe("output-gate retainArtifacts", () => {
+	it("is a no-op when manifest is within the keep limit", async () => {
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "a", idGenerator: () => "og_rt_1", now: () => 1000 });
+		await saveArtifact({ cwd, toolName: "bash", text: "b", idGenerator: () => "og_rt_2", now: () => 2000 });
+
+		const result = await retainArtifacts(cwd, 10);
+
+		expect(result.removed).toBe(0);
+		expect(result.kept).toHaveLength(2);
+		// manifest file is untouched when nothing was removed
+		expect((await readManifest(cwd)).map((e) => e.id)).toEqual(["og_rt_1", "og_rt_2"]);
+	});
+
+	it("removes oldest entries, unlinks their files, and rewrites the manifest", async () => {
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "old", idGenerator: () => "og_rm_1", now: () => 1000 });
+		await saveArtifact({ cwd, toolName: "bash", text: "mid", idGenerator: () => "og_rm_2", now: () => 2000 });
+		await saveArtifact({ cwd, toolName: "bash", text: "new", idGenerator: () => "og_rm_3", now: () => 3000 });
+
+		const result = await retainArtifacts(cwd, 1);
+
+		expect(result.removed).toBe(2);
+		expect(result.kept).toHaveLength(1);
+		expect(result.kept[0].id).toBe("og_rm_3");
+
+		const remaining = await readManifest(cwd);
+		expect(remaining.map((e) => e.id)).toEqual(["og_rm_3"]);
+		// Oldest artifact files are gone; newest is still present.
+		expect(resolveArtifactPath(cwd, { id: "og_rm_1", path: ".pi/output-gate/artifacts/og_rm_1.txt" } as any)).toBeUndefined();
+		expect(resolveArtifactPath(cwd, { id: "og_rm_2", path: ".pi/output-gate/artifacts/og_rm_2.txt" } as any)).toBeUndefined();
+		expect(resolveArtifactPath(cwd, remaining[0])).toBeDefined();
+	});
+
+	it("keeps manifest and artifact directory consistent (no orphans)", async () => {
+		const cwd = await tmp();
+		for (let i = 0; i < 5; i++) {
+			await saveArtifact({ cwd, toolName: "bash", text: `t${i}`, idGenerator: () => `og_c_${i}`, now: () => 1000 + i });
+		}
+
+		await retainArtifacts(cwd, 2);
+
+		const entries = await readManifest(cwd);
+		expect(entries.map((e) => e.id)).toEqual(["og_c_4", "og_c_3"]);
+		const files = await fsp.readdir(artifactsDir(cwd));
+		// Every remaining artifact file has a manifest row, and vice versa.
+		expect(files.sort()).toEqual(["og_c_3.txt", "og_c_4.txt"]);
+	});
+
+	it("returns empty kept list when manifest does not exist", async () => {
+		const cwd = await tmp();
+		const result = await retainArtifacts(cwd, 10);
+		expect(result.removed).toBe(0);
+		expect(result.kept).toEqual([]);
+	});
+});
+
+describe("output-gate gateTextForLlm auto-retention", () => {
+	it("does not retain when retentionMaxFiles is not provided (backward compatible)", async () => {
+		const cwd = await tmp();
+		const big = "x".repeat(200);
+		for (let i = 0; i < 5; i++) {
+			await gateTextForLlm({ cwd, toolName: "bash", text: big, maxInlineBytes: 10 });
+		}
+		// No retention configured -> manifest grows unbounded (legacy behaviour).
+		expect((await readManifest(cwd))).toHaveLength(5);
+	});
+
+	it("keeps manifest + artifacts bounded across a long session", async () => {
+		const cwd = await tmp();
+		const keep = 3;
+		const big = "x".repeat(200);
+		let lastArtifactId: string | undefined;
+		// Simulate a long session: many gated tool results, no manual purge.
+		for (let i = 0; i < 50; i++) {
+			const res = await gateTextForLlm({
+				cwd,
+				toolName: "bash",
+				text: big,
+				maxInlineBytes: 10,
+				retentionMaxFiles: keep,
+			});
+			expect(res.gated).toBe(true);
+			expect(res.artifactId).toBeDefined();
+			lastArtifactId = res.artifactId;
+		}
+
+		const entries = await readManifest(cwd);
+		// Manifest is bounded to the retention limit.
+		expect(entries).toHaveLength(keep);
+		// The just-saved (newest) artifact is retained.
+		expect(entries.map((e) => e.id)).toContain(lastArtifactId);
+		// Artifact directory is bounded too and stays consistent with the manifest.
+		const files = (await fsp.readdir(artifactsDir(cwd))).sort();
+		expect(files).toEqual(entries.map((e) => `${e.id}.txt`).sort());
+	});
+
+	it("always retains the just-saved (newest) artifact", async () => {
+		const cwd = await tmp();
+		const big = "x".repeat(200);
+		await gateTextForLlm({ cwd, toolName: "bash", text: big, maxInlineBytes: 10, retentionMaxFiles: 1 });
+		// Tiny delay so the second save gets a strictly newer createdAt.
+		await new Promise((r) => setTimeout(r, 5));
+		const res = await gateTextForLlm({ cwd, toolName: "bash", text: big, maxInlineBytes: 10, retentionMaxFiles: 1 });
+
+		const entries = await readManifest(cwd);
+		expect(entries).toHaveLength(1);
+		expect(entries[0].id).toBe(res.artifactId);
+		expect(resolveArtifactPath(cwd, entries[0])).toBeDefined();
 	});
 });
