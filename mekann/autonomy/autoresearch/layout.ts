@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { MEKANN_AUTORESEARCH_RUNS_DEFAULTS } from "../../config.js";
 
 export interface PlanDefinition {
 	planMarkdown: string;
@@ -216,4 +217,103 @@ export function createRunArtifacts(cwd: string, planId: string, runId: string): 
 	if (fs.existsSync(runDir)) throw new Error(`run directory already exists: ${runDir}`);
 	fs.mkdirSync(runDir, { recursive: true });
 	return { runDir };
+}
+
+// ---------------------------------------------------------------------------
+// Run artifact retention (issue #47)
+// ---------------------------------------------------------------------------
+
+export interface RunRetentionResult {
+	/** Number of completed run dirs left in the runs directory after retention. */
+	kept: number;
+	/** Number of old completed run dirs removed. */
+	removed: number;
+}
+
+interface RunCandidate {
+	name: string;
+	dir: string;
+	/** Sort key: completedAt when present, else startedAt, else 0. */
+	ts: number;
+}
+
+/**
+ * Read a run's manifest.json and decide whether it is a retention candidate.
+ * Returns the candidate only when the run is COMPLETE
+ * (`manifest.artifactComplete === true`). In-progress, missing-manifest, and
+ * unparseable-manifest runs return null and are NEVER deleted (issue #47).
+ */
+function readCompletedRunCandidate(runDir: string, name: string): RunCandidate | null {
+	const manifestPath = path.join(runDir, "manifest.json");
+	if (!fs.existsSync(manifestPath)) return null; // incomplete / mid-write
+	let m: any;
+	try {
+		m = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+	} catch {
+		return null; // unparseable — never delete speculatively
+	}
+	if (m?.artifactComplete !== true) return null; // in-progress — never delete
+	const ts = typeof m.completedAt === "number" && m.completedAt > 0
+		? m.completedAt
+		: typeof m.startedAt === "number" ? m.startedAt : 0;
+	return { name, dir: runDir, ts };
+}
+
+/**
+ * Keep the `keepCount` newest COMPLETED run dirs in `runsDir`, deleting older
+ * completed runs. Best-effort: per-run deletion failures are swallowed.
+ *
+ * Safety rules (issue #47):
+ * - Only run dirs whose manifest.json has `artifactComplete === true` are eligible.
+ * - A run dir without manifest.json, an unparseable manifest, or a manifest
+ *   that is not yet complete is left untouched (never deleted speculatively).
+ * - Operates on the runs directory ONLY; plan dir / contract / state are never touched.
+ *
+ * No-op when the runs directory does not exist or the completed count is within the limit.
+ */
+export function retainRuns(runsDir: string, keepCount: number): RunRetentionResult {
+	const limit = Math.max(0, Math.floor(keepCount));
+	if (!fs.existsSync(runsDir)) return { kept: 0, removed: 0 };
+
+	let entries: fs.Dirent[];
+	try {
+		entries = fs.readdirSync(runsDir, { withFileTypes: true });
+	} catch {
+		return { kept: 0, removed: 0 };
+	}
+
+	const completed: RunCandidate[] = [];
+	for (const e of entries) {
+		if (!e.isDirectory()) continue;
+		const cand = readCompletedRunCandidate(path.join(runsDir, e.name), e.name);
+		if (cand) completed.push(cand);
+	}
+
+	if (completed.length <= limit) return { kept: completed.length, removed: 0 };
+
+	// Newest first by timestamp; deterministic tie-break by dir name.
+	completed.sort((a, b) => (b.ts - a.ts) || (a.name < b.name ? 1 : a.name > b.name ? -1 : 0));
+	const toRemove = completed.slice(limit);
+	let removed = 0;
+	for (const c of toRemove) {
+		try {
+			fs.rmSync(c.dir, { recursive: true, force: true });
+			removed++;
+		} catch {
+			/* best-effort: leave the dir if removal fails */
+		}
+	}
+	return { kept: completed.length - removed, removed };
+}
+
+/**
+ * Retain the newest `keepCount` completed runs for a plan. Defaults to
+ * {@link MEKANN_AUTORESEARCH_RUNS_DEFAULTS.maxRunsPerPlan}.
+ */
+export function retainRunsForPlan(
+	cwd: string,
+	planId: string,
+	keepCount: number = MEKANN_AUTORESEARCH_RUNS_DEFAULTS.maxRunsPerPlan,
+): RunRetentionResult {
+	return retainRuns(path.join(getPlanDir(cwd, planId), "runs"), keepCount);
 }
