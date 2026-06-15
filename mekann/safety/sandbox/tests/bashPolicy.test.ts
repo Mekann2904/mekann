@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { appendWorkspaceBashAllowlistCommand, getBashAllowlist, getBashMode, isBashCommandAllowed, normalizeBashCommand, parseBashAllowlist, setWorkspaceBashMode } from "../bashPolicy.js";
+import { getWorkspaceMekannSettingsPath, invalidateSettingsCache } from "../../../settings/store.js";
 
 describe("bash policy helpers", () => {
 	it("parses newline allowlist", () => {
@@ -24,6 +25,10 @@ describe("bash policy helpers", () => {
 		expect(getBashMode(cwd)).toBe("ask");
 
 		writeFileSync(join(cwd, ".pi", "mekann.json"), JSON.stringify({ version: 1, features: { sandbox: { bashMode: "invalid" } } }));
+		// The settings store caches reads for the process. This raw write bypasses
+		// saveSettingsChecked, so drop the cached entry to make the next read pick
+		// up the out-of-band "invalid" value (mirrors a manual edit + reload).
+		invalidateSettingsCache(getWorkspaceMekannSettingsPath(cwd));
 		expect(getBashMode(cwd)).toBe("sandboxed");
 	});
 
