@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { rm, writeFile } from "node:fs/promises";
 import { isFeatureEnabled } from "../../settings/enabled.js";
+import { ISSUE_PI_ENV } from "../terminal/pi-session.js";
 import { IssueWorkflowParamsSchema, type IssueWorkflowParams } from "./schemas.js";
 import { executeAction, validateActionArgs, type CommandRunner, type ExecOut } from "./actions.js";
 
@@ -54,6 +55,14 @@ function createRunner(): CommandRunner {
 
 export default function issueWorkflowExtension(pi: ExtensionAPI): void {
 	if (!isFeatureEnabled("issue-workflow")) return;
+
+	// The issue_workflow tool is only relevant inside the Pi session launched by
+	// the /issue command (the Issue Work Pi that runs Phase 3). The launcher marks
+	// such sessions with ISSUE_PI_ENV=1, so the tool stays out of the Main Pi and
+	// any other Pi session. Read-only actions are worktree-agnostic anyway, and
+	// mutating actions are already gated to the issue worktree in actions.ts.
+	// See ADR-0023.
+	if (process.env[ISSUE_PI_ENV] !== "1") return;
 
 	pi.registerTool({
 		name: "issue_workflow",

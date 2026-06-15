@@ -4,6 +4,17 @@ import { KittyControl } from "./kitty/control.js";
 
 const execFile = promisify(execFileCb);
 
+/**
+ * Env marker set on every Pi session launched by {@link launchPiSessionInKittySplit}.
+ *
+ * That function is the sole launcher for issue-work Pi sessions (direct `/issue`,
+ * bulk launch, and orchestration children all flow through it). The marker lets
+ * issue-only tools — currently `issue_workflow` — scope themselves to the Issue
+ * Pi and stay out of the Main Pi / other sessions. Shared as a constant so the
+ * launcher and the tool reader cannot drift on the name.
+ */
+export const ISSUE_PI_ENV = "MEKANN_ISSUE_PI";
+
 export interface PiSessionLaunchRequest {
 	cwd: string;
 	title: string;
@@ -58,6 +69,10 @@ export async function launchPiSessionInKittySplit(request: PiSessionLaunchReques
 		"--copy-env",
 	];
 	if (request.hold) args.push("--hold");
+	// This function exclusively launches issue-work Pi sessions, so every launch
+	// is marked ISSUE_PI_ENV=1 (see ADR-0023). issue-only tools read this marker
+	// to stay scoped to the Issue Pi and out of the Main Pi.
+	args.push("--env", `${ISSUE_PI_ENV}=1`);
 	// Issue #71 orchestration markers: propagated as explicit env so a Work Pi can
 	// detect at session_shutdown that it was started as part of an orchestration
 	// and which child it was. Explicit --env is more robust than relying solely

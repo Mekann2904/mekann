@@ -356,6 +356,28 @@ describe("executeAction view_pr and errors", () => {
 // ── Tool registration (prepareArguments + execute wiring) ───────────
 
 describe("issue_workflow tool registration", () => {
+	it("does not register the tool outside an issue-work Pi session", async () => {
+		const pi: { tools: Record<string, unknown>; registerTool: (t: unknown) => void } = {
+			tools: {},
+			registerTool: (t) => {
+				const def = t as { name: string };
+				pi.tools[def.name] = def;
+			},
+		};
+		const prev = process.env.MEKANN_ISSUE_PI;
+		delete process.env.MEKANN_ISSUE_PI;
+		try {
+			const { default: issueWorkflowExtension } = await import("./index.js");
+			// isFeatureEnabled defaults to enabled when settings absent, so only the
+			// issue-work-Pi marker gate prevents registration here.
+			issueWorkflowExtension(pi as never);
+			expect(pi.tools["issue_workflow"]).toBeUndefined();
+		} finally {
+			if (prev === undefined) delete process.env.MEKANN_ISSUE_PI;
+			else process.env.MEKANN_ISSUE_PI = prev;
+		}
+	});
+
 	it("registers with name issue_workflow and validates in prepareArguments", async () => {
 		const pi: { tools: Record<string, { prepareArguments: (a: unknown) => unknown }>; registerTool: (t: unknown) => void } = {
 			tools: {},
@@ -364,9 +386,16 @@ describe("issue_workflow tool registration", () => {
 				pi.tools[def.name] = def;
 			},
 		};
-		const { default: issueWorkflowExtension } = await import("./index.js");
-		// isFeatureEnabled defaults to enabled when settings absent.
-		issueWorkflowExtension(pi as never);
+		const prev = process.env.MEKANN_ISSUE_PI;
+		process.env.MEKANN_ISSUE_PI = "1";
+		try {
+			const { default: issueWorkflowExtension } = await import("./index.js");
+			// isFeatureEnabled defaults to enabled when settings absent.
+			issueWorkflowExtension(pi as never);
+		} finally {
+			if (prev === undefined) delete process.env.MEKANN_ISSUE_PI;
+			else process.env.MEKANN_ISSUE_PI = prev;
+		}
 		expect(pi.tools["issue_workflow"]).toBeDefined();
 		expect(() => pi.tools["issue_workflow"].prepareArguments({ action: "commit" })).toThrow(/message/);
 		expect(() => pi.tools["issue_workflow"].prepareArguments({})).toThrow(/action/);
