@@ -66,6 +66,141 @@ function labelBadge(label: string): { text: string; color: string } {
 	return { text: label, color: C.fgDim };
 }
 
+// ─── Responsive layout ────────────────────────────────────────
+//
+// The issue panel opens in a split pane (≈half terminal width, often
+// 30–60 columns). The previous layout used a fixed `max(20, …)` title
+// width plus an unbounded dependency string placed *after* a flexGrow
+// spacer, so narrow panes clipped the right-hand columns. These helpers
+// reverse the math: reserve widths for the right-hand columns first,
+// give the title whatever is left, and progressively hide columns as the
+// pane shrinks so the total intrinsic width never exceeds `available`.
+
+// Row geometry. Each value is documented with where it is spent.
+const ROW_PADDING = 4;        // paddingLeft(3) + paddingRight(1)
+const ROW_LEFT_FIXED = 9;     // `${cursor} ${num.padEnd(4)} `(7) + status icon(1) + title leading space(1)
+const ROW_SPACER = 1;         // minimum gap between title and right-hand columns
+const DEP_RESERVED = 18;      // " blocked by #NNN,… " standard reservation
+const LABELS_RATIO = 0.22;    // labels column share of terminal width
+const LABELS_MIN = 10;        // labels column floor (only when shown)
+const MIN_TITLE = 8;          // if title would fall below this, drop right columns
+
+export interface IssueLayout {
+	/** Available content width inside a row (terminalWidth - ROW_PADDING). */
+	available: number;
+	/** Width reserved for the title column (shared by header and rows). */
+	titleWidth: number;
+	/** Width reserved for the dependency column (0 when hidden). */
+	depWidth: number;
+	/** Width reserved for the labels column (0 when hidden). */
+	labelsWidth: number;
+	/** Whether the dependency column is shown at this width. */
+	showDeps: boolean;
+	/** Whether the labels column is shown at this width. */
+	showLabels: boolean;
+}
+
+/**
+ * Compute shared column widths for the issue list at a given terminal width.
+ * Guarantees `ROW_LEFT_FIXED + ROW_SPACER + titleWidth + depWidth +
+ * labelsWidth <= available`, so no column is ever clipped.
+ */
+export function computeIssueLayout(terminalWidth: number | undefined): IssueLayout {
+	const width = terminalWidth || 80;
+	const available = Math.max(0, width - ROW_PADDING);
+	const labelsWidthFor = (w: number) => Math.max(LABELS_MIN, Math.floor(w * LABELS_RATIO));
+
+	let showLabels = available >= 50;
+	let showDeps = available >= 38;
+
+	const measure = () => {
+		const dep = showDeps ? DEP_RESERVED : 0;
+		const labels = showLabels ? labelsWidthFor(width) : 0;
+		const title = Math.max(0, available - ROW_LEFT_FIXED - ROW_SPACER - dep - labels);
+		return { dep, labels, title };
+	};
+
+	// Drop right-hand columns in priority order (labels → deps) until the
+	// title can keep at least MIN_TITLE columns.
+	let dims = measure();
+	if (dims.title < MIN_TITLE && showLabels) {
+		showLabels = false;
+		dims = measure();
+	}
+	if (dims.title < MIN_TITLE && showDeps) {
+		showDeps = false;
+		dims = measure();
+	}
+
+	return {
+		available,
+		titleWidth: dims.title,
+		depWidth: dims.dep,
+		labelsWidth: dims.labels,
+		showDeps,
+		showLabels,
+	};
+}
+
+/** Status-bar keybinding hint verbosity tier for a given terminal width. */
+export function statusKeyHintsTier(terminalWidth: number | undefined): "full" | "mid" | "short" {
+	const width = terminalWidth || 80;
+	if (width >= 60) return "full";
+	if (width >= 44) return "mid";
+	return "short";
+}
+
+/** Build label badge elements, truncated to fit `maxWidth` columns. */
+function renderLabels(labels: string[], maxWidth: number): any[] {
+	if (maxWidth <= 0 || labels.length === 0) return [];
+	const badges = labels.map(labelBadge);
+	const items: { text: string; color: string }[] = [];
+	let used = 0;
+	for (const badge of badges) {
+		const sep = items.length > 0 ? 1 : 0;
+		if (used + sep + badge.text.length > maxWidth) break;
+		used += sep + badge.text.length;
+		items.push(badge);
+	}
+	const elems: any[] = [];
+	items.forEach((badge, i) => {
+		if (i > 0) elems.push(el("text", { fg: C.fgDim, content: " " }));
+		elems.push(el("text", { fg: badge.color, content: badge.text }));
+	});
+	const overflow = labels.length - items.length;
+	if (overflow > 0) {
+		const suffix = ` +${overflow}`;
+		if (used + suffix.length <= maxWidth) {
+			elems.push(el("text", { fg: C.fgDim, content: suffix }));
+		}
+	}
+	return elems;
+}
+
+/** Build status-bar keybinding hint elements for a given terminal width. */
+function statusKeyHints(terminalWidth: number | undefined): any[] {
+	const tier = statusKeyHintsTier(terminalWidth);
+	if (tier === "full") {
+		return [
+			el("text", { fg: C.fgDim, content: " ↑↓ " }), el("text", { fg: C.fg, content: "navigate" }),
+			el("text", { fg: C.fgDim, content: "  ⏎ " }), el("text", { fg: C.accent, content: "open worktree" }),
+			el("text", { fg: C.fgDim, content: "  Esc/q " }), el("text", { fg: C.fgDim, content: "cancel" }),
+		];
+	}
+	if (tier === "mid") {
+		return [
+			el("text", { fg: C.fgDim, content: " ↑↓ " }), el("text", { fg: C.fg, content: "nav" }),
+			el("text", { fg: C.fgDim, content: "  ⏎ " }), el("text", { fg: C.accent, content: "open" }),
+			el("text", { fg: C.fgDim, content: "  Esc/q " }), el("text", { fg: C.fgDim, content: "esc" }),
+		];
+	}
+	return [
+		el("text", { fg: C.fgDim, content: " ↑↓ " }),
+		el("text", { fg: C.fgDim, content: "  ⏎ " }),
+		el("text", { fg: C.fgDim, content: "  Esc/q " }),
+	];
+}
+
 // ─── App ────────────────────────────────────────────────────────
 
 export async function mountIssueList(
@@ -95,6 +230,8 @@ export async function mountIssueList(
 			}
 		});
 
+		const layout = computeIssueLayout(terminalWidth);
+
 		const rows = issues.map((issue: IssueWithStatus, i: number) =>
 			createElement(IssueRow, {
 				key: issue.number,
@@ -123,14 +260,18 @@ export async function mountIssueList(
 				el("text", { fg: C.fgBright, content: "Open Issues" }),
 				el("text", { fg: C.fgDim, content: ` · ${issues.length} issue${issues.length !== 1 ? "s" : ""}` }),
 			),
-			// Column header
+			// Column header — shares column widths with rows via computeIssueLayout
 			el("box", {
 				style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: C.headerBg, paddingLeft: 3, paddingRight: 1 },
 			},
 				el("text", { fg: C.fgDim, content: "  " }),
 				el("text", { fg: C.fgDim, content: "#".padEnd(6) }),
-				el("text", { fg: C.fgDim, content: "TITLE".padEnd(Math.max(20, (terminalWidth || 80) - 40)) }),
-				el("text", { fg: C.fgDim, content: "LABELS" }),
+				el("text", { fg: C.fgDim, content: " " }),
+				el("text", { fg: C.fgDim, content: truncate("TITLE", layout.titleWidth).padEnd(layout.titleWidth) }),
+				// Spacer mirroring the row's flexGrow gap so LABELS aligns across header/rows.
+				el("text", { fg: C.fgDim, content: " " }),
+				layout.showDeps ? el("text", { fg: C.fgDim, content: "".padEnd(layout.depWidth) }) : null,
+				layout.showLabels ? el("text", { fg: C.fgDim, content: truncate("LABELS", layout.labelsWidth) }) : null,
 			),
 			// Issue rows
 			el("scrollbox", {
@@ -140,7 +281,7 @@ export async function mountIssueList(
 				focused: true,
 			}, ...rows),
 			// Status bar
-			createElement(StatusBar, { selected: selectedIndex, total: issues.length }),
+			createElement(StatusBar, { selected: selectedIndex, total: issues.length, terminalWidth }),
 		);
 	}
 
@@ -156,30 +297,38 @@ export async function mountIssueList(
 			? el("text", { fg: C.red, content: "⛔" })
 			: issue.hasWorktree
 				? el("text", { fg: C.yellow, content: "●" })
-				: null;
+				: el("text", { fg: C.fgDim, content: " " });
 
-		const labelsWidth = Math.max(10, Math.floor((tw || 80) * 0.25));
-		const titleWidth = Math.max(20, (tw || 80) - labelsWidth - 12);
+		const layout = computeIssueLayout(tw);
 
-		const labelElements = issue.labels.slice(0, 3).map((label: string, li: number) => {
-			const badge = labelBadge(label);
-			const sep = li > 0 ? " " : "";
-			return [
-				el("text", { fg: C.fgDim, content: sep }),
-				el("text", { fg: badge.color, content: badge.text }),
-			];
-		}).flat();
-		if (issue.labels.length > 3) {
-			labelElements.push(el("text", { fg: C.fgDim, content: ` +${issue.labels.length - 3}` }));
-		}
-
-		const dependencyElements = issue.error
-			? [el("text", { fg: C.red, content: " dependency-error " })]
+		// Dependency text is composed first, then truncated to its reserved
+		// column width so it can never push past the right edge.
+		const depCore = issue.error
+			? "dependency-error"
 			: issue.openBlockers.length > 0
-				? [el("text", { fg: C.red, content: ` blocked by ${issue.openBlockers.slice(0, 3).map((blocker) => `#${blocker.number}`).join(",")}${issue.openBlockers.length > 3 ? ",…" : ""} ` })]
+				? `blocked by ${issue.openBlockers.slice(0, 3).map((blocker) => `#${blocker.number}`).join(",")}${issue.openBlockers.length > 3 ? ",…" : ""}`
 				: issue.blockedBy.length > 0
-					? [el("text", { fg: C.green, content: " unblocked " })]
-					: [];
+					? "unblocked"
+					: "";
+		const depColor = issue.error
+			? C.red
+			: issue.openBlockers.length > 0
+				? C.red
+				: C.green;
+		const dependencyContent = depCore
+			? ` ${truncate(depCore, Math.max(0, layout.depWidth - 2))} `
+			: "";
+		const dependencyColumn = layout.showDeps
+			? el("box", { style: { width: layout.depWidth, height: 1, flexDirection: "row", flexShrink: 0 } },
+				el("text", { fg: depColor, content: dependencyContent }),
+			)
+			: null;
+
+		const labelsColumn = layout.showLabels
+			? el("box", { style: { width: layout.labelsWidth, height: 1, flexDirection: "row", flexShrink: 0 } },
+				...renderLabels(issue.labels, layout.labelsWidth),
+			)
+			: null;
 
 		return el("box", {
 			style: {
@@ -194,10 +343,10 @@ export async function mountIssueList(
 		},
 			el("text", { fg: numColor, content: `${cursor} ${String(issue.number).padEnd(4)} ` }),
 			statusIcon,
-			el("text", { fg: titleColor, content: ` ${truncate(issue.title, titleWidth)}` }),
+			el("text", { fg: titleColor, content: ` ${truncate(issue.title, layout.titleWidth)}` }),
 			el("box", { style: { flexGrow: 1 } }),
-			...dependencyElements,
-			...labelElements,
+			dependencyColumn,
+			labelsColumn,
 		);
 	}
 
@@ -208,7 +357,15 @@ export async function mountIssueList(
 		return `#${issue.number}: ${truncate(issue.title, 40)}`;
 	}
 
-	function StatusBar({ selected, total }: { selected: number; total: number }) {
+	function StatusBar({ selected, total, terminalWidth: tw }: { selected: number; total: number; terminalWidth: number }) {
+		const width = tw || 80;
+		const infoAvail = Math.max(0, width - 2); // paddingLeft(1) + paddingRight(1)
+		const leftInfo = ` BROWSE │ ${selected + 1}/${total} `;
+		// Reserve the left info block + a 1-column spacer; truncate the summary
+		// to whatever remains so it never pushes past the right edge.
+		const summaryMax = Math.max(0, infoAvail - leftInfo.length - 1);
+		const summary = selectedIssueSummary(issues[selected]);
+
 		return el("box", {
 			style: { position: "absolute", bottom: 0, width: "100%", height: 2, flexDirection: "column" },
 		},
@@ -220,15 +377,13 @@ export async function mountIssueList(
 				el("text", { fg: C.fgDim, content: "│" }),
 				el("text", { fg: C.fgDim, content: ` ${selected + 1}/${total} ` }),
 				el("box", { style: { flexGrow: 1 } }),
-				el("text", { fg: C.fgDim, content: selectedIssueSummary(issues[selected]) }),
+				el("text", { fg: C.fgDim, content: truncate(summary, summaryMax) }),
 			),
-			// Keybinding hints row
+			// Keybinding hints row — verbosity shortens with terminal width
 			el("box", {
 				style: { flexDirection: "row", width: "100%", height: 1, backgroundColor: C.statusKeyBg, paddingLeft: 1, paddingRight: 1, alignItems: "center" },
 			},
-				el("text", { fg: C.fgDim, content: " ↑↓ " }), el("text", { fg: C.fg, content: "navigate" }),
-				el("text", { fg: C.fgDim, content: "  ⏎ " }), el("text", { fg: C.accent, content: "open worktree" }),
-				el("text", { fg: C.fgDim, content: "  Esc/q " }), el("text", { fg: C.fgDim, content: "cancel" }),
+				...statusKeyHints(tw),
 			),
 		);
 	}
