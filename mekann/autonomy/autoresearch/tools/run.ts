@@ -32,7 +32,10 @@ import {
 	appendJournal,
 	generateRunId as generatePlanScopedRunId,
 	createRunArtifacts,
+	retainRuns,
+	retainRunsForPlan,
 } from "../layout.js";
+import { resolveMaxRunsPerPlan } from "../../../config.js";
 
 import type { SessionStore, ToolResponse } from "./sessionStore.js";
 import { DEFAULT_TIMEOUT_SECONDS } from "./sessionStore.js";
@@ -221,6 +224,25 @@ export async function executeRun(
 		}
 	} catch (e) {
 		runLedgerErrors.push(`artifact enrichment/mirror: ${e instanceof Error ? e.message : String(e)}`);
+	}
+
+	// Retain completed runs per plan to keep disk usage bounded (issue #47).
+	// Best-effort: never let retention failures break the run. Only COMPLETED
+	// runs (manifest.artifactComplete === true) are pruned; in-progress runs are
+	// always left in place. Fires AFTER the current run's artifacts (canonical
+	// + legacy mirror) are fully written, so the just-completed run — being the
+	// newest — is always retained.
+	if (artifactDir && !artifactFailed) {
+		try {
+			const keep = resolveMaxRunsPerPlan();
+			retainRunsForPlan(ctx.cwd, v2State.currentPlanId!, keep);
+			// Also bound the legacy session mirror (.pi/autoresearch/<sid>/runs/).
+			if (legacyArtifactDir) {
+				retainRuns(path.dirname(legacyArtifactDir), keep);
+			}
+		} catch {
+			/* best-effort retention */
+		}
 	}
 
 	const canonicalErrors: string[] = [];

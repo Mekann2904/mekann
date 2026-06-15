@@ -69,6 +69,34 @@ export const MEKANN_OUTPUT_GATE_DEFAULTS = {
 	artifactRetentionMaxFiles: 200,
 } as const;
 
+/**
+ * autoresearch run-artifact retention defaults (issue #47).
+ *
+ * Run artifact dirs (`.autoresearch/plans/<planId>/runs/<runId>/`) grow
+ * unbounded across long autoresearch loops and scale-supervisor candidate
+ * evaluation. To keep disk usage bounded, only the `maxRunsPerPlan` newest
+ * COMPLETED runs are retained per plan; older completed runs are pruned.
+ * In-progress runs are never deleted.
+ */
+export const MEKANN_AUTORESEARCH_RUNS_DEFAULTS = {
+	maxRunsPerPlan: 50,
+} as const;
+
+/**
+ * Resolved max completed runs kept per plan. Honors the
+ * `MEKANN_AUTORESEARCH_MAX_RUNS_PER_PLAN` env override (non-negative integer);
+ * falls back to {@link MEKANN_AUTORESEARCH_RUNS_DEFAULTS.maxRunsPerPlan}.
+ * Issue #47.
+ */
+export function resolveMaxRunsPerPlan(): number {
+	const raw = process.env.MEKANN_AUTORESEARCH_MAX_RUNS_PER_PLAN;
+	if (raw !== undefined && raw.trim() !== "") {
+		const n = Number.parseInt(raw, 10);
+		if (Number.isFinite(n) && n >= 0) return n;
+	}
+	return MEKANN_AUTORESEARCH_RUNS_DEFAULTS.maxRunsPerPlan;
+}
+
 export const MEKANN_CODEX_DEFAULTS = {
 	baseUrl: "https://chatgpt.com/backend-api",
 	modelCacheTtlMs: 5 * 60 * 1000,
