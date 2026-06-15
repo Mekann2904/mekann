@@ -63,6 +63,8 @@ export function createMockApi() {
  * Resets module cache so each test gets a fresh extension instance.
  */
 export async function loadExtension(mockApi: MockApi) {
+	delete process.env.PI_SUBAGENT_ROLE;
+	vi.resetModules();
 	const { default: subagentExtension } = await import("./index.js");
 	await subagentExtension(mockApi as any);
 	return mockApi;
