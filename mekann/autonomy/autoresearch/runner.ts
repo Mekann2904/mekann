@@ -34,6 +34,22 @@ function gitCheckSync(args: string[], cwd: string, timeout = 5_000): void {
 	execFileSync("git", args, { cwd, encoding: "utf8", timeout, stdio: ["ignore", "pipe", "pipe"] });
 }
 
+/**
+ * Safety threshold for {@link gitAutoCommit} (issue #39).
+ *
+ * Maximum number of tracked files a single auto-commit may delete before the safety
+ * guard refuses. Legitimate autoresearch candidate patches touch a handful of files;
+ * the catastrophic pollution commit observed in issue #39 deleted 642 files. The
+ * threshold sits well above any reasonable candidate patch and well below that.
+ */
+const GIT_AUTOCOMMIT_MAX_DELETIONS = 50;
+
+/** Count currently-staged deleted files (diff-filter=D on the cached diff). */
+function countStagedDeletions(cwd: string): number {
+	const out = execFileSync("git", ["diff", "--cached", "--name-only", "--diff-filter=D"], { cwd, encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] });
+	return out.split("\n").filter(Boolean).length;
+}
+
 export interface ChecksResult {
 	/** null = checks not run (no file or benchmark failed) */
 	passed: boolean | null;
@@ -890,7 +906,7 @@ const ROOT_AUTORESEARCH_REPORT_ARTIFACTS = [
  *
  * `.pi/` は監査用 artifact であり git 管理対象外。
  */
-export function gitAutoCommit(cwd: string, message: string, options: { includeAutoresearchReportArtifacts?: boolean } = {}): { committed: boolean; commit?: string; error?: string } {
+export function gitAutoCommit(cwd: string, message: string, options: { includeAutoresearchReportArtifacts?: boolean; allowDestructiveCommit?: boolean } = {}): { committed: boolean; commit?: string; error?: string } {
 	try {
 		// Check if we're in a git repo first. If not, no error — just nothing to commit.
 		gitCheckSync(["rev-parse", "--git-dir"], cwd);
@@ -914,6 +930,21 @@ export function gitAutoCommit(cwd: string, message: string, options: { includeAu
 			gitCheckSync(["diff", "--cached", "--quiet"], cwd);
 			return { committed: false };
 		} catch { /* diff あり → commit */ }
+
+		// Safety guard (issue #39): refuse to commit a catastrophic mass deletion.
+		// This backstops test/worktree races where a corrupted index would stage the
+		// deletion of hundreds of tracked files in one commit. Legitimate candidate
+		// patches never delete this many files at once; opt out with
+		// `allowDestructiveCommit: true` only when a large deletion is intentional.
+		if (!options.allowDestructiveCommit) {
+			const deletions = countStagedDeletions(cwd);
+			if (deletions > GIT_AUTOCOMMIT_MAX_DELETIONS) {
+				return {
+					committed: false,
+					error: `gitAutoCommit safety guard: ${deletions} tracked files would be deleted by this commit (threshold ${GIT_AUTOCOMMIT_MAX_DELETIONS}). This usually means the cwd index is corrupted (e.g. a worktree race, see issue #39). Refusing to commit. Inspect with: git -C ${JSON.stringify(cwd)} diff --cached --name-only --diff-filter=D`,
+				};
+			}
+		}
 
 		gitCheckSync(["commit", "-m", message], cwd, 10_000);
 		gitShortHashCache.delete(path.resolve(cwd));

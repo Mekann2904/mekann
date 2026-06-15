@@ -26,14 +26,15 @@ import {
 } from "./contract.js";
 
 function gitInitForTest(cwd: string): void {
+	// Test git identity is injected via env vars in vitest.setup.ts (issue #39).
+	// Never call `git config user.email/name` here: under worktree race conditions
+	// it pollutes the shared main-repo config.
 	try {
 		childProcess.execFileSync("git", ["init", "-b", "main"], { cwd, stdio: "ignore" });
 	} catch {
 		childProcess.execFileSync("git", ["init"], { cwd, stdio: "ignore" });
 		childProcess.execFileSync("git", ["checkout", "-b", "main"], { cwd, stdio: "ignore" });
 	}
-	childProcess.execFileSync("git", ["config", "user.email", "test@example.com"], { cwd, stdio: "ignore" });
-	childProcess.execFileSync("git", ["config", "user.name", "Test User"], { cwd, stdio: "ignore" });
 }
 
 function createGitTestDir(prefix = "contract-test"): string {
