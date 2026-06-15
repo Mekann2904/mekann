@@ -4,9 +4,11 @@
  */
 
 import type { IssueWithStatus } from "./github.js";
+import { createSelectionState, issuesToOpen, isMarked, selectionCount, toggleSelection, type SelectionState } from "./selection.js";
 
 export interface IssueListCallbacks {
-	onSelect: (issue: IssueWithStatus) => void;
+	/** Receives the array of issues to open: one for single-select, many for bulk. */
+	onSelect: (issues: IssueWithStatus[]) => void;
 	onCancel: () => void;
 }
 
@@ -28,6 +30,7 @@ const C = {
 	headerBg: "#1d1d2e",
 	rowEvenBg: "#151520",
 	rowOddBg: "#11111b",
+	rowMarkedBg: "#1f2230",
 	selectedBg: "#33467c",
 	statusBarBg: "#0d0d14",
 	statusKeyBg: "#09090f",
@@ -183,19 +186,22 @@ function statusKeyHints(terminalWidth: number | undefined): any[] {
 	if (tier === "full") {
 		return [
 			el("text", { fg: C.fgDim, content: " ↑↓ " }), el("text", { fg: C.fg, content: "navigate" }),
-			el("text", { fg: C.fgDim, content: "  ⏎ " }), el("text", { fg: C.accent, content: "open worktree" }),
+			el("text", { fg: C.fgDim, content: "  Space " }), el("text", { fg: C.green, content: "mark" }),
+			el("text", { fg: C.fgDim, content: "  ⏎ " }), el("text", { fg: C.accent, content: "open" }),
 			el("text", { fg: C.fgDim, content: "  Esc/q " }), el("text", { fg: C.fgDim, content: "cancel" }),
 		];
 	}
 	if (tier === "mid") {
 		return [
 			el("text", { fg: C.fgDim, content: " ↑↓ " }), el("text", { fg: C.fg, content: "nav" }),
+			el("text", { fg: C.fgDim, content: "  Space " }), el("text", { fg: C.green, content: "mark" }),
 			el("text", { fg: C.fgDim, content: "  ⏎ " }), el("text", { fg: C.accent, content: "open" }),
 			el("text", { fg: C.fgDim, content: "  Esc/q " }), el("text", { fg: C.fgDim, content: "esc" }),
 		];
 	}
 	return [
 		el("text", { fg: C.fgDim, content: " ↑↓ " }),
+		el("text", { fg: C.fgDim, content: "  Space " }),
 		el("text", { fg: C.fgDim, content: "  ⏎ " }),
 		el("text", { fg: C.fgDim, content: "  Esc/q " }),
 	];
@@ -216,6 +222,7 @@ export async function mountIssueList(
 
 	function IssueListApp() {
 		const [selectedIndex, setSelectedIndex] = (useState as any)(0);
+		const [selection, setSelection] = (useState as any)(createSelectionState());
 		const { width: terminalWidth } = (useTerminalDimensions as any)();
 
 		(useKeyboard as any)((key: any) => {
@@ -223,14 +230,25 @@ export async function mountIssueList(
 				setSelectedIndex((i: number) => Math.max(0, i - 1));
 			} else if (key.name === "down" || key.name === "j") {
 				setSelectedIndex((i: number) => Math.min(issues.length - 1, i + 1));
+			} else if (key.name === "space") {
+				// Toggle the mark on the focused issue. Blocked-rejection is out of
+				// scope for this slice (PRD #66, slice 2) — every issue is markable.
+				const focused = issues[selectedIndex];
+				if (focused) setSelection((s: SelectionState) => toggleSelection(s, focused.number));
 			} else if (key.name === "return") {
-				onSelect(issues[selectedIndex]);
+				const focusedNumber = issues[selectedIndex]?.number;
+				if (focusedNumber === undefined) return;
+				const numbersToOpen = issuesToOpen(selection, focusedNumber);
+				const byNumber = new Map(issues.map((issue: IssueWithStatus) => [issue.number, issue]));
+				const toOpen = numbersToOpen.map((n) => byNumber.get(n)).filter((issue): issue is IssueWithStatus => Boolean(issue));
+				onSelect(toOpen);
 			} else if (key.name === "escape" || key.name === "q") {
 				onCancel();
 			}
 		});
 
 		const layout = computeIssueLayout(terminalWidth);
+		const markedCount = selectionCount(selection);
 
 		const rows = issues.map((issue: IssueWithStatus, i: number) =>
 			createElement(IssueRow, {
@@ -238,6 +256,7 @@ export async function mountIssueList(
 				issue,
 				index: i,
 				selected: i === selectedIndex,
+				marked: isMarked(selection, issue.number),
 				terminalWidth,
 			})
 		);
@@ -281,18 +300,21 @@ export async function mountIssueList(
 				focused: true,
 			}, ...rows),
 			// Status bar
-			createElement(StatusBar, { selected: selectedIndex, total: issues.length, terminalWidth }),
+			createElement(StatusBar, { selected: selectedIndex, total: issues.length, markedCount, terminalWidth }),
 		);
 	}
 
-	function IssueRow({ issue, index, selected, terminalWidth: tw }: {
-		issue: IssueWithStatus; index: number; selected: boolean; terminalWidth: number;
+	function IssueRow({ issue, index, selected, marked, terminalWidth: tw }: {
+		issue: IssueWithStatus; index: number; selected: boolean; marked: boolean; terminalWidth: number;
 	}) {
-		const bgColor = selected ? C.selectedBg : index % 2 === 0 ? C.rowEvenBg : C.rowOddBg;
-		const numColor = selected ? C.fgBright : C.accent;
+		const bgColor = selected ? C.selectedBg : marked ? C.rowMarkedBg : index % 2 === 0 ? C.rowEvenBg : C.rowOddBg;
+		const numColor = selected ? C.fgBright : marked ? C.green : C.accent;
 		const isBlocked = issue.openBlockers.length > 0 || Boolean(issue.error);
 		const titleColor = selected ? C.fgBright : isBlocked ? C.fgDim : C.fg;
-		const cursor = selected ? "▸" : " ";
+		// Mark takes precedence in the cursor slot so a mark is always visible,
+		// regardless of focus. The focus cursor only shows on unmarked rows.
+		const cursor = marked ? "✔" : selected ? "▸" : " ";
+		const cursorColor = marked ? C.green : numColor;
 		const statusIcon = isBlocked
 			? el("text", { fg: C.red, content: "⛔" })
 			: issue.hasWorktree
@@ -341,7 +363,7 @@ export async function mountIssueList(
 				alignItems: "center",
 			},
 		},
-			el("text", { fg: numColor, content: `${cursor} ${String(issue.number).padEnd(4)} ` }),
+			el("text", { fg: cursorColor, content: `${cursor} ${String(issue.number).padEnd(4)} ` }),
 			statusIcon,
 			el("text", { fg: titleColor, content: ` ${truncate(issue.title, layout.titleWidth)}` }),
 			el("box", { style: { flexGrow: 1 } }),
@@ -357,14 +379,15 @@ export async function mountIssueList(
 		return `#${issue.number}: ${truncate(issue.title, 40)}`;
 	}
 
-	function StatusBar({ selected, total, terminalWidth: tw }: { selected: number; total: number; terminalWidth: number }) {
+	function StatusBar({ selected, total, markedCount, terminalWidth: tw }: { selected: number; total: number; markedCount: number; terminalWidth: number }) {
 		const width = tw || 80;
 		const infoAvail = Math.max(0, width - 2); // paddingLeft(1) + paddingRight(1)
-		const leftInfo = ` BROWSE │ ${selected + 1}/${total} `;
+		const selectionInfo = `${markedCount} selected`;
+		const leftInfo = ` BROWSE │ ${selected + 1}/${total} │ ${selectionInfo} `;
 		// Reserve the left info block + a 1-column spacer; truncate the summary
 		// to whatever remains so it never pushes past the right edge.
 		const summaryMax = Math.max(0, infoAvail - leftInfo.length - 1);
-		const summary = selectedIssueSummary(issues[selected]);
+		const summary = markedCount > 0 ? `${markedCount} issue${markedCount !== 1 ? "s" : ""} marked — Enter opens all` : selectedIssueSummary(issues[selected]);
 
 		return el("box", {
 			style: { position: "absolute", bottom: 0, width: "100%", height: 2, flexDirection: "column" },
@@ -376,8 +399,10 @@ export async function mountIssueList(
 				el("text", { fg: C.green, content: " BROWSE " }),
 				el("text", { fg: C.fgDim, content: "│" }),
 				el("text", { fg: C.fgDim, content: ` ${selected + 1}/${total} ` }),
+				el("text", { fg: C.fgDim, content: "│" }),
+				el("text", { fg: markedCount > 0 ? C.green : C.fgDim, content: ` ${selectionInfo} ` }),
 				el("box", { style: { flexGrow: 1 } }),
-				el("text", { fg: C.fgDim, content: truncate(summary, summaryMax) }),
+				el("text", { fg: markedCount > 0 ? C.green : C.fgDim, content: truncate(summary, summaryMax) }),
 			),
 			// Keybinding hints row — verbosity shortens with terminal width
 			el("box", {
