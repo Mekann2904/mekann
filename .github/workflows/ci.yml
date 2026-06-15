@@ -5,6 +5,96 @@ on:
   pull_request:
 
 jobs:
+  mekann:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci --workspaces --include-workspace-root
+
+      - name: Unit tests
+        run: npm run test:mekann
+
+  prompt-core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci --workspaces --include-workspace-root
+
+      - name: Unit tests
+        run: npm run test:prompt-core
+
+  cache-friendly-prompt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci --workspaces --include-workspace-root
+
+      - name: Unit tests
+        run: npm run test:cache-friendly-prompt
+
+  agent-guidelines:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci --workspaces --include-workspace-root
+
+      - name: Unit tests
+        run: npm run test:agent-guidelines
+
+  model-optimizer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci --workspaces --include-workspace-root
+
+      - name: Unit tests
+        run: npm run test:model-optimizer
+
+  command-normalization:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci --workspaces --include-workspace-root
+
+      - name: Unit tests
+        run: npm run test:command-normalization
+
   modes:
     runs-on: ubuntu-latest
     defaults:
@@ -225,22 +315,36 @@ jobs:
         run: npm run test:ledger
 
   # ─── Aggregate test count ──────────────────────────────────────────
+  # Keep `needs:` in sync with every job above. Job results are echoed from
+  # `needs.<job>.result` so the summary always reflects reality, and the gate
+  # step fails the run unless every listed job succeeded.
 
   test-summary:
     runs-on: ubuntu-latest
-    needs: [modes, sandbox-unit, sandbox-macos, zip-repo, subagent, autoresearch, goal, output-gate, typecheck-prod, ledger]
+    needs:
+      [mekann, prompt-core, cache-friendly-prompt, agent-guidelines, model-optimizer, command-normalization, modes, sandbox-unit, sandbox-macos, zip-repo, subagent, autoresearch, goal, output-gate, typecheck-prod, ledger]
     if: always()
     steps:
-      - name: All tests passed
+      - name: Suite results
         run: |
-          echo "✅ All test suites completed"
-          echo "  modes: passed"
-          echo "  sandbox-unit: passed"
-          echo "  sandbox-macos: passed"
-          echo "  zip-repo: passed"
-          echo "  subagent: passed"
-          echo "  autoresearch: passed"
-          echo "  goal: passed"
-          echo "  output-gate: passed"
-          echo "  typecheck-prod: passed"
-          echo "  ledger: passed"
+          echo "mekann: ${{ needs.mekann.result }}"
+          echo "prompt-core: ${{ needs['prompt-core'].result }}"
+          echo "cache-friendly-prompt: ${{ needs['cache-friendly-prompt'].result }}"
+          echo "agent-guidelines: ${{ needs['agent-guidelines'].result }}"
+          echo "model-optimizer: ${{ needs['model-optimizer'].result }}"
+          echo "command-normalization: ${{ needs['command-normalization'].result }}"
+          echo "modes: ${{ needs.modes.result }}"
+          echo "sandbox-unit: ${{ needs['sandbox-unit'].result }}"
+          echo "sandbox-macos: ${{ needs['sandbox-macos'].result }}"
+          echo "zip-repo: ${{ needs['zip-repo'].result }}"
+          echo "subagent: ${{ needs.subagent.result }}"
+          echo "autoresearch: ${{ needs.autoresearch.result }}"
+          echo "goal: ${{ needs.goal.result }}"
+          echo "output-gate: ${{ needs['output-gate'].result }}"
+          echo "typecheck-prod: ${{ needs['typecheck-prod'].result }}"
+          echo "ledger: ${{ needs.ledger.result }}"
+      - name: Fail if any suite did not succeed
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+        run: |
+          echo "::error::One or more test suites or jobs did not succeed; see Suite results above"
+          exit 1
