@@ -8,7 +8,7 @@ const MEKANN = path.join(ROOT, "mekann");
 const EXPECTED_TOOLS_BY_MODULE: Record<string, string[]> = {
 	"safety/sandbox/index.ts": ["request_elevation"],
 	"context/output-gate/index.ts": ["search_tool_outputs"],
-	"autonomy/goal/index.ts": ["get_goal", "create_goal", "update_goal"],
+	"autonomy/goal/goalTools.ts": ["get_goal", "create_goal", "update_goal"],
 	"autonomy/subagent/index.ts": [
 		"delegate_agent", "spawn_agent", "message_agent", "wait_agent", "list_agents", "agent_results", "close_agent",
 	],
@@ -41,7 +41,7 @@ const EXPECTED_PROMPT_PROVIDERS_BY_MODULE: Record<string, string[]> = {
 	"core/agent-guidelines/index.ts": ["agent-guidelines"],
 	"safety/sandbox/index.ts": ["sandbox"],
 	"safety/modes/index.ts": ["modes"],
-	"autonomy/goal/index.ts": ["goal"],
+	"autonomy/goal/goalPromptProvider.ts": ["goal"],
 	"autonomy/subagent/promptProvider.ts": ["subagent"],
 	"autonomy/review-fixer/promptProvider.ts": ["review-fixer"],
 	"autonomy/autoresearch/promptProvider.ts": ["autoresearch"],
@@ -163,9 +163,20 @@ describe("mekann integrated extension", () => {
 	});
 
 	it("uses policy-core constants for modes coordination outside tests", () => {
-		const goal = read("mekann/autonomy/goal/index.ts");
-		expect(goal).toContain("MODE_STATUS_EVENT");
-		expect(goal).not.toContain("pi.events.on(\"mekann:modes:status\"");
+		// Goal no longer participates in modes coordination after the goal
+		// composition-root refactor (tools/prompt/events moved out of index.ts);
+		// the actual coordinators are `modes` and `sandbox`, which must import
+		// the policy-core MODE_STATUS_EVENT constant.
+		for (const rel of ["safety/modes/index.ts", "safety/sandbox/index.ts"]) {
+			expect(read(`mekann/${rel}`), `${rel} must use MODE_STATUS_EVENT`).toContain("MODE_STATUS_EVENT");
+		}
+		// No module outside policy-core may hardcode the event name.
+		const offenders = sourceFiles(MEKANN)
+			.map((file) => path.relative(MEKANN, file))
+			.filter((rel) => !rel.startsWith("safety/policy-core/"))
+			.filter((rel) => read(`mekann/${rel}`).includes('"mekann:modes:status"'))
+			.filter((rel) => !read(`mekann/${rel}`).includes("MODE_STATUS_EVENT"));
+		expect(offenders).toEqual([]);
 	});
 
 	it("keeps prompt-owning modules registered with prompt-core", () => {
