@@ -109,10 +109,10 @@ describe("SBPL policy snapshots", () => {
 	});
 });
 
-// ─── isSafeCommand regression ────────────────────────────────────
+// ─── isReadOnlyCommandIntent regression ─────────────────────────────────
 //
 // These security boundary tests live in modes/index.test.ts.
-// Cross-module security regression is covered by the isSafeCommand
+// Cross-module security regression is covered by the isReadOnlyCommandIntent
 // exhaustive tests there (safe commands, dangerous commands, edge cases).
 
 // ─── Policy structure invariants ──────────────────────────────────

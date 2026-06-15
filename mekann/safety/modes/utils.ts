@@ -10,8 +10,8 @@ import { MEKANN_CONFIG_VERSION } from "../../config.js";
 import { getGlobalMekannSettingsPath, loadSettings, saveSettingsChecked } from "../../settings/store.js";
 
 // Re-export from policy-core — single source of truth for command intent classification.
-// isSafeCommand is a UX guard, NOT a security boundary.
-export { classifyCommandIntent, isReadOnlyCommandIntent, isSafeCommand, type CommandIntent, type CommandIntentKind } from "../policy-core/modes.js";
+// isReadOnlyCommandIntent is a UX guard, NOT a security boundary.
+export { classifyCommandIntent, isReadOnlyCommandIntent, type CommandIntent, type CommandIntentKind } from "../policy-core/modes.js";
 
 // Re-export tool list from policy-core.
 export { READ_ONLY_MODE_TOOLS } from "../policy-core/modes.js";
@@ -174,9 +174,6 @@ export function updateConfigField<T>(
 	throw lastError;
 }
 
-
-/** @deprecated Use ModeName for config keys, MekannMode for the runtime mode. */
-export type Mode = MekannMode;
 
 /** Runtime mode managed by modes extension. */
 export type MekannMode = "main" | "read_only" | "auto" | "sub";

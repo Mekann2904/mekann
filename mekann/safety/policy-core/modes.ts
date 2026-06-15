@@ -194,11 +194,3 @@ export function classifyCommandIntent(command: string): CommandIntent {
 export function isReadOnlyCommandIntent(command: string): boolean {
 	return classifyCommandIntent(command).allowedInReadOnly;
 }
-
-/**
- * @deprecated Use isReadOnlyCommandIntent() instead.
- * This alias exists for backward compatibility during migration.
- */
-export function isSafeCommand(command: string): boolean {
-	return isReadOnlyCommandIntent(command);
-}

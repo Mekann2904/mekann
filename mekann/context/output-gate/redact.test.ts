@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { redactSecrets, SECRET_REDACTION_PATTERNS } from "./redact.js";
+import { redactSecrets, SECRET_REDACTION_PATTERNS } from "../tool-output/redact.js";
 
 describe("redactSecrets", () => {
 	it("redacts Authorization Bearer", () => {
