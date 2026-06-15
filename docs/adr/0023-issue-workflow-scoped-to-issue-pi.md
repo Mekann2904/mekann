@@ -1,4 +1,4 @@
-# Issue-only tools (issue_workflow / review_fixer) scoped to the Issue Work Pi session
+# Issue-only tools and skill surface scoped to the Issue Work Pi session
 
 ADR-0019 で導入した `issue_workflow` と ADR-0018 の `review_fixer` は、それぞれの feature が有効なら **全ての Pi session** に登録されていた。そのため `/issue` を起動する Main Pi の system prompt にもこれらのツール（と review_fixer の GATE policy fragment）が並び、Main Pi 側では決して実行しない処理のノイズになっていた。本来これらは `/issue` が起動した Issue Work Pi（worktree 内で Phase 2/3 を自走する session）だけで意味を持つ。
 
@@ -22,12 +22,16 @@ Issue Work Pi を一意に特定する信号が必要だった。worktree の br
 - **issue_workflow にも対称な child ガートを設ける**: subagent / review-fixer の子 Pi はすべて `--copy-env` で `MEKANN_ISSUE_PI=1` を継承するが、git/PR 操作は親 Issue Work Pi の Phase 3 の仕事であり、子で commit / push / create_pr すべきでない。プロンプトで禁止するのは soft constraint であるため、`issue_workflow` にも `review_fixer` と同じ `PI_SUBAGENT_ROLE === "child"` ガートを ISSUE_PI ガートの前に置き、子では構造的にツールを登録しない（defense in depth）。これで 2 つの issue 専用ツールは完全に対称に「子 Pi では登録しない」挙動となる。
 - **既存の安全ゲートは維持する**: この変更は「ツールの表示範囲」だけを絞る。mutating action の worktree ガート（`actions.ts`）や git-safety の bash 承認ゲートはそのまま残す。marker はあくまで表示スコープ用で、認可ではない。
 - **orchestration marker との併存**: orchestration 用の `MEKANN_ORCHESTRATION_PARENT` / `MEKANN_ORCHESTRATION_CHILD` は個別の目的（session_shutdown での chain 継続）のまま残し、`MEKANN_ISSUE_PI` は全起動経路に共通して付与する。orchestration 子も Issue Work Pi であるため、両方の marker が立つ。
+- **skill-surface ブロックも marker で絞る（コンテキスト最適化）**: Issue Work Pi は「実装 → review_fixer（Phase 2）→ issue_workflow（Phase 3）」の狭いフェーズ実行マシンであり、issue 作成・計画・探森・メタ系のスキルはコンテキストノイズになる。mekann の skill-surface provider は `MEKANN_ISSUE_PI=1` のとき allowlist（`diagnose` / `tdd` / `zoom-out` の実装・理解のコア 3 つ）だけを広告し、他を隠す。広告しないスキルも削除されるわけではなく、後述の force-load で都度呼べる。
+- **`thermo-nuclear-code-quality-review` は非広告化しつつ force-load フォールバックを設ける**: 親 Issue Work Pi は通常 `review_fixer` ツール一本で Phase 2 を進めるべき（スキル広告があると直接スキルを走らせてゲートをバイパスする foot-gun になる）ため、allowlist から外す。ただし `review_fixer` の子 Pi review が失敗（`delegate.status === "errored"`）した場合は、結果メッセージに `/skill:thermo-nuclear-code-quality-review` の force-load 指示を埋め込み、親が手動で同じレビューを走らせられるフォールバック経路を保証する。`/skill:<name>` の展開は pi core が `disableModelInvocation` でフィルタしないため、skill-surface で非広告でも force-load は常に動く。
 
 ## Considered Options
 
 - **branch 名 `issue-<n>` で判定する**: Main Pi でも同 branch を取り得るうえ、登録時に git を呼ぶと startup がブロックされるため却下。起動由来（= `/issue` 実行）という要求に合わない。
 - **`isFeatureEnabled` だけで残す（現状維持）**: Main Pi へのノイズが解消しないため却下。
 - **launcher 側で marker をオプショナルにする**: `launchPiSessionInKittySplit` は現在 issue 起動専用に一本化されており、全起動で marker を付与する方が単純で安全。将来的に汎用 launcher 化する場合は marker 付与を見直す前提とする。
+- **pi core の `<available_skills>` 自体を session 別に絞る**: mekann から触れる `resources_discover` の `skillPaths` はデフォルトに対する**追加マージ**（`mergePaths`）であり置き換えではないため、session 別にスキルを「減らす」手段がない。`disable-model-invocation` は SKILL.md frontmatter の静的設定（全 session 共通）。したがって pi core 側の `<available_skills>`（gsap / cloudflare / thermo-nuclear 等の full description）を Issue Work Pi だけ絞るには pi core 側の変更が必要で、本 ADR の範囲外とする（mekann skill-surface ブロックの絞りと force-load フォールバックで実用上十分と判断）。
+- **`thermo-nuclear-code-quality-review` を広告に残す**: ゲートの見える化を優先できるが、親がツールをバイパスしてスキルを直接走らせる foot-game になるため、非広告化 + 失敗時フォールバックを採用した。
 
 ## Consequences
 
@@ -36,3 +40,6 @@ Issue Work Pi を一意に特定する信号が必要だった。worktree の br
 - `review_fixer` の子 Pi は親から `MEKANN_ISSUE_PI=1` を継承するが、`PI_SUBAGENT_ROLE=child` ガートが先に効くため review_fixer も issue_workflow も登録されず、再帰しないし子での git/PR 操作も構造的に起こらない。
 - `MEKANN_ISSUE_PI=1` を自前で export した Pi session ではツールが現れる（テストや手動検証で利用可能）。これは env marker が「表示スコープ」の役割であることと整合する。
 - 安全性は低下しない。`issue_workflow` の mutating action の worktree ガート・git-safety の bash ゲート・`review_fixer` の issue context 解決はいずれも変更せず、marker は認可ではなく表示制御に過ぎない。
+- Issue Work Pi の skill-surface は `diagnose` / `tdd` / `zoom-out` の 3 つに縮小され、`to-issues` / `to-prd` / `triage` / `improve-codebase-architecture` / `setup-matt-pocock-skills` / `prototype` / `grill-with-docs` / `thermo-nuclear-code-quality-review` は広告されない。必要になったら `/skill:<name>` で force-load できる。
+- `review_fixer` が errored を返したとき、結果テキストに `/skill:thermo-nuclear-code-quality-review` の force-load 指示が含まれるため、親は手動フォールバックレビューに遷移できる。
+- 制約: pi core 生成の `<available_skills>` ブロックは本 ADR では絞れない（mekann の制御範囲外）。mekann skill-surface ブロックの縮小とフォールバックで実用上のコンテキスト最適化を図るが、pi core 側の完全な絞り込みは別件（pi core への要望）とする。
