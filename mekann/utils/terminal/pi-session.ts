@@ -1,5 +1,6 @@
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
+import { KittyControl } from "./kitty/control.js";
 
 const execFile = promisify(execFileCb);
 
@@ -53,6 +54,17 @@ export async function launchPiSessionInKittySplit(request: PiSessionLaunchReques
 		"--copy-env",
 	];
 	if (request.hold) args.push("--hold");
+
+	// ADR-0021: protect the Main Pi region. When an Issue Pi pane already exists,
+	// split from the widest one instead of the focused window (Main Pi). On the
+	// first /issue call (or when the lookup fails) this is a no-op and kitty
+	// splits the focused window, preserving the original 1st-call behaviour.
+	const kitty = new KittyControl();
+	const anchorWindowId = await kitty.findIssuePiAnchorWindowId();
+	if (typeof anchorWindowId === "number") {
+		args.push("--source-window", `id:${anchorWindowId}`);
+	}
+
 	args.push(shell, "-lc", command);
 
 	const { stdout } = await execFile("kitten", args, { timeout: 10000 });

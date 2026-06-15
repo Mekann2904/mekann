@@ -29,7 +29,7 @@ export interface KittyLaunchResult {
 	windowId?: string;
 }
 
-function collectKittyWindows(value: unknown, windows: KittyWindowLike[] = []): KittyWindowLike[] {
+export function collectKittyWindows(value: unknown, windows: KittyWindowLike[] = []): KittyWindowLike[] {
 	if (!value || typeof value !== "object") return windows;
 	if (Array.isArray(value)) {
 		for (const item of value) collectKittyWindows(item, windows);
@@ -44,6 +44,24 @@ function collectKittyWindows(value: unknown, windows: KittyWindowLike[] = []): K
 		collectKittyWindows(child, windows);
 	}
 	return windows;
+}
+
+/**
+ * Title prefix that identifies an Issue Pi pane (ADR-0021). The issue list
+ * pane is titled `Issues` (plural, no number) and intentionally does NOT match,
+ * so it is never chosen as a split anchor.
+ */
+export const ISSUE_PANE_TITLE_PATTERN = /^Issue #\d+/;
+
+/**
+ * Pick the widest Issue Pi pane by `columns` (maximin) to use as the split
+ * anchor. Returns `undefined` when no Issue Pi pane exists — callers should
+ * then fall back to splitting the focused window (Main Pi).
+ */
+export function pickWidestIssuePiPane(windows: KittyWindowLike[]): KittyWindowLike | undefined {
+	const issuePanes = windows.filter((window) => typeof window.title === "string" && ISSUE_PANE_TITLE_PATTERN.test(window.title));
+	if (issuePanes.length === 0) return undefined;
+	return issuePanes.reduce((widest, pane) => ((pane.columns ?? 0) > (widest.columns ?? 0) ? pane : widest));
 }
 
 export class KittyControl {
@@ -76,6 +94,25 @@ export class KittyControl {
 			return undefined;
 		}
 		return undefined;
+	}
+
+	async findIssuePiAnchorWindowId(): Promise<number | undefined> {
+		let stdout = "";
+		try {
+			const result = await execFile(this.kittenBin, ["@", "ls"], { timeout: 2000 });
+			stdout = result.stdout;
+		} catch {
+			return undefined;
+		}
+		if (!stdout) return undefined;
+
+		try {
+			const windows = collectKittyWindows(JSON.parse(stdout));
+			const pane = pickWidestIssuePiPane(windows);
+			return typeof pane?.id === "number" ? pane.id : undefined;
+		} catch {
+			return undefined;
+		}
 	}
 
 	async longerSideSplitLocation(): Promise<KittySplitLocation> {
