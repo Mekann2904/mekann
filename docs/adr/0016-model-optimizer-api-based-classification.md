@@ -3,6 +3,8 @@
 ## Status
 Accepted
 
+Supersedes [0020](0020-model-optimizer-provider-override-deferred.md) (deferred provider override) — the provider-module architecture absorbs the deferred-override question instead of relying on lifecycle hooks alone.
+
 ## Context
 The `model-optimizer` feature originally classified models by `provider` string (`"openai"` / `"openai-codex"`) using hardcoded `if` comparisons, then was refactored to classify by `Model.api` with a central `API_FAMILY_MAP` and `OptimizationProfile` objects.
 
