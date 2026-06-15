@@ -4,7 +4,7 @@
  */
 
 import type { IssueWithStatus } from "./github.js";
-import { createSelectionState, issuesToOpen, isMarked, selectionCount, toggleSelection, type SelectionState } from "./selection.js";
+import { createSelectionState, issuesToOpen, isMarked, selectionCount, toggleMark, type IsBlocked, type SelectionState } from "./selection.js";
 
 export interface IssueListCallbacks {
 	/** Receives the array of issues to open: one for single-select, many for bulk. */
@@ -216,25 +216,75 @@ export async function mountIssueList(
 ): Promise<void> {
 	const React = await import("react");
 	const { createRoot, useKeyboard, useTerminalDimensions } = await import("@opentui/react");
-	const { createElement, useState } = React;
+	const { createElement, useState, useRef, useEffect } = React;
 
 	const { onSelect, onCancel } = callbacks;
 
 	function IssueListApp() {
 		const [selectedIndex, setSelectedIndex] = (useState as any)(0);
 		const [selection, setSelection] = (useState as any)(createSelectionState());
+		const selectionRef = (useRef as any)(selection as SelectionState);
+		// Transient status-bar notice explaining why a mark could not be applied
+		// (issue #69). Auto-clears after a short timeout and on any successful
+		// mark/navigation, so it never lingers across unrelated actions.
+		const [notice, setNotice] = (useState as any)(null as string | null);
+		const noticeTimerRef = (useRef as any)(null);
 		const { width: terminalWidth } = (useTerminalDimensions as any)();
+
+		(useEffect as any)(() => {
+			selectionRef.current = selection;
+		}, [selection]);
+
+		// Cancel a pending auto-clear on unmount so a late timeout can never
+		// setState on an unmounted component.
+		(useEffect as any)(() => () => {
+			if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+		}, []);
+
+		const clearNotice = () => {
+			if (noticeTimerRef.current) {
+				clearTimeout(noticeTimerRef.current);
+				noticeTimerRef.current = null;
+			}
+			setNotice(null);
+		};
+		const showNotice = (message: string) => {
+			if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+			noticeTimerRef.current = setTimeout(() => {
+				noticeTimerRef.current = null;
+				setNotice(null);
+			}, 3500);
+			setNotice(message);
+		};
+
+		// Blocked *facts* (dependency status) are resolved here, at the model's
+		// caller, and injected into toggleMark. The selection model owns the
+		// reject policy; this predicate only answers "is this issue blocked?".
+		const blockedNumbers = new Set(
+			issues
+				.filter((issue) => issue.openBlockers.length > 0 || Boolean(issue.error))
+				.map((issue) => issue.number),
+		);
+		const isBlocked: IsBlocked = (number) => blockedNumbers.has(number);
 
 		(useKeyboard as any)((key: any) => {
 			if (key.name === "up" || key.name === "k") {
 				setSelectedIndex((i: number) => Math.max(0, i - 1));
+				clearNotice();
 			} else if (key.name === "down" || key.name === "j") {
 				setSelectedIndex((i: number) => Math.min(issues.length - 1, i + 1));
+				clearNotice();
 			} else if (key.name === "space") {
-				// Toggle the mark on the focused issue. Blocked-rejection is out of
-				// scope for this slice (PRD #66, slice 2) — every issue is markable.
+				// Reject blocked issues at mark time so the bulk-confirm route can
+				// never carry one (issue #69). The model decides; the UI explains
+				// why via a transient status-bar notice.
 				const focused = issues[selectedIndex];
-				if (focused) setSelection((s: SelectionState) => toggleSelection(s, focused.number));
+				if (!focused) return;
+				const result = toggleMark(selectionRef.current, focused.number, isBlocked);
+				selectionRef.current = result.state;
+				setSelection(result.state);
+				if (result.rejected) showNotice(blockedReason(focused));
+				else clearNotice();
 			} else if (key.name === "return") {
 				const focusedNumber = issues[selectedIndex]?.number;
 				if (focusedNumber === undefined) return;
@@ -300,7 +350,7 @@ export async function mountIssueList(
 				focused: true,
 			}, ...rows),
 			// Status bar
-			createElement(StatusBar, { selected: selectedIndex, total: issues.length, markedCount, terminalWidth }),
+			createElement(StatusBar, { selected: selectedIndex, total: issues.length, markedCount, notice, terminalWidth }),
 		);
 	}
 
@@ -379,7 +429,17 @@ export async function mountIssueList(
 		return `#${issue.number}: ${truncate(issue.title, 40)}`;
 	}
 
-	function StatusBar({ selected, total, markedCount, terminalWidth: tw }: { selected: number; total: number; markedCount: number; terminalWidth: number }) {
+	/**
+	 * Human-readable reason a blocked issue cannot be marked (issue #69). Surfaced
+	 * as a transient status-bar notice when Space is rejected, so the user
+	 * understands *why* the mark did not take effect.
+	 */
+	function blockedReason(issue: IssueWithStatus): string {
+		if (issue.error) return `#${issue.number}: dependency check failed — cannot mark`;
+		return `#${issue.number}: blocked by ${issue.openBlockers.map((blocker) => `#${blocker.number}`).join(", ")} — cannot mark`;
+	}
+
+	function StatusBar({ selected, total, markedCount, notice, terminalWidth: tw }: { selected: number; total: number; markedCount: number; notice: string | null; terminalWidth: number }) {
 		const width = tw || 80;
 		const infoAvail = Math.max(0, width - 2); // paddingLeft(1) + paddingRight(1)
 		const selectionInfo = `${markedCount} selected`;
@@ -387,7 +447,11 @@ export async function mountIssueList(
 		// Reserve the left info block + a 1-column spacer; truncate the summary
 		// to whatever remains so it never pushes past the right edge.
 		const summaryMax = Math.max(0, infoAvail - leftInfo.length - 1);
-		const summary = markedCount > 0 ? `${markedCount} issue${markedCount !== 1 ? "s" : ""} marked — Enter opens all` : selectedIssueSummary(issues[selected]);
+		// A notice (mark-rejection feedback, issue #69) takes precedence over the
+		// regular summary and is rendered in the warning colour.
+		const summary = notice
+			? notice
+			: markedCount > 0 ? `${markedCount} issue${markedCount !== 1 ? "s" : ""} marked — Enter opens all` : selectedIssueSummary(issues[selected]);
 
 		return el("box", {
 			style: { position: "absolute", bottom: 0, width: "100%", height: 2, flexDirection: "column" },
@@ -402,7 +466,7 @@ export async function mountIssueList(
 				el("text", { fg: C.fgDim, content: "│" }),
 				el("text", { fg: markedCount > 0 ? C.green : C.fgDim, content: ` ${selectionInfo} ` }),
 				el("box", { style: { flexGrow: 1 } }),
-				el("text", { fg: markedCount > 0 ? C.green : C.fgDim, content: truncate(summary, summaryMax) }),
+				el("text", { fg: notice ? C.red : markedCount > 0 ? C.green : C.fgDim, content: truncate(summary, summaryMax) }),
 			),
 			// Keybinding hints row — verbosity shortens with terminal width
 			el("box", {
