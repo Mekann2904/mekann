@@ -22,6 +22,7 @@ export function buildChildPrompt(issueContext: ResolvedIssueContext, _cwd: strin
     `verification が失敗した場合は、最大 ${options.maxFixRetries} 回まで修正と再検証を試みてください。`,
     "commit / push / PR 作成は行わないでください。",
     "subagent を起動せず、この child Pi 自身で完結してください。",
+    "review_fixer tool を呼び出さないでください（再帰呼び出しを防ぐため）。",
     "最後に、実施した review、修正、検証、残リスクを日本語で簡潔に報告してください。",
     "",
     "## Issue Context",
