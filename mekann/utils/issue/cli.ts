@@ -93,23 +93,23 @@ async function runDirect(issueNumber: number): Promise<void> {
 }
 
 /**
- * Orchestrate a parent PRD/epic issue (issue #71).
- *
- * Snapshot children from GitHub truth, start the first startable child's Work
- * Pi (marked with orchestration env vars), then exit. The Work Pi's own session
- * shutdown hook continues the chain after its PR is merged.
+ * Resolve a child's worktree path, creating it if needed (reusing existing).
+ * Shared by orchestration launches so the CLI and the shutdown hook stay in sync.
  */
-async function runOrchestration(parentNumber: number): Promise<void> {
-	const repoInfo = getRepoInfo();
-	if (!repoInfo) { console.error("Not in git repo."); process.exitCode = 1; return; }
+function resolveChildWorktreePath(repoRoot: string, child: number): string {
+	const branch = issueBranch(child);
+	const dir = worktreeDir(repoRoot, branch);
+	const existing = listExistingWorktrees(repoRoot).find((worktree) => worktree.branch === branch);
+	return existing ? existing.path : createWorktree(repoRoot, branch, dir).path;
+}
 
-	const deps = createOrchestrationDeps({ remote: repoInfo.remote, repoRoot: repoInfo.root });
-
-	const launchWorkPi: LaunchWorkPi = async (options) => {
-		const branch = issueBranch(options.child);
-		const dir = worktreeDir(repoInfo.root, branch);
-		const existing = listExistingWorktrees(repoInfo.root).find((worktree) => worktree.branch === branch);
-		const wtPath = existing ? existing.path : createWorktree(repoInfo.root, branch, dir).path;
+/**
+ * Build the Work Pi launcher for an orchestrated child. Propagates orchestration
+ * env markers so the child's session_shutdown hook can continue the chain.
+ */
+function buildOrchestrationLauncher(parent: number, repoRoot: string): LaunchWorkPi {
+	return async (options) => {
+		const wtPath = resolveChildWorktreePath(repoRoot, options.child);
 		await launchPiSessionInKittySplit({
 			cwd: wtPath,
 			title: options.title,
@@ -121,6 +121,21 @@ async function runOrchestration(parentNumber: number): Promise<void> {
 			hold: process.env.MEKANN_ISSUE_DEBUG === "1",
 		});
 	};
+}
+
+/**
+ * Orchestrate a parent PRD/epic issue (issue #71).
+ *
+ * Snapshot children from GitHub truth, start the first startable child's Work
+ * Pi (marked with orchestration env vars), then exit. The Work Pi's own session
+ * shutdown hook continues the chain after its PR is merged.
+ */
+async function runOrchestration(parentNumber: number): Promise<void> {
+	const repoInfo = getRepoInfo();
+	if (!repoInfo) { console.error("Not in git repo."); process.exitCode = 1; return; }
+
+	const deps = createOrchestrationDeps({ remote: repoInfo.remote, repoRoot: repoInfo.root });
+	const launchWorkPi = buildOrchestrationLauncher(parentNumber, repoInfo.root);
 
 	try {
 		const outcome = await startOrchestration(parentNumber, repoInfo.root, deps, launchWorkPi);
@@ -129,6 +144,19 @@ async function runOrchestration(parentNumber: number): Promise<void> {
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exitCode = 1;
+	}
+}
+
+/**
+ * List sub-issues, returning [] on any error (e.g. parent has no children,
+ * gh unavailable). Used in the interactive list to detect whether a selected
+ * issue is a parent that should be orchestrated rather than opened directly.
+ */
+async function safeListSubIssues(deps: ReturnType<typeof createOrchestrationDeps>, parentNumber: number): Promise<{ number: number }[]> {
+	try {
+		return await deps.listSubIssues(parentNumber);
+	} catch {
+		return [];
 	}
 }
 
@@ -164,6 +192,26 @@ async function runInteractive(): Promise<void> {
 		onSelect: async (issue: IssueWithStatus) => {
 			if (!ensureIssueCanStart(issue.number, issue)) return;
 
+			renderer.destroy();
+
+			// If the selected issue has sub-issues (a PRD/epic), orchestrate its
+			// children instead of opening the parent itself. Selecting a parent in
+			// the list is equivalent to `/issue <parent-number>` (issue #71).
+			const deps = createOrchestrationDeps({ remote: repoInfo.remote, repoRoot: repoInfo.root });
+			const children = await safeListSubIssues(deps, issue.number);
+			if (children.length > 0) {
+				const launchWorkPi = buildOrchestrationLauncher(issue.number, repoInfo.root);
+				try {
+					const outcome = await startOrchestration(issue.number, repoInfo.root, deps, launchWorkPi);
+					console.log(outcome.message);
+				} catch (error) {
+					console.error(error instanceof Error ? error.message : String(error));
+					process.exitCode = 1;
+				}
+				process.exit(process.exitCode ?? 0);
+				return;
+			}
+
 			const branch = issueBranch(issue.number);
 			const dir = worktreeDir(repoInfo.root, branch);
 
@@ -176,13 +224,11 @@ async function runInteractive(): Promise<void> {
 					wtPath = wt.path;
 				} catch (err) {
 					console.error(`Failed to create worktree: ${(err as Error).message}`);
-					renderer.destroy();
 					process.exit(1);
 					return;
 				}
 			}
 
-			renderer.destroy();
 			await launchPiSessionInKittySplit({
 				cwd: wtPath,
 				title: `Issue #${issue.number}`,
