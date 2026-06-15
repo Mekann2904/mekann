@@ -1,5 +1,8 @@
 /**
- * autoresearch/contract.test.ts — Experiment Contract のテスト。
+ * autoresearch/contract.test.ts — V1 contract builder + safety のテスト。
+ *
+ * legacy ExperimentContract shape は廃止済み。本テストは V1 builder (buildContractV1) と
+ * V1 safety helpers (validateScopeGitSafety, validateCommandString, validateWritePaths) を検証する。
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -7,28 +10,19 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as childProcess from "node:child_process";
 import {
-	writeContract,
-	readContract,
-	contractExists,
-	contractFilePath,
-	deleteContract,
-	validateContract,
-	validateGitSafety,
-	validateCommand,
-	validateChangedFiles,
-	buildContract,
-	isGitRepo,
-	isWorkingTreeClean,
-	DEFAULT_ACCEPTANCE,
-	DEFAULT_SAFETY,
-	DEFAULT_CHECKS,
-	type ExperimentContract,
-} from "./contract.js";
+	buildContractV1,
+	validateContractV1,
+	normalizeAcceptanceMode,
+	normalizeAggregate,
+	validateScopeGitSafety,
+	validateCommandString,
+	DEFAULT_FORBIDDEN_COMMAND_PATTERNS,
+	validateWritePaths,
+	type InitContractV1Params,
+} from "./contractV1.js";
 
 function gitInitForTest(cwd: string): void {
 	// Test git identity is injected via env vars in vitest.setup.ts (issue #39).
-	// Never call `git config user.email/name` here: under worktree race conditions
-	// it pollutes the shared main-repo config.
 	try {
 		childProcess.execFileSync("git", ["init", "-b", "main"], { cwd, stdio: "ignore" });
 	} catch {
@@ -47,7 +41,19 @@ function createGitTestDir(prefix = "contract-test"): string {
 	return testDir;
 }
 
-describe("contract module", () => {
+function baseInitParams(overrides?: Partial<InitContractV1Params>): InitContractV1Params {
+	return {
+		name: "test",
+		metricName: "duration_seconds",
+		metricUnit: "seconds",
+		direction: "lower",
+		metricMethod: "wall_clock",
+		benchmarkCommand: "./autoresearch.sh",
+		...overrides,
+	};
+}
+
+describe("V1 contract builder + safety", () => {
 	let testDir: string;
 
 	beforeEach(() => {
@@ -58,222 +64,156 @@ describe("contract module", () => {
 		try { fs.rmSync(testDir, { recursive: true, force: true }); } catch {}
 	});
 
-	// ── File I/O ─────────────────────────────────────────────
+	// ── Builder ─────────────────────────────────────────────
 
-	describe("file I/O", () => {
-		it("contractExists returns false when no contract file", () => {
-			expect(contractExists(testDir)).toBe(false);
+	describe("buildContractV1", () => {
+		it("builds a valid V1 contract", () => {
+			const contract = buildContractV1(baseInitParams());
+			expect(contract.schemaVersion).toBe("autoresearch/v1");
+			expect(contract.objective.summary).toBe("test");
+			expect(contract.evaluation.primaryMetric.name).toBe("duration_seconds");
+			expect(contract.evaluation.primaryMetric.direction).toBe("lower");
+			expect(contract.evaluation.benchmark.command.argv).toEqual(["bash", "./autoresearch.sh"]);
+			expect(contract.acceptance.mode).toBe("better_than_baseline");
+			expect(contract.scope.requireGit).toBe(true);
+			const validation = validateContractV1(contract);
+			expect(validation.valid).toBe(true);
 		});
 
-		it("writeContract + readContract roundtrip", () => {
-			const contract = buildContract({
-				name: "test",
-				sessionId: "sess-1",
-				metricName: "duration_seconds",
-				metricUnit: "seconds",
-				direction: "lower",
-				metricMethod: "wall_clock",
-				benchmarkCommand: "./bench.sh",
-			});
-			writeContract(testDir, contract);
-			expect(contractExists(testDir)).toBe(true);
-
-			const loaded = readContract(testDir);
-			expect(loaded).not.toBeNull();
-			expect(loaded!.objective).toBe("test");
-			expect(loaded!.primaryMetric.name).toBe("duration_seconds");
-			expect(loaded!.primaryMetric.direction).toBe("lower");
-			expect(loaded!.primaryMetric.method).toBe("wall_clock");
-			expect(loaded!.acceptance.mode).toBe("better_than_best");
-			expect(loaded!.safety.requireGit).toBe(true);
+		it("uses metric_line source for stdout_metric method", () => {
+			const contract = buildContractV1(baseInitParams({ metricMethod: "stdout_metric" }));
+			expect(contract.evaluation.primaryMetric.source.type).toBe("metric_line");
 		});
 
-		it("readContract returns null for non-existent file", () => {
-			expect(readContract(testDir)).toBeNull();
+		it("uses wall_clock source for wall_clock method", () => {
+			const contract = buildContractV1(baseInitParams({ metricMethod: "wall_clock" }));
+			expect(contract.evaluation.primaryMetric.source.type).toBe("wall_clock");
 		});
 
-		it("deleteContract removes the file", () => {
-			const contract = buildContract({
-				name: "test", sessionId: "s", metricName: "x", metricUnit: "",
-				direction: "lower", metricMethod: "wall_clock", benchmarkCommand: "./x",
-			});
-			writeContract(testDir, contract);
-			expect(contractExists(testDir)).toBe(true);
-			deleteContract(testDir);
-			expect(contractExists(testDir)).toBe(false);
+		it("builds checks when checksMode is not none", () => {
+			const contract = buildContractV1(baseInitParams({ checksMode: "script" }));
+			expect(contract.evaluation.checks.length).toBe(1);
+		});
+
+		it("builds empty checks when checksMode is none", () => {
+			const contract = buildContractV1(baseInitParams({ checksMode: "none" }));
+			expect(contract.evaluation.checks.length).toBe(0);
 		});
 	});
 
-	// ── Git safety ─────────────────────────────────────────────
+	// ── Mode / aggregate normalization ───────────────────────
 
-	describe("git safety", () => {
-		it("isGitRepo returns true for git repo", () => {
-			expect(isGitRepo(testDir)).toBe(true);
+	describe("normalizeAcceptanceMode", () => {
+		it("passes through better_than_best", () => {
+			expect(normalizeAcceptanceMode("better_than_best")).toBe("better_than_best");
 		});
-
-		it("isGitRepo returns false for non-git dir", () => {
-			const nonGit = `/tmp/contract-test-nongit-${Date.now()}`;
-			fs.mkdirSync(nonGit, { recursive: true });
-			expect(isGitRepo(nonGit)).toBe(false);
-			fs.rmSync(nonGit, { recursive: true, force: true });
+		it("passes through better_than_baseline", () => {
+			expect(normalizeAcceptanceMode("better_than_baseline")).toBe("better_than_baseline");
 		});
-
-		it("isWorkingTreeClean returns true for clean repo", () => {
-			expect(isWorkingTreeClean(testDir)).toBe(true);
+		it("maps legacy manual to better_than_best", () => {
+			expect(normalizeAcceptanceMode("manual")).toBe("better_than_best");
 		});
-
-		it("isWorkingTreeClean returns false for dirty repo", () => {
-			fs.writeFileSync(path.join(testDir, "dirty.txt"), "dirty");
-			expect(isWorkingTreeClean(testDir)).toBe(false);
+		it("maps legacy improvement_threshold to better_than_baseline", () => {
+			expect(normalizeAcceptanceMode("improvement_threshold")).toBe("better_than_baseline");
 		});
+		it("defaults to better_than_baseline for undefined", () => {
+			expect(normalizeAcceptanceMode(undefined)).toBe("better_than_baseline");
+		});
+	});
 
-		it("validateGitSafety passes for clean git repo", () => {
-			const violations = validateGitSafety(testDir, DEFAULT_SAFETY);
+	describe("normalizeAggregate", () => {
+		it("passes through valid V1 aggregates", () => {
+			expect(normalizeAggregate("median")).toBe("median");
+			expect(normalizeAggregate("mean")).toBe("mean");
+			expect(normalizeAggregate("min")).toBe("min");
+			expect(normalizeAggregate("max")).toBe("max");
+		});
+		it("maps legacy single to median", () => {
+			expect(normalizeAggregate("single")).toBe("median");
+		});
+		it("defaults to median for undefined", () => {
+			expect(normalizeAggregate(undefined)).toBe("median");
+		});
+	});
+
+	// ── Git safety (V1 scope) ───────────────────────────────
+
+	describe("validateScopeGitSafety", () => {
+		it("passes for clean git repo", () => {
+			const violations = validateScopeGitSafety(testDir, { requireGit: true, requireCleanGitWorktree: true });
 			expect(violations).toEqual([]);
 		});
 
-		it("validateGitSafety fails for non-git dir", () => {
+		it("fails for non-git dir when requireGit=true", () => {
 			const nonGit = `/tmp/contract-test-nongit2-${Date.now()}`;
 			fs.mkdirSync(nonGit, { recursive: true });
-			const violations = validateGitSafety(nonGit, DEFAULT_SAFETY);
+			const violations = validateScopeGitSafety(nonGit, { requireGit: true, requireCleanGitWorktree: true });
 			expect(violations.length).toBeGreaterThan(0);
 			expect(violations[0]).toContain("git repo");
 			fs.rmSync(nonGit, { recursive: true, force: true });
 		});
 
-		it("validateGitSafety fails for dirty repo", () => {
+		it("fails for dirty repo when requireCleanGitWorktree=true", () => {
 			fs.writeFileSync(path.join(testDir, "dirty.txt"), "dirty");
-			const violations = validateGitSafety(testDir, DEFAULT_SAFETY);
+			const violations = validateScopeGitSafety(testDir, { requireGit: true, requireCleanGitWorktree: true });
 			expect(violations.length).toBeGreaterThan(0);
 			expect(violations[0]).toContain("未コミット");
 		});
 
-		it("validateGitSafety skips git check when requireGit=false", () => {
+		it("skips git check when requireGit=false", () => {
 			const nonGit = `/tmp/contract-test-nongit3-${Date.now()}`;
 			fs.mkdirSync(nonGit, { recursive: true });
-			const safety = { ...DEFAULT_SAFETY, requireGit: false };
-			const violations = validateGitSafety(nonGit, safety);
+			const violations = validateScopeGitSafety(nonGit, { requireGit: false, requireCleanGitWorktree: true });
 			expect(violations).toEqual([]);
 			fs.rmSync(nonGit, { recursive: true, force: true });
 		});
 	});
 
-	// ── Command policy ─────────────────────────────────────────
+	// ── Command policy (string command, autoresearch_run 向け) ────
 
-	describe("command policy", () => {
+	describe("validateCommandString", () => {
 		it("allows safe commands", () => {
-			expect(validateCommand("echo hello", DEFAULT_SAFETY)).toEqual([]);
-			expect(validateCommand("npm test", DEFAULT_SAFETY)).toEqual([]);
-			expect(validateCommand("./bench.sh", DEFAULT_SAFETY)).toEqual([]);
+			expect(validateCommandString("echo hello")).toEqual([]);
+			expect(validateCommandString("npm test")).toEqual([]);
+			expect(validateCommandString("./autoresearch.sh")).toEqual([]);
 		});
 
 		it("rejects sudo commands", () => {
-			const violations = validateCommand("sudo rm -rf /", DEFAULT_SAFETY);
+			const violations = validateCommandString("sudo rm -rf /");
 			expect(violations.length).toBeGreaterThan(0);
 			expect(violations[0]).toContain("sudo");
 		});
 
 		it("rejects rm -rf / commands", () => {
-			const violations = validateCommand("rm -rf /", DEFAULT_SAFETY);
+			const violations = validateCommandString("rm -rf /");
 			expect(violations.length).toBeGreaterThan(0);
+		});
+
+		it("uses DEFAULT_FORBIDDEN_COMMAND_PATTERNS by default", () => {
+			expect(DEFAULT_FORBIDDEN_COMMAND_PATTERNS.length).toBeGreaterThan(0);
 		});
 	});
 
-	// ── Changed files policy ────────────────────────────────────
+	// ── Write paths validation (V1) ─────────────────────────
 
-	describe("changed files policy", () => {
+	describe("validateWritePaths", () => {
 		it("allows all files when no paths specified", () => {
-			expect(validateChangedFiles(["src/a.ts", "lib/b.ts"], DEFAULT_SAFETY)).toEqual([]);
+			expect(validateWritePaths(["src/a.ts", "lib/b.ts"], [], []).violations).toEqual([]);
 		});
 
-		it("rejects files outside allowedPaths", () => {
-			const safety = { ...DEFAULT_SAFETY, allowedPaths: ["^src/"] };
-			const violations = validateChangedFiles(["src/a.ts", "lib/b.ts"], safety);
-			expect(violations.length).toBeGreaterThan(0);
-			expect(violations[0]).toContain("lib/b.ts");
+		it("rejects files not matching allowedWritePaths", () => {
+			const result = validateWritePaths(["src/a.ts", "lib/b.ts"], ["src/"], []);
+			expect(result.violations.length).toBeGreaterThan(0);
 		});
 
-		it("allows files matching allowedPaths", () => {
-			const safety = { ...DEFAULT_SAFETY, allowedPaths: ["^src/"] };
-			expect(validateChangedFiles(["src/a.ts", "src/b.ts"], safety)).toEqual([]);
+		it("allows files matching allowedWritePaths", () => {
+			expect(validateWritePaths(["src/a.ts", "src/b.ts"], ["src/"], []).violations).toEqual([]);
 		});
 
-		it("allows glob-style allowedPaths", () => {
-			const safety = { ...DEFAULT_SAFETY, allowedPaths: ["mekann/**/*.test.ts"] };
-			expect(validateChangedFiles(["mekann/context/output-gate/index.test.ts"], safety)).toEqual([]);
-		});
-
-		it("allows glob-style excludedPaths", () => {
-			const safety = { ...DEFAULT_SAFETY, excludedPaths: [".pi-cache-friendly/**"] };
-			const violations = validateChangedFiles([".pi-cache-friendly/report.json"], safety);
-			expect(violations.length).toBeGreaterThan(0);
-		});
-
-		it("rejects files matching excludedPaths", () => {
-			const safety = { ...DEFAULT_SAFETY, excludedPaths: ["\\.env"] };
-			const violations = validateChangedFiles(["src/a.ts", ".env"], safety);
-			expect(violations.length).toBeGreaterThan(0);
-			expect(violations[0]).toContain(".env");
-		});
-	});
-
-	// ── Contract validation ─────────────────────────────────────
-
-	describe("contract validation", () => {
-		it("validates a complete contract", () => {
-			const contract = buildContract({
-				name: "perf",
-				sessionId: "sess-1",
-				metricName: "duration_seconds",
-				metricUnit: "seconds",
-				direction: "lower",
-				metricMethod: "wall_clock",
-				benchmarkCommand: "./bench.sh",
-			});
-			const result = validateContract(contract);
-			expect(result.valid).toBe(true);
-			expect(result.errors).toEqual([]);
-		});
-
-		it("rejects contract without objective", () => {
-			const contract = buildContract({
-				name: "", sessionId: "s", metricName: "x", metricUnit: "",
-				direction: "lower", metricMethod: "wall_clock", benchmarkCommand: "./x",
-			});
-			contract.objective = "";
-			const result = validateContract(contract);
-			expect(result.valid).toBe(false);
-			expect(result.errors.some(e => e.includes("objective"))).toBe(true);
-		});
-
-		it("warns about manual acceptance mode", () => {
-			const contract = buildContract({
-				name: "test", sessionId: "s", metricName: "x", metricUnit: "",
-				direction: "lower", metricMethod: "wall_clock", benchmarkCommand: "./x",
-				acceptanceMode: "manual",
-			});
-			const result = validateContract(contract);
-			expect(result.warnings.some(w => w.includes("manual"))).toBe(true);
-		});
-
-		it("warns about single wall_clock measurement", () => {
-			const contract = buildContract({
-				name: "test", sessionId: "s", metricName: "duration_seconds", metricUnit: "s",
-				direction: "lower", metricMethod: "wall_clock", benchmarkCommand: "./x",
-			});
-			const result = validateContract(contract);
-			expect(result.warnings.some(w => w.includes("単発"))).toBe(true);
-		});
-
-		it("rejects improvement_threshold without minImprovement", () => {
-			const contract = buildContract({
-				name: "test", sessionId: "s", metricName: "x", metricUnit: "",
-				direction: "lower", metricMethod: "wall_clock", benchmarkCommand: "./x",
-				acceptanceMode: "improvement_threshold", minImprovement: 0,
-			});
-			const result = validateContract(contract);
-			expect(result.valid).toBe(false);
-			expect(result.errors.some(e => e.includes("minImprovement"))).toBe(true);
+		it("rejects files matching forbiddenWritePaths", () => {
+			const result = validateWritePaths(["src/a.ts", ".env"], [], [".env"]);
+			expect(result.violations.length).toBeGreaterThan(0);
+			expect(result.violations[0]).toContain(".env");
 		});
 	});
 });

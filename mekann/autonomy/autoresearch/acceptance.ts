@@ -1,32 +1,52 @@
 /**
- * autoresearch/acceptance.ts — Acceptance policy 判定。
+ * autoresearch/acceptance.ts — Acceptance policy 判定 (V1)。
  *
  * P0-2: keep 判定を tool 側で metric 比較する
  * P0-3: noisy benchmark 用の acceptance policy を入れる
  *
  * agent の status=keep は「希望」であり、
  * acceptance policy を満たさなければ tool 側で keep を拒否する。
+ *
+ * 本モジュールは V1 acceptance shape (`AutoresearchContractV1["acceptance"]`) を扱う。
+ * acceptance mode は `better_than_baseline | better_than_best` のみ(manual/improvement_threshold は
+ * V1 schema で禁止済み)。
+ *
+ * contractEvaluator.ts は lock file や repeats/noise floor を使うフル評価器であり、
+ * 本モジュールは plan-scoped init→log フロー向けの単発 metric 評価を担う。
+ * 改善判定の基準 (reference 選択 + minRelativeImprovement) は contractEvaluator と整合する。
  */
 
-// Types re-exported from contract.ts for backward compatibility with the legacy init→run→log flow.
-// New code should use contractV1/schema.ts types directly.
-import type { AcceptancePolicy, AcceptanceMode, AggregateMethod } from "./contract.js";
+import type { AutoresearchContractV1 } from "./contractV1.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
+/** V1 acceptance policy。contract.acceptance の shape。 */
+export type AcceptancePolicy = AutoresearchContractV1["acceptance"];
+export type AcceptanceMode = AcceptancePolicy["mode"];
+
+/**
+ * V1 benchmark aggregate。legacy "single" は V1 に存在しない(builder が median に正規化)。
+ * acceptance 集計用に single 相当(1 サンプル)も受け入れる。
+ */
+export type AggregateMethod = "single" | "median" | "mean" | "min" | "max";
+
 export interface AcceptanceInput {
 	/** 候補 metric 値 */
 	candidateMetric: number;
-	/** 現在の best metric 値。null = 初回 */
+	/** 現在の best metric 値。null = 初回/baseline 未確立 */
 	bestMetric: number | null;
+	/** baseline metric 値(初回確立時)。null = baseline 未測定 */
+	baselineMetric: number | null;
 	/** 改善方向 */
 	direction: "lower" | "higher";
-	/** acceptance policy */
+	/** acceptance policy (V1) */
 	policy: AcceptancePolicy;
-	/** 繰り返し実行の全測定値 (repeat > 1 の場合)。省略時は candidateMetric をそのまま使う */
+	/** 繰り返し実行の全測定値。省略時は candidateMetric をそのまま使う */
 	allMeasurements?: number[];
+	/** baseline の noise relativeRange。requireImprovementAboveNoiseFloor 時に閾値に上乗せする。省略時は 0 */
+	baselineNoiseRelativeRange?: number;
 }
 
 export interface AcceptanceResult {
@@ -34,9 +54,9 @@ export interface AcceptanceResult {
 	accepted: boolean;
 	/** 集計後の代表値 (aggregate に従う)。測定値が空なら null */
 	representativeMetric: number | null;
-	/** 改善量 (best → candidate)。best=null の場合は 0 */
+	/** 改善量 (reference → candidate)。reference=null の場合は 0 */
 	improvement: number;
-	/** 改善率 (0.02 = 2%改善)。best=null の場合は Infinity */
+	/** 改善率 (0.02 = 2%)。reference=null の場合は Infinity */
 	improvementRate: number;
 	/** 拒否理由 */
 	reason?: string;
@@ -97,11 +117,6 @@ export function calculateImprovement(
 		? best - candidate
 		: candidate - best;
 
-	// 改善率 = |improvement| / |best|
-	const improvementRate = best === 0
-		? (improvement > 0 ? Infinity : improvement < 0 ? -Infinity : 0)
-		: Math.abs(improvement) / Math.abs(best);
-
 	// 符号付き改善率 (正 = 改善、負 = 悪化)
 	const signedRate = direction === "lower"
 		? (best - candidate) / Math.abs(best || 1)
@@ -111,34 +126,53 @@ export function calculateImprovement(
 }
 
 // ---------------------------------------------------------------------------
+// Reference selection (V1: better_than_baseline / better_than_best)
+// ---------------------------------------------------------------------------
+
+/**
+ * V1 acceptance mode に従い、改善判定の reference を選ぶ。
+ * - better_than_baseline: baseline metric を reference にする。baseline が無い場合は candidate が
+ *   baseline 確立として許可される(初回)。
+ * - better_than_best: best metric を reference にする。best が無い場合は baseline、どちらも無ければ初回。
+ *
+ * manual / improvement_threshold は V1 schema で禁止済みのため扱わない。
+ */
+function selectReference(
+	policy: AcceptancePolicy,
+	bestMetric: number | null,
+	baselineMetric: number | null,
+): { reference: number | null; label: string } {
+	if (policy.mode === "better_than_best") {
+		if (bestMetric !== null) return { reference: bestMetric, label: "best" };
+		if (baselineMetric !== null) return { reference: baselineMetric, label: "baseline" };
+		return { reference: null, label: "first" };
+	}
+	// better_than_baseline (default)
+	if (baselineMetric !== null) return { reference: baselineMetric, label: "baseline" };
+	if (bestMetric !== null) return { reference: bestMetric, label: "best" };
+	return { reference: null, label: "first" };
+}
+
+// ---------------------------------------------------------------------------
 // Acceptance evaluation
 // ---------------------------------------------------------------------------
 
 /**
- * Acceptance policy に従って keep の可否を判定する。
+ * Acceptance policy に従って keep の可否を判定する (V1)。
  *
  * mode:
- * - better_than_best: best より厳密に良い場合のみ許可。minImprovement も適用。
- * - improvement_threshold: minImprovement 以上の改善が必要。
- * - manual: agent の判断をそのまま信頼する(acceptance check は通す)。
+ * - better_than_baseline: baseline より改善が必要。
+ * - better_than_best: best より改善が必要。
+ *
+ * どちらも minRelativeImprovement (改善率の最小閾値) を適用する。
+ * requireImprovementAboveNoiseFloor=true の場合は baseline の noise relativeRange を閾値に上乗せする。
  */
 export function evaluateAcceptance(input: AcceptanceInput): AcceptanceResult {
-	const { policy, direction, bestMetric } = input;
-
-	// manual mode: agent の判断を信頼
-	if (policy.mode === "manual") {
-		return {
-			accepted: true,
-			representativeMetric: input.candidateMetric,
-			improvement: 0,
-			improvementRate: bestMetric === null ? Infinity : 0,
-			reason: "acceptance.mode=manual: agent の判断を信頼します",
-		};
-	}
+	const { policy, direction } = input;
 
 	// 集計
 	const measurements = input.allMeasurements ?? [input.candidateMetric];
-	const representative = aggregateMeasurements(measurements, policy.aggregate);
+	const representative = aggregateMeasurements(measurements, "single");
 	if (representative === null) {
 		return {
 			accepted: false,
@@ -148,23 +182,26 @@ export function evaluateAcceptance(input: AcceptanceInput): AcceptanceResult {
 			reason: "測定値が空のため acceptance を評価できません",
 		};
 	}
-	const { improvement, improvementRate } = calculateImprovement(representative, bestMetric, direction);
 
-	// 初回 (best = null): ベースライン確立として常に許可
-	if (bestMetric === null) {
+	const { reference, label } = selectReference(policy, input.bestMetric, input.baselineMetric);
+
+	// 初回 (reference = null): ベースライン確立として常に許可
+	if (reference === null) {
 		return {
 			accepted: true,
 			representativeMetric: representative,
 			improvement: 0,
 			improvementRate: Infinity,
-			reason: "初回ベースライン測定として許可",
+			reason: `初回ベースライン測定として許可 (mode=${policy.mode})`,
 		};
 	}
 
+	const { improvement, improvementRate } = calculateImprovement(representative, reference, direction);
+
 	// 改善判定
 	const isImprovement = direction === "lower"
-		? representative < bestMetric
-		: representative > bestMetric;
+		? representative < reference
+		: representative > reference;
 
 	if (!isImprovement) {
 		return {
@@ -172,21 +209,26 @@ export function evaluateAcceptance(input: AcceptanceInput): AcceptanceResult {
 			representativeMetric: representative,
 			improvement,
 			improvementRate,
-			reason: `指標が悪化または変化なし: ${representative} vs best ${bestMetric} (direction=${direction})`,
+			reason: `指標が悪化または変化なし: ${representative} vs ${label} ${reference} (direction=${direction})`,
 		};
 	}
 
-	// minImprovement チェック
-	if (policy.minImprovement > 0) {
-		if (Math.abs(improvementRate) < policy.minImprovement) {
-			return {
-				accepted: false,
-				representativeMetric: representative,
-				improvement,
-				improvementRate,
-				reason: `改善率 ${(improvementRate * 100).toFixed(2)}% が最小閾値 ${(policy.minImprovement * 100).toFixed(2)}% を下回っています。ノイズの可能性があります。`,
-			};
-		}
+	// 必要改善率: minRelativeImprovement と (要求時は) noise floor の大きい方
+	let requiredImprovement = policy.minRelativeImprovement;
+	if (policy.requireImprovementAboveNoiseFloor) {
+		const noise = input.baselineNoiseRelativeRange ?? 0;
+		requiredImprovement = Math.max(requiredImprovement, noise);
+	}
+
+	// 改善率チェック
+	if (Math.abs(improvementRate) < requiredImprovement) {
+		return {
+			accepted: false,
+			representativeMetric: representative,
+			improvement,
+			improvementRate,
+			reason: `改善率 ${(Math.abs(improvementRate) * 100).toFixed(2)}% が最小閾値 ${(requiredImprovement * 100).toFixed(2)}% を下回っています。ノイズの可能性があります。`,
+		};
 	}
 
 	return {
@@ -194,6 +236,6 @@ export function evaluateAcceptance(input: AcceptanceInput): AcceptanceResult {
 		representativeMetric: representative,
 		improvement,
 		improvementRate,
-		reason: `指標改善: ${representative} vs best ${bestMetric} (改善率 ${(Math.abs(improvementRate) * 100).toFixed(2)}%)`,
+		reason: `指標改善: ${representative} vs ${label} ${reference} (改善率 ${(Math.abs(improvementRate) * 100).toFixed(2)}%)`,
 	};
 }

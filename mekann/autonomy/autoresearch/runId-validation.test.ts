@@ -551,7 +551,10 @@ describe("autoresearchExtension", () => {
 			// Run benchmark
 			await runBenchmark(pi.tools, ctx);
 
-			// Log keep → should create a commit
+			// Log keep → should create a commit. 候補変更を用意する
+			// (V1 移行で init は .autoresearch/ 内に contract を書くため commit 対象外。
+			// 代わりに dummy.txt の候補変更が commit される)
+			fs.writeFileSync(path.join(testDir, "dummy.txt"), "candidate change");
 			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
 			const result = await logTool.execute(
 				"tc-log-commit",

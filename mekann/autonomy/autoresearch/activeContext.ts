@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ExperimentContract } from "./contract.js";
+import type { AutoresearchContractV1 } from "./contractV1.js";
 import { readState as readStateV2 } from "./layout.js";
 import type { SessionStore } from "./tools/sessionStore.js";
 
@@ -35,7 +35,7 @@ function journalPathV2(cwd: string): string {
 	return path.join(cwd, ".autoresearch", "journal.jsonl");
 }
 
-export function buildActiveContext(cwd: string, store: SessionStore, readCurrentPlanContract: (cwd: string) => ExperimentContract | null): string {
+export function buildActiveContext(cwd: string, store: SessionStore, readCurrentPlanContract: (cwd: string) => AutoresearchContractV1 | null): string {
 	const s2 = readStateV2(cwd);
 	const lines: string[] = ["", "### autoresearch 現在状態", ""];
 
@@ -60,20 +60,18 @@ export function buildActiveContext(cwd: string, store: SessionStore, readCurrent
 	if (s2.latestRunId) lines.push(`latestRunId: ${s2.latestRunId}`);
 	if (s2.bestRunId) lines.push(`bestRunId: ${s2.bestRunId}`);
 
-	// contract summary
+	// contract summary (V1 shape)
 	const planContract = readCurrentPlanContract(cwd);
 	if (planContract) {
-		const pm = (planContract as any).evaluation?.primaryMetric ?? (planContract as any).primaryMetric;
-		if (pm) lines.push(`contract.metric: ${pm.name}(${pm.direction})`);
-		const bench = (planContract as any).benchmarkCommand ?? (planContract as any).benchmark?.command;
-		if (bench) lines.push(`benchmark: ${bench}`);
-		const checks = (planContract as any).checks ?? (planContract as any).evaluation?.checks;
-		if (checks) {
-			const mode = typeof checks === "object" && checks.mode ? checks.mode : "?";
-			lines.push(`checks.mode: ${mode}`);
+		const pm = planContract.evaluation.primaryMetric;
+		lines.push(`contract.metric: ${pm.name}(${pm.direction})`);
+		const benchArgv = planContract.evaluation.benchmark.command.argv;
+		lines.push(`benchmark: ${benchArgv.join(" ")}`);
+		const checks = planContract.evaluation.checks;
+		if (checks.length > 0) {
+			lines.push(`checks: ${checks.length} 個`);
 		}
-		const acceptance = (planContract as any).acceptance ?? (planContract as any).evaluation?.acceptance;
-		if (acceptance) lines.push(`acceptance.mode: ${acceptance.mode ?? "?"}`);
+		lines.push(`acceptance.mode: ${planContract.acceptance.mode}`);
 	}
 
 	// recent journal

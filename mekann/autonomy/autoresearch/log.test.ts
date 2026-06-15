@@ -432,6 +432,10 @@ describe("autoresearchExtension", () => {
 			// The JSONL file written by init is untracked, so keep will commit it
 			const logTool = pi.tools.find((t) => t.name === "autoresearch_log")!;
 			await runBenchmark(pi.tools, ctx);
+			// keep 時に候補変更が git auto commit されることを検証する。
+			// (旧テストは writeContract が root contract を書くことに依存していたが、V1 移行で
+			// init は .autoresearch/ 内に contract を書くため commit 対象外。代わりに候補変更を用意する)
+			fs.writeFileSync(path.join(testDir, "dummy.txt"), "candidate change");
 			const result = await logTool.execute(
 				"tc-log8",
 				{ metric: 50, status: "keep", description: "auto commit" },

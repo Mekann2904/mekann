@@ -3,6 +3,39 @@
  */
 
 import * as path from "node:path";
+import { isGitRepo, isWorkingTreeClean } from "../git.js";
+
+// ---------------------------------------------------------------------------
+// Git safety (V1 scope ベース)
+// ---------------------------------------------------------------------------
+
+/**
+ * V1 contract scope の git 前提を検証し、 violations を返す。
+ *
+ * scope.requireGit=true なら git repo を必須とし、scope.requireCleanGitWorktree=true なら
+ * init 時に clean working tree を必須とする。旧 validateGitSafety(SafetyPolicy) と等価だが、
+ * V1 scope shape に直接作用する。
+ */
+export function validateScopeGitSafety(
+	cwd: string,
+	scope: { requireGit: boolean; requireCleanGitWorktree: boolean },
+): string[] {
+	const violations: string[] = [];
+
+	if (scope.requireGit && !isGitRepo(cwd)) {
+		violations.push("git repo ではありません。autoresearch は git repo で使用してください。");
+	}
+
+	if (scope.requireCleanGitWorktree && isGitRepo(cwd) && !isWorkingTreeClean(cwd)) {
+		violations.push(
+			"working tree に未コミット変更があります。\n" +
+			"実験トランザクションの整合性のため、開始前に commit または stash してください。\n" +
+			"または `autoresearch_init` で `require_clean_baseline: false` を指定してください。",
+		);
+	}
+
+	return violations;
+}
 
 // ---------------------------------------------------------------------------
 // Path matching
@@ -92,7 +125,7 @@ export function validateWritePaths(
 
 /**
  * Check if a path is an internal autoresearch or .pi artifact path.
- * These should be excluded from candidate changedFiles.
+ * These should be excluded from candidate changedFiles (autoresearch 自身が生成・管理する監査対象外ファイル)。
  */
 export function isInternalArtifactPath(p: string): boolean {
 	const n = p.replace(/\\/g, "/");
@@ -101,7 +134,12 @@ export function isInternalArtifactPath(p: string): boolean {
 		n.startsWith(".autoresearch/") ||
 		n === ".pi" ||
 		n.startsWith(".pi/") ||
-		n === "autoresearch.plan.md"
+		n === "autoresearch.plan.md" ||
+		n === "autoresearch.sh" ||
+		n === "autoresearch.checks.sh" ||
+		n === "autoresearch.md" ||
+		n === "autoresearch.jsonl" ||
+		n === "autoresearch.contract.json"
 	);
 }
 
@@ -212,4 +250,50 @@ export function resolveCwdInsideRepo(repoRoot: string, cwd: string): string {
 		throw new Error("cwd escapes repo: " + cwd + " -> " + resolved);
 	}
 	return resolved;
+}
+
+// ---------------------------------------------------------------------------
+// String command safety (autoresearch_run 向け standalone)
+// ---------------------------------------------------------------------------
+
+/**
+ * autoresearch_run が bash -c <string> で実行するコマンド向けの危険パターン。
+ *
+ * これは contract データモデル(contract.scope)ではなく、autoresearch_run tool の実行モデルに
+ * 属する固定の安全ガードである。argv command を使う V1 contract フロー(plan/approve/runContract)
+ * は validateCommandSafety(argv) を使い、本パターンは使わない。
+ *
+ * 旧 DEFAULT_SAFETY.forbiddenCommandPatterns と等価(legacy contract から切り離して standalone 化)。
+ */
+export const DEFAULT_FORBIDDEN_COMMAND_PATTERNS: readonly string[] = [
+	"\\bsudo\\b",
+	"\\brm\\s+-rf\\s+/",
+	"\\bdd\\s+if=",
+	"\\bmkfs\\.",
+	"\\bformat\\b.*:",
+	":\\(\\)\\s*\\{.*\\}.*\\(",  // fork bomb
+];
+
+/**
+ * 文字列コマンドが危険パターンに一致するかを検証する (autoresearch_run 向け)。
+ *
+ * contract に依存せず、DEFAULT_FORBIDDEN_COMMAND_PATTERNS (または呼び出し側が指定した patterns)
+ * に対して正規表現マッチを行う。
+ */
+export function validateCommandString(
+	command: string,
+	patterns: readonly string[] = DEFAULT_FORBIDDEN_COMMAND_PATTERNS,
+): string[] {
+	const violations: string[] = [];
+	for (const pattern of patterns) {
+		try {
+			const re = new RegExp(pattern);
+			if (re.test(command)) {
+				violations.push(`禁止コマンドパターン "${pattern}" に一致します: ${command}`);
+			}
+		} catch {
+			// 無効な正規表現はスキップ
+		}
+	}
+	return violations;
 }

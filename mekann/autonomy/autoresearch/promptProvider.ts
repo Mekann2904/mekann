@@ -1,4 +1,4 @@
-import type { ExperimentContract } from "./contract.js";
+import type { AutoresearchContractV1 } from "./contractV1.js";
 import { COMPLETE_MARKER } from "./runner.js";
 import { buildActiveContext } from "./activeContext.js";
 import type { SessionStore } from "./tools/sessionStore.js";
@@ -33,7 +33,7 @@ const SYSTEM_PROMPT_INACTIVE = [
 
 export function registerAutoresearchPromptProvider(
 	store: SessionStore,
-	readCurrentPlanContract: (cwd: string) => ExperimentContract | null,
+	readCurrentPlanContract: (cwd: string) => AutoresearchContractV1 | null,
 ): void {
 	registerPromptProvider({
 		id: "autoresearch",

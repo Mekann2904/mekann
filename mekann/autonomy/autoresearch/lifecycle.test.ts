@@ -369,6 +369,24 @@ describe("autoresearchExtension", () => {
 			expect(result.details).toMatchObject({ direction: "higher" });
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});
+
+		it("normalizes legacy manual acceptance_mode through the init tool", async () => {
+			const testDir = createGitTestDir();
+			const cmdHandler = pi.commands.get("autoresearch")!.handler;
+			const ctx = createMockCtx({ cwd: testDir });
+			await cmdHandler("on", ctx);
+
+			const initTool = pi.tools.find((t) => t.name === "autoresearch_init")!;
+			const result = await initTool.execute(
+				"tc-init-legacy-acceptance",
+				{ name: "test", metric_name: "score", acceptance_mode: "manual" },
+				undefined,
+				undefined,
+				ctx,
+			);
+			expect(result.details.acceptance).toMatchObject({ mode: "better_than_best" });
+			fs.rmSync(testDir, { recursive: true, force: true });
+		});
 	});
 
 	describe("updateWidget with hasUI=false", () => {

@@ -10,9 +10,9 @@ import { execFileSync } from "node:child_process";
 
 import { appendToJsonl, type EventLedgerEntry, type RunsLedgerEntry } from "../state.js";
 import {
-	validateCommand,
-	type ExperimentContract,
-} from "../contract.js";
+	validateCommandString,
+	type AutoresearchContractV1,
+} from "../contractV1.js";
 import {
 	runCommand,
 	runArgvCommand,
@@ -46,7 +46,7 @@ export async function executeRun(
 	signal: any,
 	ctx: ExtensionContext,
 	deps: {
-		readCurrentPlanContract: (cwd: string) => ExperimentContract | null;
+		readCurrentPlanContract: (cwd: string) => AutoresearchContractV1 | null;
 		sessionDir: (cwd: string, sessionId: string) => string;
 		eventsLedgerPath: (cwd: string, sessionId: string) => string;
 		runsLedgerPath: (cwd: string, sessionId: string) => string;
@@ -56,9 +56,11 @@ export async function executeRun(
 	if (!store.active) return store.INACTIVE_RESPONSE;
 
 	// --- P0-7: Command policy チェック ---
+	// autoresearch_run は文字列コマンドを bash -c で実行する tool 実行モデルのため、
+	// contract.scope ではなく standalone の validateCommandString (DEFAULT_FORBIDDEN_COMMAND_PATTERNS) で検証する。
 	const contract = deps.readCurrentPlanContract(ctx.cwd);
 	if (contract) {
-		const cmdViolations = validateCommand(params.command, contract.safety);
+		const cmdViolations = validateCommandString(params.command);
 		if (cmdViolations.length > 0) {
 			return store.textDetails(
 				`[ERROR] コマンドが safety policy に違反しています:\n${cmdViolations.map((v: string, i: number) => `  ${i + 1}. ${v}`).join("\n")}`,
