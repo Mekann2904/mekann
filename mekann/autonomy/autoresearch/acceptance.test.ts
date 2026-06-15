@@ -1,5 +1,8 @@
 /**
- * autoresearch/acceptance.test.ts — Acceptance Policy のテスト。
+ * autoresearch/acceptance.test.ts — V1 Acceptance Policy のテスト。
+ *
+ * V1 acceptance shape (better_than_baseline | better_than_best + minRelativeImprovement)
+ * に基づく acceptance 評価を検証する。manual/improvement_threshold は V1 schema で禁止済み。
  */
 
 import { describe, it, expect } from "vitest";
@@ -7,10 +10,15 @@ import {
 	evaluateAcceptance,
 	aggregateMeasurements,
 	calculateImprovement,
+	DEFAULT_V1_ACCEPTANCE,
 	type AcceptanceInput,
 } from "./acceptance.js";
 
-describe("acceptance module", () => {
+function v1Policy(overrides?: Partial<typeof DEFAULT_V1_ACCEPTANCE>): typeof DEFAULT_V1_ACCEPTANCE {
+	return { ...DEFAULT_V1_ACCEPTANCE, ...overrides };
+}
+
+describe("acceptance module (V1)", () => {
 	// ── Aggregation ─────────────────────────────────────────
 
 	describe("aggregateMeasurements", () => {
@@ -81,101 +89,122 @@ describe("acceptance module", () => {
 		});
 	});
 
-	// ── Acceptance evaluation ───────────────────────────────
+	// ── Acceptance evaluation (V1) ─────────────────────────
 
 	describe("evaluateAcceptance", () => {
-		const basePolicy = { mode: "better_than_best" as const, minImprovement: 0, repeat: 1, aggregate: "single" as const };
+		const baselinePolicy = v1Policy({ mode: "better_than_baseline", minRelativeImprovement: 0 });
 
-		it("accepts first measurement as baseline", () => {
-			const result = evaluateAcceptance({
-				candidateMetric: 100, bestMetric: null, direction: "lower", policy: basePolicy,
-			});
+		it("accepts first measurement when reference is null (baseline establishment)", () => {
+			const input: AcceptanceInput = {
+				candidateMetric: 100, bestMetric: null, baselineMetric: null,
+				direction: "lower", policy: baselinePolicy,
+			};
+			const result = evaluateAcceptance(input);
 			expect(result.accepted).toBe(true);
 			expect(result.representativeMetric).toBe(100);
 		});
 
-		it("accepts improvement in lower direction", () => {
-			const result = evaluateAcceptance({
-				candidateMetric: 80, bestMetric: 100, direction: "lower", policy: basePolicy,
-			});
+		it("accepts improvement in lower direction (better_than_baseline)", () => {
+			const input: AcceptanceInput = {
+				candidateMetric: 80, bestMetric: null, baselineMetric: 100,
+				direction: "lower", policy: baselinePolicy,
+			};
+			const result = evaluateAcceptance(input);
 			expect(result.accepted).toBe(true);
 			expect(result.representativeMetric).toBe(80);
 		});
 
 		it("rejects regression in lower direction", () => {
-			const result = evaluateAcceptance({
-				candidateMetric: 120, bestMetric: 100, direction: "lower", policy: basePolicy,
-			});
+			const input: AcceptanceInput = {
+				candidateMetric: 120, bestMetric: null, baselineMetric: 100,
+				direction: "lower", policy: baselinePolicy,
+			};
+			const result = evaluateAcceptance(input);
 			expect(result.accepted).toBe(false);
 			expect(result.reason).toContain("悪化");
 		});
 
 		it("accepts improvement in higher direction", () => {
-			const result = evaluateAcceptance({
-				candidateMetric: 120, bestMetric: 100, direction: "higher", policy: basePolicy,
-			});
+			const input: AcceptanceInput = {
+				candidateMetric: 120, bestMetric: null, baselineMetric: 100,
+				direction: "higher", policy: baselinePolicy,
+			};
+			const result = evaluateAcceptance(input);
 			expect(result.accepted).toBe(true);
 		});
 
 		it("rejects regression in higher direction", () => {
-			const result = evaluateAcceptance({
-				candidateMetric: 80, bestMetric: 100, direction: "higher", policy: basePolicy,
-			});
+			const input: AcceptanceInput = {
+				candidateMetric: 80, bestMetric: null, baselineMetric: 100,
+				direction: "higher", policy: baselinePolicy,
+			};
+			const result = evaluateAcceptance(input);
 			expect(result.accepted).toBe(false);
 		});
 
 		it("rejects no change", () => {
-			const result = evaluateAcceptance({
-				candidateMetric: 100, bestMetric: 100, direction: "lower", policy: basePolicy,
-			});
+			const input: AcceptanceInput = {
+				candidateMetric: 100, bestMetric: null, baselineMetric: 100,
+				direction: "lower", policy: baselinePolicy,
+			};
+			const result = evaluateAcceptance(input);
 			expect(result.accepted).toBe(false);
 		});
 
-		it("applies minImprovement threshold", () => {
-			const policy = { ...basePolicy, minImprovement: 0.05 }; // 5% minimum
+		it("applies minRelativeImprovement threshold", () => {
+			const policy = v1Policy({ mode: "better_than_baseline", minRelativeImprovement: 0.05 });
 			// 2% improvement → rejected
 			const r1 = evaluateAcceptance({
-				candidateMetric: 98, bestMetric: 100, direction: "lower", policy,
+				candidateMetric: 98, bestMetric: null, baselineMetric: 100,
+				direction: "lower", policy,
 			});
 			expect(r1.accepted).toBe(false);
 			expect(r1.reason).toContain("閾値");
 
 			// 6% improvement → accepted
 			const r2 = evaluateAcceptance({
-				candidateMetric: 94, bestMetric: 100, direction: "lower", policy,
+				candidateMetric: 94, bestMetric: null, baselineMetric: 100,
+				direction: "lower", policy,
 			});
 			expect(r2.accepted).toBe(true);
 		});
 
-		it("manual mode always accepts", () => {
-			const policy = { ...basePolicy, mode: "manual" as const };
+		it("better_than_best uses bestMetric as reference when available", () => {
+			const policy = v1Policy({ mode: "better_than_best", minRelativeImprovement: 0 });
 			const result = evaluateAcceptance({
-				candidateMetric: 120, bestMetric: 100, direction: "lower", policy,
+				candidateMetric: 80, bestMetric: 90, baselineMetric: 100,
+				direction: "lower", policy,
 			});
 			expect(result.accepted).toBe(true);
-			expect(result.reason).toContain("manual");
 		});
 
-		it("uses aggregated value with multiple measurements", () => {
-			const policy = { ...basePolicy, aggregate: "median" as const, repeat: 3 };
-			// Median of [90, 80, 70] = 80 → improvement over 100
+		it("better_than_best falls back to baseline when best is null", () => {
+			const policy = v1Policy({ mode: "better_than_best", minRelativeImprovement: 0 });
 			const result = evaluateAcceptance({
-				candidateMetric: 80, bestMetric: 100, direction: "lower", policy,
-				allMeasurements: [90, 80, 70],
+				candidateMetric: 90, bestMetric: null, baselineMetric: 100,
+				direction: "lower", policy,
 			});
 			expect(result.accepted).toBe(true);
-			expect(result.representativeMetric).toBe(80);
 		});
 
-		it("uses aggregated value that may differ from candidateMetric", () => {
-			const policy = { ...basePolicy, aggregate: "median" as const };
-			// Median of [120, 80, 70] = 80 → improvement
-			const result = evaluateAcceptance({
-				candidateMetric: 120, bestMetric: 100, direction: "lower", policy,
-				allMeasurements: [120, 80, 70],
+		it("requireImprovementAboveNoiseFloor adds noise to threshold", () => {
+			const policy = v1Policy({
+				mode: "better_than_baseline",
+				minRelativeImprovement: 0.02,
+				requireImprovementAboveNoiseFloor: true,
 			});
-			expect(result.accepted).toBe(true);
-			expect(result.representativeMetric).toBe(80);
+			// noise=0.10 → required=0.10。3% improvement → rejected (below noise floor)
+			const r1 = evaluateAcceptance({
+				candidateMetric: 97, bestMetric: null, baselineMetric: 100,
+				direction: "lower", policy, baselineNoiseRelativeRange: 0.10,
+			});
+			expect(r1.accepted).toBe(false);
+			// 12% improvement → accepted (above noise floor 0.10)
+			const r2 = evaluateAcceptance({
+				candidateMetric: 88, bestMetric: null, baselineMetric: 100,
+				direction: "lower", policy, baselineNoiseRelativeRange: 0.10,
+			});
+			expect(r2.accepted).toBe(true);
 		});
 	});
 });

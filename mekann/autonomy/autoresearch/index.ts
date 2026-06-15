@@ -43,22 +43,6 @@ import {
 	type LockFile,
 } from "./contractV1.js";
 import {
-	readContract,
-	deleteContract,
-	validateGitSafety,
-	validateCommand,
-	validateContract,
-	buildContract,
-	isGitRepo,
-	getBaselineCommit,
-	DEFAULT_SAFETY,
-	type ExperimentContract,
-	type AcceptanceMode,
-	type MetricMethod,
-	type ChecksMode,
-	type AggregateMethod,
-} from "./contract.js";
-import {
 	runCommand,
 	runArgvCommand,
 	runChecks,
@@ -70,7 +54,6 @@ import {
 	getChangedFiles,
 	isGitDirty,
 	generatePiRunId,
-	generateRunId,
 	createRunArtifactDir,
 	filterSecrets,
 	hasCompleteMarker,
@@ -170,13 +153,14 @@ function bestPointerPath(cwd: string, sessionId: string): string {
 	return path.join(sessionDir(cwd, sessionId), "best.pointer.json");
 }
 
-function readCurrentPlanContract(cwd: string): ExperimentContract | null {
+function readCurrentPlanContract(cwd: string): AutoresearchContractV1 | null {
 	const s = readStateV2(cwd);
 	if (s.currentPlanDir) {
-		try { return JSON.parse(fs.readFileSync(path.join(cwd, s.currentPlanDir, "contract.json"), "utf8")) as ExperimentContract; }
+		try { return JSON.parse(fs.readFileSync(path.join(cwd, s.currentPlanDir, "contract.json"), "utf8")) as AutoresearchContractV1; }
 		catch { return null; }
 	}
-	return readContract(cwd);
+	// plan 未選択時は contract mode (.autoresearch/current.contract.json) を試す
+	return readCurrentContract(cwd);
 }
 
 // Shared deps object for tool handlers
@@ -214,12 +198,13 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 			store.state = freshState();
 			store.state.sessionId = s2.sessionId ?? store.state.sessionId;
 
-			const c = readCurrentPlanContract(ctx.cwd) as any;
+			const c = readCurrentPlanContract(ctx.cwd);
 			if (c) {
-				store.state.name = c.name ?? store.state.name;
-				store.state.metricName = c.metricName ?? c.primaryMetric?.name ?? c.evaluation?.primaryMetric?.name ?? store.state.metricName;
-				store.state.metricUnit = c.metricUnit ?? c.primaryMetric?.unit ?? store.state.metricUnit;
-				store.state.direction = (c.direction ?? c.primaryMetric?.direction ?? c.evaluation?.primaryMetric?.direction ?? store.state.direction) as "lower" | "higher";
+				const pm = c.evaluation.primaryMetric;
+				store.state.name = c.objective.summary ?? store.state.name;
+				store.state.metricName = pm.name;
+				store.state.metricUnit = pm.unit ?? store.state.metricUnit;
+				store.state.direction = pm.direction as "lower" | "higher";
 			}
 
 			if (s2.bestMetric) {

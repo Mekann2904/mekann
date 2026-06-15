@@ -8,9 +8,9 @@ import * as path from "node:path";
 
 import type { ExperimentState, RunEntry, RunStatus, EventLedgerEntry } from "../state.js";
 import { isBestMetric, countByStatus, appendToJsonl, readPointer, writePointer, isBestPointerMetric } from "../state.js";
-import type { ExperimentContract } from "../contract.js";
+import type { AutoresearchContractV1 } from "../contractV1.js";
 import type { AcceptanceInput } from "../acceptance.js";
-import { validateChangedFiles } from "../contract.js";
+import { validateWritePaths, filterInternalPaths } from "../contractV1.js";
 import { evaluateAcceptance } from "../acceptance.js";
 import { readState as readStateV2, writeState as writeStateV2, appendJournal } from "../layout.js";
 import {
@@ -29,7 +29,7 @@ import { findRunData, ensureSessionDir } from "./sharedHelpers.js";
 // ─── Types ────────────────────────────────────────────────────
 
 export interface LogDeps {
-	readCurrentPlanContract: (cwd: string) => ExperimentContract | null;
+	readCurrentPlanContract: (cwd: string) => AutoresearchContractV1 | null;
 	sessionDir: (cwd: string, sid: string) => string;
 	jsonlPath: (cwd: string) => string;
 	eventsLedgerPath: (cwd: string, sid: string) => string;
@@ -154,27 +154,29 @@ export async function executeLog(
 			return store.textResponse(`[ERROR] keep が拒否されました:\n${reasons.map((r, i) => `  ${i + 1}. ${r}`).join("\n")}\n\nstatus=discard または status=crash または status=checks_failed で記録してください。`);
 		}
 
-		// --- P0-2: Acceptance policy 強制 ---
+		// --- P0-2: Acceptance policy 強制 (V1) ---
 		if (contract) {
 			const acceptanceInput: AcceptanceInput = {
 				candidateMetric: effectiveMetric,
 				bestMetric: state.bestMetric,
+				baselineMetric: null, // plan-scoped init→log フローは baseline ledger を持たないため null
 				direction: state.direction,
 				policy: contract.acceptance,
 			};
 			const acceptanceResult = evaluateAcceptance(acceptanceInput);
 
 			if (!acceptanceResult.accepted) {
-				return store.textDetails(`[ERROR] acceptance policy により keep が拒否されました:\n${acceptanceResult.reason}\n\ncandidate: ${effectiveMetric} vs best: ${state.bestMetric}\nacceptance mode: ${contract.acceptance.mode}\nminImprovement: ${(contract.acceptance.minImprovement * 100).toFixed(1)}%\n\nstatus=discard で記録してください。改善が不十分(noise)な場合は、別のアプローチを試してください。`, { acceptanceResult, effectiveMetric, bestMetric: state.bestMetric });
+				return store.textDetails(`[ERROR] acceptance policy により keep が拒否されました:\n${acceptanceResult.reason}\n\ncandidate: ${effectiveMetric} vs best: ${state.bestMetric}\nacceptance mode: ${contract.acceptance.mode}\nminRelativeImprovement: ${(contract.acceptance.minRelativeImprovement * 100).toFixed(1)}%\n\nstatus=discard で記録してください。改善が不十分(noise)な場合は、別のアプローチを試してください。`, { acceptanceResult, effectiveMetric, bestMetric: state.bestMetric });
 			}
 		}
 
-		// --- P0-1: 変更ファイルが safety policy に収まっているか ---
+		// --- P0-1: 変更ファイルが V1 scope の write-path policy に収まっているか ---
+		// autoresearch 内部 artifact (.autoresearch/, .pi/, autoresearch.plan.md) は監査対象外のため除外
 		if (contract) {
-			const preChangedFiles = getChangedFiles(ctx.cwd);
-			const pathViolations = validateChangedFiles(preChangedFiles, contract.safety);
+			const preChangedFiles = filterInternalPaths(getChangedFiles(ctx.cwd));
+			const pathViolations = validateWritePaths(preChangedFiles, contract.scope.allowedWritePaths, contract.scope.forbiddenWritePaths).violations;
 			if (pathViolations.length > 0) {
-				return store.textDetails(`[ERROR] 変更ファイルが safety policy に違反:\n${pathViolations.map((v, i) => `  ${i + 1}. ${v}`).join("\n")}\n\nstatus=discard で記録してください。許可されたパス内に収まるように変更してください。`, { pathViolations, changedFiles: preChangedFiles });
+				return store.textDetails(`[ERROR] 変更ファイルが scope の write-path policy に違反:\n${pathViolations.map((v, i) => `  ${i + 1}. ${v}`).join("\n")}\n\nstatus=discard で記録してください。許可されたパス内に収まるように変更してください。`, { pathViolations, changedFiles: preChangedFiles });
 			}
 		}
 	}

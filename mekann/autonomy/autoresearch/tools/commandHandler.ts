@@ -8,7 +8,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { deleteContract } from "../contract.js";
+import { currentContractPath } from "../contractV1.js";
 import { freshState } from "../state.js";
 import type { SessionStore } from "./sessionStore.js";
 import {
@@ -67,7 +67,10 @@ export async function handleCommand(
 			const clearAll = parts[1] === "all";
 			const jp = deps.jsonlPath(ctx.cwd);
 			try { if (fs.existsSync(jp)) fs.rmSync(jp, { recursive: true, force: true }); } catch {}
-			deleteContract(ctx.cwd);
+			// contract mode (.autoresearch/current.contract.json) を削除
+			try { const ccp = currentContractPath(ctx.cwd); if (fs.existsSync(ccp)) fs.rmSync(ccp, { force: true }); } catch {}
+			// legacy root autoresearch.contract.json が残っていれば削除 (best-effort)
+			try { const lp = path.join(ctx.cwd, "autoresearch.contract.json"); if (fs.existsSync(lp)) fs.rmSync(lp, { force: true }); } catch {}
 			const clearWarnings: string[] = [];
 			try {
 				if (clearAll) {
