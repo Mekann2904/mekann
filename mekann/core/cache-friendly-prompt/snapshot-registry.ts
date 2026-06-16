@@ -8,6 +8,12 @@
  */
 
 import type { PromptRequestSnapshotState } from "./request-snapshot.js";
+import type { CacheFriendlyRequestRole } from "../prompt-core/index.js";
+
+export type RoleOnlyMemo = {
+	requestRole: CacheFriendlyRequestRole;
+	requestRoleSource: string;
+};
 
 // ---------------------------------------------------------------------------
 // Limits
@@ -26,6 +32,12 @@ export class PromptRequestSnapshotRegistry {
 	private readonly stateByRequestId = new Map<string, PromptRequestSnapshotState>();
 	private readonly stateQueuesByProviderModel = new Map<string, PromptRequestSnapshotState[]>();
 	private readonly actualUsageKeys = new Set<string>();
+	/**
+	 * Role resolved at `before_agent_start` even when fragment re-injection was
+	 * skipped (inherited cache-friendly fragments). Keyed by runKey so provider /
+	 * message hooks can recover the role when no full snapshot was registered.
+	 */
+	private readonly roleOnlyByRun = new Map<string, RoleOnlyMemo>();
 
 	// ── Run + request-id state ────────────────────────────────────
 
@@ -56,6 +68,23 @@ export class PromptRequestSnapshotRegistry {
 
 	getByRequestId(requestId: string): PromptRequestSnapshotState | undefined {
 		return this.stateByRequestId.get(requestId);
+	}
+
+	// ── Role-only memo (early-return path) ─────────────────────
+
+	/**
+	 * Remember a resolved role for a run even when no full snapshot was
+	 * registered (e.g. `before_agent_start` skipped fragment injection because
+	 * the incoming prompt already carried cache-friendly fragments).
+	 */
+	rememberRoleOnly(key: string, memo: RoleOnlyMemo): void {
+		this.roleOnlyByRun.delete(key);
+		this.roleOnlyByRun.set(key, memo);
+		this.trimToCapacity(this.roleOnlyByRun, MAX_RUN_STATES);
+	}
+
+	getRoleOnly(key: string): RoleOnlyMemo | undefined {
+		return this.roleOnlyByRun.get(key);
 	}
 
 	// ── Provider-model FIFO queue ─────────────────────────────────
@@ -92,11 +121,7 @@ export class PromptRequestSnapshotRegistry {
 	rememberActualUsageKey(key: string): boolean {
 		if (this.actualUsageKeys.has(key)) return false;
 		this.actualUsageKeys.add(key);
-		while (this.actualUsageKeys.size > MAX_ACTUAL_USAGE_KEYS) {
-			const oldest = this.actualUsageKeys.keys().next().value;
-			if (oldest === undefined) break;
-			this.actualUsageKeys.delete(oldest);
-		}
+		this.trimToCapacity(this.actualUsageKeys, MAX_ACTUAL_USAGE_KEYS);
 		return true;
 	}
 
@@ -122,6 +147,7 @@ export class PromptRequestSnapshotRegistry {
 			| "providerModel_fifo"
 			| "runKey_latest"
 			| "missing";
+		roleHint?: RoleOnlyMemo;
 	} {
 		// 1. requestId exact match
 		if (opts.requestId) {
@@ -140,6 +166,7 @@ export class PromptRequestSnapshotRegistry {
 		return {
 			state: byRun,
 			correlationConfidence: byRun ? "runKey_latest" : "missing",
+			roleHint: byRun ? undefined : this.roleHintFor(opts.runKey, opts.cwd),
 		};
 	}
 
@@ -160,6 +187,7 @@ export class PromptRequestSnapshotRegistry {
 			| "providerModel_fifo"
 			| "runKey_latest"
 			| "missing";
+		roleHint?: RoleOnlyMemo;
 	} {
 		// 1. requestId exact match
 		let requestMatchedState: PromptRequestSnapshotState | undefined;
@@ -190,10 +218,31 @@ export class PromptRequestSnapshotRegistry {
 		return {
 			state: byRun,
 			correlationConfidence: byRun ? "runKey_latest" : "missing",
+			roleHint: byRun ? undefined : this.roleHintFor(opts.runKey, opts.cwd),
 		};
 	}
 
 	// ── Helpers ───────────────────────────────────────────────────
+
+	private roleHintFor(runKey: string, cwd?: string): RoleOnlyMemo | undefined {
+		return this.roleOnlyByRun.get(runKey) ?? (cwd ? this.roleOnlyByRun.get(cwd) : undefined);
+	}
+
+	/**
+	 * Drop the oldest insertions from a FIFO collection until it fits `max`.
+	 * Shared by the role-only memo map and the actual-usage dedup set, which
+	 * both implement plain insert-order eviction.
+	 */
+	private trimToCapacity<K>(
+		collection: { size: number; keys(): IterableIterator<K>; delete(key: K): void },
+		max: number,
+	): void {
+		while (collection.size > max) {
+			const oldest = collection.keys().next().value;
+			if (oldest === undefined) break;
+			collection.delete(oldest);
+		}
+	}
 
 	private providerModelQueueKey(
 		runKey: string,

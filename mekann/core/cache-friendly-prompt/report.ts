@@ -56,6 +56,19 @@ function actualRequestRoleKey(row: ParsedActualUsageLog): string {
   return row.requestRole ?? "unknown";
 }
 
+/**
+ * Render a role-correlation coverage note. Returns an empty string when there
+ * is no data. Surface the residual "unknown" share so weak role signals stay
+ * visible (see issue #90; target: < 10% unknown).
+ */
+export function formatUnknownRoleNote(unknownCount: number, total: number): string {
+  if (total <= 0) return "";
+  const pct = (unknownCount / total) * 100;
+  const trimmed = pct.toFixed(1);
+  const flag = pct >= 10 ? " ⚠️ above 10% target" : "";
+  return `> **Role correlation note**: ${unknownCount} / ${total} requests (${trimmed}%) have an uncorrelated role ("unknown").${flag}`;
+}
+
 function actualProviderPrefixHashKey(row: ParsedActualUsageLog): string {
   const hash = row.providerPrefixHash ?? row.featureCacheablePrefixHash ?? row.stablePrefixHash;
   return hash ? shortHash(hash) : "missing";
@@ -621,6 +634,7 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[], actualRo
   const actualProviderRows = renderActualSummaryRows(summary.actualByProvider);
   const actualProviderModelRows = renderActualSummaryRows(summary.actualByProviderModel);
   const actualRequestRoleRows = renderActualSummaryRows(summary.actualByRequestRole);
+  const actualUnknownRoleNote = formatUnknownRoleNote(summary.actualByRequestRole["unknown"]?.requests ?? 0, summary.actualRequestCount);
   const actualWarmStateRows = renderActualSummaryRows(summary.actualByWarmState);
   const actualProviderPrefixHashRows = renderActualSummaryRows(summary.actualByProviderPrefixHash);
   const actualBaseSystemHashRows = renderActualSummaryRows(summary.actualByBaseSystemHash);
@@ -630,6 +644,7 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[], actualRo
   const promptProviderGraphRows = [...new Set(rows.map((row) => row.provider ?? "unknown"))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-provider-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const promptProviderModelGraphRows = [...new Set(rows.map(providerKey))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const promptRoleGraphRows = [...new Set(rows.map(requestRoleKey))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-role-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
+  const promptUnknownRoleNote = formatUnknownRoleNote(rows.filter((row) => requestRoleKey(row) === "unknown").length, rows.length);
   const changes = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined })).filter((x): x is { row: ParsedLog; prev: ParsedLog } => x.prev !== undefined && scopedReuseKey(x.row) !== scopedReuseKey(x.prev)).slice(-20).reverse();
   const changeRows = changes.map(({ row, prev }) => `| ${row.timestamp} | ${escapeHtml(providerKey(prev))} → ${escapeHtml(providerKey(row))} | \`${shortHash(reuseKey(prev))}\` → \`${shortHash(reuseKey(row))}\` | ${escapeHtml(describeFragmentDiff(prev, row))} | ${(row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0) - (prev.providerPrefixChars ?? prev.featureCacheablePrefixChars ?? prev.stablePrefixChars ?? 0)} | ${(row.totalPromptChars ?? 0) - (prev.totalPromptChars ?? 0)} | ${row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0} | ${row.stablePrefixChars ?? 0} | ${row.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  |  |  |  | |";
   const overviewRows = renderMetricRows([
@@ -728,6 +743,8 @@ ${actualProviderRows}
 
 ### 2.4 By request role
 
+${actualUnknownRoleNote}
+
 | request role | requests | input tokens | output tokens | cache read tokens | cache write tokens | cache miss tokens | weighted tokenHitRate | avg tokenHitRate | weighted cacheableReadRate |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 ${actualRequestRoleRows}
@@ -811,6 +828,8 @@ This section is based on proxy request logs. It can include providers/models tha
 ![cache-friendly-prompt trend all](./trend-all.svg)
 
 ### 4.2 By request role
+
+${promptUnknownRoleNote}
 
 | request role | graph |
 |---|---|
