@@ -301,6 +301,29 @@ describe("executeAction issue_comment", () => {
 		expect(comment && comment[2]).toBe("99");
 	});
 
+	it("posts from outside an issue worktree when an explicit issue is supplied (#78)", async () => {
+		const gitCalls: string[][] = [];
+		const git = vi.fn((args: string[]): ExecOut => {
+			gitCalls.push(args);
+			// Deliberately NOT an issue worktree (e.g. main Pi on `main`).
+			if (args[0] === "branch" && args[1] === "--show-current") return { stdout: "main\n", stderr: "" };
+			return { stdout: "", stderr: "" };
+		});
+		const gh = vi.fn((args: string[]): ExecOut => {
+			if (args[0] === "issue" && args[1] === "comment") {
+				return { stdout: "https://github.com/o/r/issues/42#issuecomment-9\n", stderr: "" };
+			}
+			return { stdout: "", stderr: "" };
+		});
+		const { runner } = createMockRunner({ git, gh });
+		const result = await executeAction({ action: "issue_comment", issue: 42, body: "note" }, "/repo", runner);
+		expect(result.isError).toBe(false);
+		expect(result.text).toContain("https://github.com/o/r/issues/42#issuecomment-9");
+		// The worktree gate must not even probe the branch when an issue is explicit.
+		expect(gitCalls.find((a) => a[0] === "branch")).toBeUndefined();
+		expect(result.details.issue).toBe(42);
+	});
+
 	it("is blocked by the worktree gate when not on an issue branch", async () => {
 		const { runner } = createMockRunner({
 			git: () => ({ stdout: "main\n", stderr: "" }),

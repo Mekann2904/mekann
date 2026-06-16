@@ -45,7 +45,7 @@ const ACTION_UNION = Type.Union(
 	],
 	{
 		description:
-			"Single workflow action to perform. Mutating actions (commit, push, create_pr, update_pr, ready, comment, issue_comment) only run inside an issue worktree (branch issue-<number>).",
+			"Single workflow action to perform. Mutating actions (commit, push, create_pr, update_pr, ready, comment, issue_comment) only run inside an issue worktree (branch issue-<number>). issue_comment is exempt when an explicit 'issue' number is supplied.",
 	},
 );
 
@@ -92,7 +92,7 @@ export const IssueWorkflowParamsSchema = Type.Object(
 			Type.String({ description: "PR number or URL (actions: view_pr, update_pr, ready, comment). Defaults to the current branch PR." }),
 		),
 		issue: Type.Optional(
-			Type.Number({ description: "Issue number (action: issue_comment). Defaults to the current issue worktree." }),
+			Type.Number({ description: "Issue number (action: issue_comment). When supplied, issue_comment runs even outside an issue worktree; otherwise it defaults to the current issue worktree branch." }),
 		),
 	},
 	{

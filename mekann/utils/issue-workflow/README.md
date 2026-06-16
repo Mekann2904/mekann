@@ -33,12 +33,15 @@ so git-safety never sees it) and passes messages/bodies via temp files
 | `update_pr` | `gh pr edit [--title] [--body-file <tmpfile>]` | yes | yes |
 | `ready` | `gh pr ready` | yes | yes |
 | `comment` | `gh pr comment --body-file <tmpfile>` | yes | yes |
-| `issue_comment` | `gh issue comment <n> --body-file <tmpfile>` | yes | yes |
+| `issue_comment` | `gh issue comment <n> --body-file <tmpfile>` | yes | conditional |
 
 Mutating actions are only permitted inside an issue worktree (branch
 `issue-<number>`); otherwise they return a clear error so `main` etc. can never
-be touched by accident. `issue_comment` derives the issue number from the
-current branch when `issue` is not supplied.
+be touched by accident. `issue_comment` is the exception: because it targets an
+arbitrary remote issue through the GitHub API and never touches local worktree
+state, it bypasses the gate when an explicit `issue` number is supplied. With
+no `issue` it still requires a worktree so the number can be derived from the
+branch.
 
 ## Message safety
 
