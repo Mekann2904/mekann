@@ -184,6 +184,22 @@ cacheFriendlyPromptExtension(pi, {
 
 Tests or one-shot local checks can use `reportMode: "immediate"`. Long-running sessions can use the default debounce, or `"off"` and call `generateCacheFriendlyReport(dir)` from a separate command/script.
 
+## retention (bounded logs)
+
+`requests.jsonl` and `actual-usage.jsonl` are append-only. To prevent unbounded disk growth (issue #92), each file is pruned in place once it crosses a byte trigger, keeping only the most recent `retentionMaxRows` rows. Because pruning runs before report generation on every append, the report always scans exactly the retained window. `summary.json` and the SVG/MD artifacts are overwritten on every report cycle, so they are inherently bounded and not pruned.
+
+Extension config (defaults shown):
+
+```ts
+cacheFriendlyPromptExtension(pi, {
+  retentionMaxBytes: 10 * 1024 * 1024, // prune when a log file exceeds 10 MB
+  retentionMaxRows: 2000,              // keep this many most-recent rows after pruning
+  retentionCheckIntervalMs: 30_000,   // throttle prune checks per file (0 = check every append)
+});
+```
+
+This mirrors the context-ledger's bounded retention, but prunes in place rather than rotating into `.1` generations, because the report only ever reads the current log file.
+
 ## 注意
 
 これは provider cache hit を保証する機能ではありません。provider 固有 API の cache layer でもありません。`requests.jsonl` の prefix continuity proxy と `actual-usage.jsonl` の provider usage token metrics は別物として扱ってください。
