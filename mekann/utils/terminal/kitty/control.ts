@@ -10,6 +10,8 @@ export interface KittyWindowLike {
 	is_focused?: boolean;
 	columns?: number;
 	lines?: number;
+	/** Per-window environment exposed by `kitty @ ls` (only vars differing from kitty's process). */
+	env?: Record<string, string>;
 	[key: string]: unknown;
 }
 
@@ -47,11 +49,52 @@ export function collectKittyWindows(value: unknown, windows: KittyWindowLike[] =
 }
 
 /**
- * Title prefix that identifies an Issue Pi pane (ADR-0021). The issue list
- * pane is titled `Issues` (plural, no number) and intentionally does NOT match,
- * so it is never chosen as a split anchor.
+ * Title substring that identifies an Issue Pi pane (ADR-0021).
+ *
+ * NOTE: pi's interactive mode sets its own terminal title via OSC
+ * (`updateTerminalTitle` → `π - <sessionName> - <cwdBasename>`), which
+ * OVERRIDES the `--title "Issue #<n>"` we pass to `kitten @ launch`. The Work
+ * Pi therefore ends up titled e.g. `π - Issue #42 - issue-42`. To stay robust
+ * against that prefix, we match `Issue #<n>` anywhere in the title rather
+ * than only at the start. The issue list pane is titled `Issues` (plural, no
+ * number) and intentionally does NOT match, so it is never chosen as a split
+ * anchor nor detected as an active Work Pi.
  */
-export const ISSUE_PANE_TITLE_PATTERN = /^Issue #\d+/;
+export const ISSUE_PANE_TITLE_PATTERN = /Issue #\d+/;
+
+/**
+ * Env markers that identify an Issue Work Pi pane. `launchPiSessionInKittySplit`
+ * (terminal/pi-session.ts) sets `MEKANN_ISSUE_PI=1` on EVERY issue Pi launch,
+ * plus a child-number marker — `MEKANN_AUTOPILOT_CHILD` for the autopilot
+ * supervisor (#112) or `MEKANN_ORCHESTRATION_CHILD` for parent/child
+ * orchestration (#71).
+ *
+ * These are the PRIMARY detection signal. Unlike the kitty window title —
+ * which pi rewrites to `π - <name> - <cwd>` only AFTER interactive mode
+ * finishes initializing (heavy on extension-rich repos, racing the
+ * supervisor's appear timeout) — env markers are set at launch time and pi
+ * never overrides them. The title pattern remains as a fallback. A
+ * drift-guard test asserts these strings match the launcher's constants.
+ */
+export const ISSUE_PI_ENV_MARKER = "MEKANN_ISSUE_PI";
+export const AUTOPILOT_CHILD_ENV_MARKER = "MEKANN_AUTOPILOT_CHILD";
+export const ORCHESTRATION_CHILD_ENV_MARKER = "MEKANN_ORCHESTRATION_CHILD";
+
+/** True when the pane carries the Issue Pi env marker (`MEKANN_ISSUE_PI=1`). */
+export function isIssuePiEnvWindow(window: KittyWindowLike): boolean {
+	return window.env?.[ISSUE_PI_ENV_MARKER] === "1";
+}
+
+/**
+ * The issue number a Work Pi pane was started for, read from its child env
+ * marker (autopilot or orchestration), or null when absent/invalid. Drives
+ * exact per-issue detection in {@link isWorkPiForIssue} / `hasIssuePiPane`.
+ */
+export function issueChildNumberFromWindow(window: KittyWindowLike): number | null {
+	const raw = window.env?.[AUTOPILOT_CHILD_ENV_MARKER] ?? window.env?.[ORCHESTRATION_CHILD_ENV_MARKER];
+	const num = Number(raw);
+	return Number.isFinite(num) && num > 0 ? num : null;
+}
 
 /**
  * Post-split floors and aspect ratio used to choose an Issue Pi pane's split
@@ -76,7 +119,23 @@ export interface IssuePaneSplit {
 }
 
 function isIssuePiPane(window: KittyWindowLike): boolean {
+	// Primary: env marker set at launch, never overridden by pi. Fallback: title
+	// pattern (for panes launched before env markers existed, and as a defensive
+	// backstop once pi rewrites the title to `π - Issue #N - <cwd>`).
+	if (isIssuePiEnvWindow(window)) return true;
 	return typeof window.title === "string" && ISSUE_PANE_TITLE_PATTERN.test(window.title);
+}
+
+/**
+ * True when a window is the Work Pi for a specific issue number. Primary: the
+ * env child marker (exact, set at launch). Fallback: the title `Issue #<n>`
+ * (matched anywhere, since pi rewrites the kitty title once it initializes).
+ * The `(\\D|$)` boundary keeps `#42` from matching `#421`.
+ */
+export function isWorkPiForIssue(window: KittyWindowLike, issueNumber: number): boolean {
+	if (issueChildNumberFromWindow(window) === issueNumber) return true;
+	const pattern = new RegExp(`Issue #${issueNumber}(\\D|$)`);
+	return typeof window.title === "string" && pattern.test(window.title);
 }
 
 function issuePaneArea(pane: KittyWindowLike): number {
@@ -214,15 +273,15 @@ export class KittyControl {
 	}
 
 	/**
-	 * True when a Kitty pane titled `Issue #<issueNumber>` is currently open.
-	 * Used by issue orchestration (issue #71) for double-launch prevention.
+	 * True when a Kitty pane for `issueNumber`'s Work Pi is currently open.
+	 * Used by autopilot + orchestration for double-launch prevention. Detects via
+	 * the env child marker (primary, set at launch) with the title as a fallback.
 	 * Returns false when not in Kitty or the lookup fails (safe side).
 	 */
 	async hasIssuePiPane(issueNumber: number): Promise<boolean> {
 		if (!this.isKittyEnvironment()) return false;
 		const windows = await this.listAllWindows();
-		const pattern = new RegExp(`^Issue #${issueNumber}(\\D|$)`);
-		return windows.some((window) => typeof window.title === "string" && pattern.test(window.title));
+		return windows.some((window) => isWorkPiForIssue(window, issueNumber));
 	}
 
 	/** Fetch and parse all windows from `kitty @ ls`. Empty on failure. */

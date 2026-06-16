@@ -1,14 +1,23 @@
 import { execFile as execFileCb } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	AUTOPILOT_CHILD_ENV_MARKER,
 	KittyControl,
-	type KittyWindowLike,
+	ORCHESTRATION_CHILD_ENV_MARKER,
+	ISSUE_PI_ENV_MARKER,
 	chooseIssuePaneSplit,
 	collectKittyWindows,
 	decideSplitLocation,
+	isIssuePiEnvWindow,
+	isWorkPiForIssue,
+	issueChildNumberFromWindow,
 	pickLargestIssuePiPane,
 	pickWidestIssuePiPane,
+	type KittyWindowLike,
 } from "./control.js";
+// Drift guard: the detection constants must match the launcher's marker names.
+import { ISSUE_PI_ENV } from "../pi-session.js";
+import { AUTOPILOT_CHILD_ENV } from "../../issue/orchestration/autopilot/markers.js";
 
 // ---------------------------------------------------------------------------
 // Pure helpers
@@ -43,6 +52,90 @@ describe("collectKittyWindows", () => {
 	it("returns empty array for non-object input", () => {
 		expect(collectKittyWindows(null)).toEqual([]);
 		expect(collectKittyWindows("not-json")).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Drift guard: detection constants must match the launcher's marker names
+// (terminal/pi-session.ts + orchestration/autopilot/markers.ts). If the
+// launcher is renamed without updating detection, issue panes silently stop
+// being recognized — the original /issue + /issue-autopilot regression.
+// ---------------------------------------------------------------------------
+describe("env marker constants (drift guard)", () => {
+	it("ISSUE_PI_ENV_MARKER matches the launcher's ISSUE_PI_ENV", () => {
+		expect(ISSUE_PI_ENV_MARKER).toBe(ISSUE_PI_ENV);
+	});
+
+	it("AUTOPILOT_CHILD_ENV_MARKER matches the launcher's AUTOPILOT_CHILD_ENV", () => {
+		expect(AUTOPILOT_CHILD_ENV_MARKER).toBe(AUTOPILOT_CHILD_ENV);
+	});
+
+	it("ORCHESTRATION_CHILD_ENV_MARKER matches the orchestration env name", () => {
+		// Orchestration markers are string literals in pi-session.ts (not a shared
+		// constant), so this pins the literal the launcher writes.
+		expect(ORCHESTRATION_CHILD_ENV_MARKER).toBe("MEKANN_ORCHESTRATION_CHILD");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Env-based detection helpers (primary signal; title is fallback)
+// ---------------------------------------------------------------------------
+describe("isIssuePiEnvWindow", () => {
+	it("is true when MEKANN_ISSUE_PI=1 is present", () => {
+		expect(isIssuePiEnvWindow({ id: 1, env: { MEKANN_ISSUE_PI: "1" }, columns: 80, lines: 24 })).toBe(true);
+	});
+
+	it("is false without the marker, regardless of title", () => {
+		// A pane whose title contains Issue #N but lacks the env marker is NOT
+		// identified by the env signal (the title fallback handles it elsewhere).
+		expect(isIssuePiEnvWindow({ id: 1, title: "π - Issue #42 - issue-42", columns: 80, lines: 24 })).toBe(false);
+		expect(isIssuePiEnvWindow({ id: 1, env: {}, columns: 80, lines: 24 })).toBe(false);
+	});
+
+	it("is false for a marker value other than 1", () => {
+		expect(isIssuePiEnvWindow({ id: 1, env: { MEKANN_ISSUE_PI: "0" }, columns: 80, lines: 24 })).toBe(false);
+	});
+});
+
+describe("issueChildNumberFromWindow", () => {
+	it("reads the autopilot child marker", () => {
+		expect(issueChildNumberFromWindow({ id: 1, env: { MEKANN_AUTOPILOT_CHILD: "77" }, columns: 80, lines: 24 })).toBe(77);
+	});
+
+	it("reads the orchestration child marker", () => {
+		expect(issueChildNumberFromWindow({ id: 1, env: { MEKANN_ORCHESTRATION_CHILD: "9" }, columns: 80, lines: 24 })).toBe(9);
+	});
+
+	it("prefers autopilot when both are present", () => {
+		expect(
+			issueChildNumberFromWindow({ id: 1, env: { MEKANN_AUTOPILOT_CHILD: "5", MEKANN_ORCHESTRATION_CHILD: "6" }, columns: 80, lines: 24 }),
+		).toBe(5);
+	});
+
+	it("returns null when absent or invalid", () => {
+		expect(issueChildNumberFromWindow({ id: 1, env: {}, columns: 80, lines: 24 })).toBeNull();
+		expect(issueChildNumberFromWindow({ id: 1, env: { MEKANN_AUTOPILOT_CHILD: "oops" }, columns: 80, lines: 24 })).toBeNull();
+		expect(issueChildNumberFromWindow({ id: 1, env: { MEKANN_AUTOPILOT_CHILD: "0" }, columns: 80, lines: 24 })).toBeNull();
+	});
+});
+
+describe("isWorkPiForIssue", () => {
+	it("matches by env child marker even when the title is the pi-overridden form", () => {
+		// The regression: pi rewrites the title only after init, so during the
+		// supervisor's appear window the title may not yet contain Issue #N. The
+		// env marker is set at launch and is the reliable signal.
+		const pane = { id: 1, title: "π - mekann", env: { MEKANN_ISSUE_PI: "1", MEKANN_AUTOPILOT_CHILD: "42" }, columns: 80, lines: 24 };
+		expect(isWorkPiForIssue(pane, 42)).toBe(true);
+		expect(isWorkPiForIssue(pane, 43)).toBe(false);
+	});
+
+	it("matches by title fallback when no env marker is present", () => {
+		expect(isWorkPiForIssue({ id: 1, title: "Issue #42", columns: 80, lines: 24 }, 42)).toBe(true);
+		expect(isWorkPiForIssue({ id: 1, title: "π - Issue #42 - issue-42", columns: 80, lines: 24 }, 42)).toBe(true);
+	});
+
+	it("respects the digit boundary on the title fallback", () => {
+		expect(isWorkPiForIssue({ id: 1, title: "Issue #421", columns: 80, lines: 24 }, 42)).toBe(false);
 	});
 });
 
@@ -97,6 +190,15 @@ describe("pickWidestIssuePiPane", () => {
 		expect(pickWidestIssuePiPane([pane])).toEqual(pane);
 	});
 
+	it("matches the pi-overridden title format (π - Issue #N - <cwd>)", () => {
+		// pi sets its own terminal title once interactive mode starts, overriding
+		// kitty's --title. A Work Pi for #42 ends up titled `π - Issue #42 - issue-42`,
+		// so detection must match `Issue #N` anywhere in the title, not only at the
+		// start. This is the regression for /issue + /issue-autopilot pane detection.
+		const pane = { id: 11, title: "π - Issue #42 - issue-42", columns: 80, lines: 24 };
+		expect(pickWidestIssuePiPane([pane])).toEqual(pane);
+	});
+
 	it("returns the first widest on a tie (stable)", () => {
 		const a = { id: 11, title: "Issue #41", columns: 80, lines: 24 };
 		const b = { id: 12, title: "Issue #42", columns: 80, lines: 24 };
@@ -137,6 +239,11 @@ describe("pickLargestIssuePiPane", () => {
 		const a = { id: 11, title: "Issue #41", columns: 80, lines: 24 };
 		const b = { id: 12, title: "Issue #42", columns: 80, lines: 24 };
 		expect(pickLargestIssuePiPane([a, b])?.id).toBe(11);
+	});
+
+	it("matches the pi-overridden title format (π - Issue #N - <cwd>)", () => {
+		const pane = { id: 11, title: "π - Issue #42 - issue-42", columns: 80, lines: 24 };
+		expect(pickLargestIssuePiPane([pane])).toEqual(pane);
 	});
 });
 
@@ -362,5 +469,95 @@ describe("KittyControl.findIssuePaneSplitAnchor", () => {
 		const kitty = new KittyControl();
 		// 50 >= 25 → longer side is vsplit; windowId 11 is anchored (not Main Pi 1).
 		expect(await kitty.findIssuePaneSplitAnchor()).toEqual({ windowId: 11, location: "vsplit" });
+	});
+
+	it("anchors on an existing Issue Pi pane identified by env marker, even when pi has rewritten its title to π - <cwd>", async () => {
+		// The anchor must recognize a running Work Pi via its MEKANN_ISSUE_PI env
+		// marker. After pi inits it rewrites the title to `π - <cwd>` (no Issue #N),
+		// so title-only detection would miss it and the next /issue would wrongly
+		// split the Main Pi (ADR-0021 violation). Env detection prevents that.
+		setLsResult(
+			JSON.stringify([
+				{ id: 1, title: "π - mekann", columns: 100, lines: 50, is_focused: true },
+				{ id: 11, title: "π - Issue #42 - issue-42", columns: 120, lines: 50, env: { MEKANN_ISSUE_PI: "1" } },
+			]),
+		);
+		const kitty = new KittyControl();
+		expect(await kitty.findIssuePaneSplitAnchor()).toEqual({ windowId: 11, location: "vsplit" });
+	});
+});
+describe("KittyControl.hasIssuePiPane", () => {
+	const prevKittyWindowId = process.env.KITTY_WINDOW_ID;
+
+	beforeEach(() => {
+		execResults.clear();
+		// hasIssuePiPane short-circuits to false outside kitty; force the marker so
+		// the title-matching path is exercised regardless of the host terminal.
+		process.env.KITTY_WINDOW_ID = "1";
+	});
+	afterEach(() => {
+		vi.mocked(execFileCb).mockClear();
+		if (prevKittyWindowId === undefined) delete process.env.KITTY_WINDOW_ID;
+		else process.env.KITTY_WINDOW_ID = prevKittyWindowId;
+	});
+
+	function setLsResult(stdout: string) {
+		execResults.set("kitten @ ls", { stdout });
+	}
+
+	it("detects a Work Pi by its kitty title Issue #<n>", async () => {
+		setLsResult(JSON.stringify([{ id: 11, title: "Issue #42", columns: 80, lines: 24 }]));
+		expect(await new KittyControl().hasIssuePiPane(42)).toBe(true);
+	});
+
+	it("detects a Work Pi after pi overrides the title to π - Issue #N - <cwd>", async () => {
+		// Regression: pi's interactive mode sets its own terminal title
+		// (`updateTerminalTitle` → `π - <sessionName> - <cwdBasename>`), overriding
+		// kitty's --title. Detection must match `Issue #N` anywhere in the title.
+		setLsResult(JSON.stringify([{ id: 11, title: "π - Issue #42 - issue-42", columns: 80, lines: 24 }]));
+		expect(await new KittyControl().hasIssuePiPane(42)).toBe(true);
+	});
+
+	it("detects a Work Pi via env marker before pi overrides the title (init race)", async () => {
+		// The real regression: the autopilot supervisor's appear timeout can elapse
+		// before pi finishes initializing and rewrites the title. The env marker is
+		// set at launch time, so detection must succeed even while the title is
+		// still the bare kitty --title (or anything else).
+		setLsResult(
+			JSON.stringify([
+				{ id: 11, title: "Issue #42", columns: 80, lines: 24, env: { MEKANN_ISSUE_PI: "1", MEKANN_AUTOPILOT_CHILD: "42" } },
+			]),
+		);
+		expect(await new KittyControl().hasIssuePiPane(42)).toBe(true);
+	});
+
+	it("detects by env marker when the title carries no Issue #N at all", async () => {
+		setLsResult(
+			JSON.stringify([
+				{ id: 11, title: "π - mekann", columns: 80, lines: 24, env: { MEKANN_ISSUE_PI: "1", MEKANN_ORCHESTRATION_CHILD: "42" } },
+			]),
+		);
+		expect(await new KittyControl().hasIssuePiPane(42)).toBe(true);
+	});
+
+	it("does not match the Issues list pane or a different issue number", async () => {
+		setLsResult(
+			JSON.stringify([
+				{ id: 1, title: "Issues", columns: 80, lines: 24 },
+				{ id: 12, title: "π - Issue #43 - issue-43", columns: 80, lines: 24 },
+			]),
+		);
+		expect(await new KittyControl().hasIssuePiPane(42)).toBe(false);
+	});
+
+	it("respects the digit boundary so #42 does not match #421", async () => {
+		setLsResult(JSON.stringify([{ id: 11, title: "π - Issue #421 - issue-421", columns: 80, lines: 24 }]));
+		expect(await new KittyControl().hasIssuePiPane(42)).toBe(false);
+		expect(await new KittyControl().hasIssuePiPane(421)).toBe(true);
+	});
+
+	it("returns false when kitten @ ls fails", async () => {
+		execResults.set("kitten @ ls", new Error("remote control unavailable"));
+		expect(await new KittyControl().hasIssuePiPane(42)).toBe(false);
 	});
 });

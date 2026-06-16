@@ -77,6 +77,61 @@ describe("launchPiSessionInKittySplit issue-work Pi marker", () => {
 	});
 });
 
+describe("launchPiSessionInKittySplit argv construction (no shell re-parse)", () => {
+	it("passes node + pi argv as separate tokens after the kitty flags, with no `sh -lc` wrapper", async () => {
+		// Regression: the launcher used to build one `sh -lc "..."` command string
+		// from JSON.stringify-quoted tokens. JSON.stringify's double quotes do NOT
+		// escape backticks, so a system prompt containing markdown code-fence
+		// examples like `demote_to_ready_for_human` was re-parsed by the shell as a
+		// command substitution, aborted with `command not found` / `unmatched '`,
+		// and pi never started. The fix passes every content token as its own argv
+		// entry so `kitten @ launch` execs node directly with no shell in between.
+		const { launchPiSessionInKittySplit } = await import("./pi-session.js");
+		await launchPiSessionInKittySplit({
+			cwd: "/repo",
+			title: "Issue #42",
+			nodeBin: "/usr/bin/node",
+			appendSystemPrompt: "You are working in an issue worktree for #42.",
+			initialMessage: "issue-42に対応してください",
+		});
+		expect(kittenLaunchArgs).not.toBeNull();
+		const args = kittenLaunchArgs!;
+		// No shell wrapper: kitten must exec node + pi argv directly.
+		expect(args).not.toContain("-lc");
+		expect(args.filter((a) => /sh$/.test(a))).toEqual([]);
+		// Trailing tokens are the pi command argv, in order.
+		const nodeIdx = args.indexOf("/usr/bin/node");
+		expect(nodeIdx).toBeGreaterThan(0);
+		expect(args.slice(nodeIdx)).toEqual([
+			"/usr/bin/node",
+			"/usr/bin/pi", // resolveBin("pi") via mocked `which`
+			"--name",
+			"Issue #42",
+			"--append-system-prompt",
+			"You are working in an issue worktree for #42.",
+			"issue-42に対応してください",
+		]);
+	});
+
+	it("preserves shell-hostile content verbatim (backticks, single quotes, $, newlines)", async () => {
+		// The content must reach pi byte-for-byte. If anything joined it into a
+		// shell command string, backticks would trigger command substitution and
+		// single quotes would unbalance the quoting. Separate argv entries are safe.
+		const hostile = "line 1\n`demote_to_ready_for_human` let's $HOME 'q'";
+		const { launchPiSessionInKittySplit } = await import("./pi-session.js");
+		await launchPiSessionInKittySplit({
+			cwd: "/repo",
+			title: "Issue #7",
+			nodeBin: "/usr/bin/node",
+			appendSystemPrompt: hostile,
+			initialMessage: hostile,
+		});
+		expect(kittenLaunchArgs).toContain(hostile);
+		// appears exactly twice (once as system prompt value, once as initial msg)
+		expect(kittenLaunchArgs!.filter((a) => a === hostile).length).toBe(2);
+	});
+});
+
 describe("launchPiSessionInKittySplit split-anchor direction (issue #102)", () => {
 	it("uses vsplit and no source-window on the first call (no anchor)", async () => {
 		const { launchPiSessionInKittySplit } = await import("./pi-session.js");

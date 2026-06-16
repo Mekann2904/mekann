@@ -35,10 +35,6 @@ export interface PiSessionLaunchRequest {
 	autopilotChild?: number;
 }
 
-function quoteShell(value: string): string {
-	return JSON.stringify(value);
-}
-
 async function resolveBin(command: string): Promise<string> {
 	try {
 		const { stdout } = await execFile("which", [command], { timeout: 3000 });
@@ -51,17 +47,33 @@ async function resolveBin(command: string): Promise<string> {
 export async function launchPiSessionInKittySplit(request: PiSessionLaunchRequest): Promise<{ windowId?: string }> {
 	const nodeBin = request.nodeBin || await resolveBin("node");
 	const piBin = await resolveBin("pi");
-	const shell = process.env.SHELL || "/bin/sh";
-	const piArgs = [quoteShell(piBin), "--name", quoteShell(request.title)];
+
+	// Build the launch argv as a plain token list, passed to `kitten @ launch` as
+	// separate argv entries. This bypasses shell parsing entirely, so arbitrary
+	// system-prompt / message content — including backticks (sh command
+	// substitution), single quotes, `$`, and newlines — is preserved verbatim.
+	//
+	// The previous approach joined a JSON.stringify-quoted string into ONE
+	// `sh -lc "..."` command. `JSON.stringify` uses double quotes and does NOT
+	// escape backticks, so inside the double-quoted command the shell still
+	// performed command substitution on markdown code-fence examples in the
+	// system prompt (e.g. `demote_to_ready_for_human`, `issue_comment`), aborted
+	// with `command not found` / `unmatched '`, and pi never started. (Joining
+	// the tokens back into a single `sh -lc` string would reintroduce exactly
+	// that, so we must keep every content token as its own argv entry.)
+	//
+	// `kitten @ launch` runs the trailing argv directly in the new window (no
+	// shell), and `--copy-env` propagates the launcher's environment, so the new
+	// pane still gets a full PATH/env profile without needing a login shell.
+	const piArgv = [piBin, "--name", request.title];
 	if (request.appendSystemPrompt) {
-		piArgs.push("--append-system-prompt", quoteShell(request.appendSystemPrompt));
+		piArgv.push("--append-system-prompt", request.appendSystemPrompt);
 	}
 	if (request.initialMessage) {
 		// Positional argument becomes the first user message in interactive mode.
 		// Placed last so it follows options and @file arguments.
-		piArgs.push(quoteShell(request.initialMessage));
+		piArgv.push(request.initialMessage);
 	}
-	const command = `exec ${quoteShell(nodeBin)} ${piArgs.join(" ")}`;
 
 	// ADR-0021 / issue #102: protect the Main Pi region and avoid thin slivers.
 	// When an Issue Pi pane already exists, split from the largest-area one
@@ -109,7 +121,9 @@ export async function launchPiSessionInKittySplit(request: PiSessionLaunchReques
 		args.push("--source-window", `id:${anchor.windowId}`);
 	}
 
-	args.push(shell, "-lc", command);
+	// node + pi argv as separate argv tokens: `kitten @ launch` execs them
+	// directly in the new pane (no shell), so content tokens are never re-parsed.
+	args.push(nodeBin, ...piArgv);
 
 	const { stdout } = await execFile("kitten", args, { timeout: 10000 });
 	return { windowId: stdout.trim() || undefined };
