@@ -28,4 +28,17 @@ describe("subagent settings schema", () => {
     expect(retries.validate(11)).not.toEqual([]);
     expect(retries.validate(2.5)).not.toEqual([]);
   });
+
+  it("exposes configurable helloTimeoutMs raised above the old hard-coded 10s", () => {
+    // review_fixer timed out 3x in a row because the child Pi handshake
+    // deadline was a non-configurable 10s — too tight for a cold pi boot
+    // (kitty -> shell -> node -> pi -> extension load -> model init -> hello).
+    // The setting must exist, follow the config default, and exceed 10s.
+    const hello = subagentSettingsSchema.settings.find((s) => s.key === "helloTimeoutMs")!;
+    expect(hello.defaultValue).toBe(MEKANN_SUBAGENT_DEFAULTS.helloTimeoutMs);
+    expect(hello.defaultValue).toBeGreaterThan(10_000);
+    expect(hello.validate(10_000)).toEqual([]);
+    expect(hello.validate(4_999)).not.toEqual([]);
+    expect(hello.validate(600_000)).toEqual([]);
+  });
 });

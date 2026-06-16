@@ -384,7 +384,11 @@ describe("startChildMode", () => {
     }
   });
 
-  it("child mode handles session_start and sends hello", async () => {
+  it("child mode sends hello immediately on connect (before session_start)", async () => {
+    // hello must NOT wait for session_start (model auth/init can take tens of
+    // seconds on cold boot). Deferring it races the parent helloTimeoutMs,
+    // which is exactly what killed review_fixer 3x in a row. At the point
+    // startChildMode's returned promise resolves, connect + hello must be done.
     const savedEnv = { ...process.env };
     process.env.PI_SUBAGENT_ROLE = "child";
     process.env.PI_SUBAGENT_ID = "child-2";
@@ -402,17 +406,23 @@ describe("startChildMode", () => {
       const { default: subagentExtension } = await import("./index.js");
       await subagentExtension(mock as any);
 
-      await mock._hooks["session_start"]({}, { cwd: "/tmp/test", shutdown: vi.fn() });
-
-      const calls = mockClientInstance.send.mock.calls.map((c: any) => c[0]);
-      const helloCall = calls.find((c: any) => c.type === "hello");
+      // hello arrives BEFORE session_start is emitted.
+      const callsBeforeStart = mockClientInstance.send.mock.calls.map((c: any) => c[0]);
+      const helloCall = callsBeforeStart.find((c: any) => c.type === "hello");
       expect(helloCall).toBeDefined();
       expect(helloCall.agentId).toBe("child-2");
       expect(helloCall.agentPath).toBe("/root/task2");
       expect(helloCall.capabilities).toContain("hello");
+      // cwd comes from the child process cwd, not a deferred session ctx.
+      expect(helloCall.cwd).toBe(process.cwd());
 
+      await mock._hooks["session_start"]({}, { cwd: "/tmp/test", shutdown: vi.fn() });
+
+      const calls = mockClientInstance.send.mock.calls.map((c: any) => c[0]);
       const statusCall = calls.find((c: any) => c.type === "status" && c.status === "running");
       expect(statusCall).toBeDefined();
+      // Exactly one hello — session_start must not send a second one.
+      expect(calls.filter((c: any) => c.type === "hello")).toHaveLength(1);
 
       // Initial message sent via sendUserMessage
       expect(mock.sendUserMessage).toHaveBeenCalledWith("Initial msg");

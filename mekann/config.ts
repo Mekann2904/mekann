@@ -23,6 +23,8 @@ export interface MekannSubagentConfigDefaults {
 	defaultWaitTimeoutMs: number;
 	maxWaitTimeoutMs: number;
 	minWaitTimeoutMs: number;
+	/** Deadline (ms) for an external child Pi to send its initial IPC hello after launch. The child must finish booting (kitty window -> shell -> node -> pi boot -> extension load -> model-registry init -> IPC connect -> hello) within this window or the spawn errors out with no retry. Generous on purpose: a single slow boot otherwise kills the whole synchronous review_fixer run. */
+	helloTimeoutMs: number;
 	display: "none" | "external-pi" | "external-split";
 	allowUnsafeExternalPi: boolean;
 	logDir: string;
@@ -45,6 +47,7 @@ export const MEKANN_SUBAGENT_DEFAULTS: MekannSubagentConfigDefaults = {
 	defaultWaitTimeoutMs: 30_000,
 	maxWaitTimeoutMs: 600_000,
 	minWaitTimeoutMs: 1_000,
+	helloTimeoutMs: 60_000,
 	display: "external-split",
 	allowUnsafeExternalPi: true,
 	logDir: "",

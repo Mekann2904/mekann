@@ -459,6 +459,25 @@ async function startChildMode(pi: ExtensionAPI): Promise<void> {
     return;
   }
 
+  // Send hello immediately after connecting — NOT deferred to session_start.
+  //
+  // session_start only fires after pi finishes model auth + init, which can
+  // take tens of seconds on a cold boot (provider handshake, registry init).
+  // If hello waits for it, the parent's helloTimeoutMs expires first, the
+  // parent tears down its socket, and this child then fails with
+  // `connect ENOENT` / code 1 — the exact race that took review_fixer down
+  // three times in a row. Every hello field (agentId/path/pid/cwd/nonce/
+  // capabilities) is determinable at connect time, so send it now. cwd is
+  // the child process cwd, which the parent set via kitty --cwd (== ctx.cwd).
+  const helloCapabilities = ["hello", "status", "shutdown", "message", "followup", "interrupt"];
+  try {
+    await client.send({ type: "hello", agentId, agentPath, pid: process.pid, cwd: process.cwd(), capabilities: helloCapabilities, nonce });
+  } catch (err) {
+    console.error(`subagent child IPC error sending hello: ${err instanceof Error ? err.message : String(err)}`);
+    process.exitCode = 1;
+    return;
+  }
+
   client.onMessage((msg) => {
     if (msg.type === "shutdown") {
       void safeSend({ type: "status", agentId, status: "shutdown" })
@@ -488,8 +507,8 @@ async function startChildMode(pi: ExtensionAPI): Promise<void> {
 
   pi.on("session_start", async (_event, ctx) => {
     currentCtx = ctx;
-    const capabilities = ["hello", "status", "shutdown", "message", "followup", "interrupt"];
-    await safeSend({ type: "hello", agentId, agentPath, pid: process.pid, cwd: ctx.cwd, capabilities, nonce });
+    // hello was already sent at connect time above; session_start only emits
+    // the running status and kicks off the initial message.
     await safeSend({ type: "status", agentId, status: "running" });
     if (initialMessage && !initialSent) {
       initialSent = true;

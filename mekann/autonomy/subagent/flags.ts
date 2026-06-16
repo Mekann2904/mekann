@@ -26,6 +26,12 @@ export function registerSubagentFlags(pi: ExtensionAPI, extensionPathDefault: st
     default: String(MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs),
   });
 
+  pi.registerFlag("subagent-hello-timeout-ms", {
+    description: `Deadline in ms for an external child Pi to send its initial IPC hello after launch. Covers the full child boot (kitty -> shell -> node -> pi -> extension load -> model-registry init -> hello). Raised from the old hard-coded 10s because a single slow boot otherwise kills the whole synchronous review_fixer run with no retry (default: ${MEKANN_SUBAGENT_DEFAULTS.helloTimeoutMs})`,
+    type: "string",
+    default: String(MEKANN_SUBAGENT_DEFAULTS.helloTimeoutMs),
+  });
+
   pi.registerFlag("subagent-display", {
     description: 'Display mode for subagents: "external-split" by default in kitty, "none" outside kitty, or explicit "none"/"external-pi"/"external-split".',
     type: "string",

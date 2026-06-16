@@ -47,6 +47,8 @@ export function createSubagentControl(pi: ExtensionAPI, extensionPathDefault: st
   const defaultWait = parsedDefaultWait !== undefined && Number.isFinite(parsedDefaultWait) ? parsedDefaultWait : undefined;
   const minWaitDefault = String(MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs);
   const minWait = Number(getFlagOrSetting(pi, "subagent-min-wait-timeout-ms", "minWaitTimeoutMs", minWaitDefault)) || MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs;
+  const helloTimeoutDefault = String(MEKANN_SUBAGENT_DEFAULTS.helloTimeoutMs);
+  const helloTimeout = Number(getFlagOrSetting(pi, "subagent-hello-timeout-ms", "helloTimeoutMs", helloTimeoutDefault)) || MEKANN_SUBAGENT_DEFAULTS.helloTimeoutMs;
   const rawDisplayFlag = getFlagOrSetting<string>(pi, "subagent-display", "display", MEKANN_SUBAGENT_DEFAULTS.display);
   const isKitty = !process.env.VITEST && process.env.NODE_ENV !== "test" && Boolean(process.env.KITTY_WINDOW_ID);
   const displayFlag = String(rawDisplayFlag ?? MEKANN_SUBAGENT_DEFAULTS.display);
@@ -89,5 +91,6 @@ export function createSubagentControl(pi: ExtensionAPI, extensionPathDefault: st
     allowNestedSubagents,
     defaultReasoningEffort,
     maxResultRetries,
+    helloTimeoutMs: helloTimeout,
   });
 }

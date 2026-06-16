@@ -34,6 +34,7 @@ export const subagentSettingsSchema: FeatureSettingsSchema = {
     num("externalPiSlots", "Capacity", MEKANN_SUBAGENT_DEFAULTS.externalPiSlots, 0, 4, "外部 Pi 表示に使う slot 数。"),
     num("maxDepth", "Boundaries", MEKANN_SUBAGENT_DEFAULTS.maxDepth, 0, 3, "subagent 階層の最大 depth。"),
     num("minWaitTimeoutMs", "Timeouts", MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs, 1000, 600000, "wait timeout の下限 ms。"),
+    num("helloTimeoutMs", "Timeouts", MEKANN_SUBAGENT_DEFAULTS.helloTimeoutMs, 5000, 600000, "外部 child Pi が起動後に最初の IPC hello を送るまでの期限 ms。kitty→shell→node→pi 起動→拡張読み込み→モデル初期化→hello の全工程をカバーする。遅い起動で review_fixer が連続失敗する場合は増やす。"),
     num("defaultWaitTimeoutMs", "Timeouts", MEKANN_SUBAGENT_DEFAULTS.defaultWaitTimeoutMs, 1000, 600000, "wait_agent の default timeout ms。"),
     num("maxWaitTimeoutMs", "Timeouts", MEKANN_SUBAGENT_DEFAULTS.maxWaitTimeoutMs, 1000, 600000, "wait timeout の上限 ms。"),
     { key: "display", type: "enum", defaultValue: MEKANN_SUBAGENT_DEFAULTS.display, description: "subagent 表示方法。kitty では既定で external-split、kitty 外では none にフォールバックします。", category: "Display", scopes: ["global", "workspace"], restartRequired: true, enumValues: [...subagentDisplayValues], validate(value) { return subagentDisplayValues.includes(value as SubagentDisplaySetting) ? [] : ["display は none | external-pi | external-split のいずれかです"]; } },
