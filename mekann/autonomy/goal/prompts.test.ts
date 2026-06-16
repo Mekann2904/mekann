@@ -12,7 +12,8 @@ import {
   renderNoGoal,
   renderWidget,
 } from "./prompts.js";
-import type { Goal } from "./state.js";
+import type { Goal, GoalStatus } from "./state.js";
+import { hashFragment } from "../../core/prompt-core/index.js";
 
 // ---------------------------------------------------------------------------
 // Test data
@@ -136,12 +137,12 @@ describe("goal/prompts", () => {
       expect(policy).toContain("strict blocked audit");
     });
 
-    it("renderGoalObjectiveContext contains objective/status/bounds but not runtime counters", () => {
+    it("renderGoalObjectiveContext contains objective only (no status/bounds/counters)", () => {
       const goal = createMockGoal({ token_budget: 5000 });
       const text = renderGoalObjectiveContext(goal);
       expect(text).toContain("Test objective");
-      expect(text).toContain("Status: active");
-      expect(text).toContain("Token budget upper bound: 5000");
+      expect(text).not.toContain("Status:");
+      expect(text).not.toContain("Token budget upper bound");
       expect(text).not.toContain("Max continuations upper bound");
       expect(text).not.toContain("Tokens used");
       expect(text).not.toContain("Time used");
@@ -149,13 +150,90 @@ describe("goal/prompts", () => {
       expect(text).not.toContain("Remaining tokens");
     });
 
-    it("renderGoalRuntimeState contains runtime counters", () => {
+    it("renderGoalRuntimeState contains status, budget, and runtime counters", () => {
       const goal = createMockGoal({ token_budget: 5000 });
       const text = renderGoalRuntimeState(goal);
+      expect(text).toContain("Status: active");
       expect(text).toContain("Tokens used: 100");
       expect(text).toContain("Remaining tokens: 4900");
+      expect(text).toContain("Token budget upper bound: 5000");
       expect(text).toContain("Time used: 45s");
       expect(text).not.toContain("Continuation:");
+    });
+
+    it("renderGoalRuntimeState omits budget lines when no budget is set", () => {
+      const goal = createMockGoal({ token_budget: null });
+      const text = renderGoalRuntimeState(goal);
+      expect(text).toContain("Status: active");
+      expect(text).toContain("Tokens used: 100");
+      expect(text).not.toContain("Remaining tokens");
+      expect(text).not.toContain("Token budget upper bound");
+    });
+  });
+
+  describe("objective fragment cache stability", () => {
+    /**
+     * Build a synthetic semi_stable goal:objective fragment to verify the
+     * prompt-core hash used for the semi-stable prefix is stable across state
+     * transitions. Only the objective text should affect the fragment hash.
+     */
+    function objectiveFragment(goal: Goal) {
+      return {
+        id: "goal:objective",
+        source: "goal",
+        kind: "goal_objective" as const,
+        stability: "semi_stable" as const,
+        scope: "session" as const,
+        priority: 310,
+        version: "v1",
+        content: renderGoalObjectiveContext(goal),
+      };
+    }
+
+    it("objective text is identical across status transitions", () => {
+      const base = createMockGoal({ token_budget: 5000 });
+      const statuses: GoalStatus[] = ["active", "paused", "blocked", "usage_limited", "budget_limited", "complete"];
+      const texts = statuses.map((status) =>
+        renderGoalObjectiveContext({ ...base, status }),
+      );
+      for (const text of texts) expect(text).toBe(texts[0]);
+      // No status string should leak into the objective fragment
+      for (const status of statuses) {
+        expect(texts[0]).not.toContain(`Status: ${status}`);
+      }
+    });
+
+    it("semi-stable fragment hash is unchanged across status transitions", () => {
+      const base = createMockGoal({ token_budget: 5000 });
+      const statuses: GoalStatus[] = ["active", "paused", "blocked", "usage_limited", "budget_limited", "complete"];
+      const hashes = statuses.map((status) =>
+        hashFragment(objectiveFragment({ ...base, status })).hash,
+      );
+      for (const hash of hashes) expect(hash).toBe(hashes[0]);
+    });
+
+    it("objective fragment is unchanged across budget and usage changes", () => {
+      const base = createMockGoal({ token_budget: 5000, tokens_used: 100 });
+      const baseline = renderGoalObjectiveContext(base);
+      expect(renderGoalObjectiveContext({ ...base, token_budget: null })).toBe(baseline);
+      expect(renderGoalObjectiveContext({ ...base, token_budget: 100000 })).toBe(baseline);
+      expect(renderGoalObjectiveContext({ ...base, tokens_used: 4000 })).toBe(baseline);
+      expect(renderGoalObjectiveContext({ ...base, time_used_seconds: 9999 })).toBe(baseline);
+    });
+
+    it("objective fragment changes only when the objective is edited", () => {
+      const base = createMockGoal();
+      const baseline = renderGoalObjectiveContext(base);
+      const edited = createMockGoal({ objective: "Edited objective" });
+      expect(renderGoalObjectiveContext(edited)).not.toBe(baseline);
+    });
+
+    it("runtime state reflects status transitions", () => {
+      const base = createMockGoal({ token_budget: 5000 });
+      const activeState = renderGoalRuntimeState(base);
+      const blockedState = renderGoalRuntimeState({ ...base, status: "blocked" });
+      expect(blockedState).not.toBe(activeState);
+      expect(blockedState).toContain("Status: blocked");
     });
   });
 
