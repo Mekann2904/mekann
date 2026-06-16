@@ -2,6 +2,10 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { FileFingerprint, PublicSurfaceDelta } from "./types.js";
+// safeRepoRelativePath は security primitive として permissions.ts (PROTECTED_DIRS 単一ソース) に集約。
+// candidate.ts (autoresearch) とここ (subagent) が同一ヘルパーを共有 (GitHub issue #80 C-004)。
+import { safeRepoRelativePath } from "../../safety/sandbox/permissions.js";
+export { safeRepoRelativePath };
 
 export async function sha256File(filePath: string): Promise<string> {
   const buf = await readFile(filePath);
@@ -24,14 +28,6 @@ export async function checkBaseFileHashes(cwd: string, files: FileFingerprint[])
   return { ok: true };
 }
 
-export function safeRepoRelativePath(p: string): string | undefined {
-  if (!p || p.includes("\0") || /^[A-Za-z]:[\\/]/.test(p) || path.isAbsolute(p)) return undefined;
-  const normalized = path.posix.normalize(p.replace(/\\/g, "/"));
-  if (normalized === "." || normalized.startsWith("../") || normalized.includes("/../")) return undefined;
-  if (normalized === ".git" || normalized.startsWith(".git/")) return undefined;
-  if (normalized === ".pi" || normalized.startsWith(".pi/")) return undefined;
-  return normalized;
-}
 
 export type ExtractTouchedPathsResult = { ok: true; paths: string[] } | { ok: false; reason: "unsafe_patch_path"; path: string };
 

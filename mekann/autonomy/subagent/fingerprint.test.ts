@@ -133,6 +133,13 @@ describe("safeRepoRelativePath", () => {
     expect(safeRepoRelativePath(".pi/state.json")).toBeUndefined();
   });
 
+  it("rejects .codex/.agent paths (unified PROTECTED_DIRS, issue #80 C-004)", () => {
+    expect(safeRepoRelativePath(".codex")).toBeUndefined();
+    expect(safeRepoRelativePath(".codex/config")).toBeUndefined();
+    expect(safeRepoRelativePath(".agents")).toBeUndefined();
+    expect(safeRepoRelativePath(".agents/state.json")).toBeUndefined();
+  });
+
   it("rejects dot path", () => {
     expect(safeRepoRelativePath(".")).toBeUndefined();
   });

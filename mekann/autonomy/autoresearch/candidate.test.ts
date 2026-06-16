@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { computeContractHash, type AutoresearchContractV1, type LockFile } from "./contractV1.js";
 import { writeState } from "./layout.js";
 import { createHash } from "node:crypto";
-import { applyCandidate, applyCandidateIsolated, assertCandidateReadyForRun, candidateChangedFiles, candidateEventsPath, importSubagentResultsAsCandidates, listCandidates, readCandidate, updateCandidateStatus } from "./candidate.js";
+import { applyCandidate, applyCandidateIsolated, assertCandidateReadyForRun, candidateChangedFiles, candidateEventsPath, importSubagentResultsAsCandidates, listCandidates, readCandidate, updateCandidateStatus, extractTouchedPathsFromPatch, validateTouchedAgainstContract } from "./candidate.js";
 
 function tmpRepo(): string {
 	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "arc-test-"));
@@ -213,5 +213,36 @@ describe("autoresearch candidates", () => {
 		const ok = importSubagentResultsAsCandidates(cwd, c, lock(c), { source: "pending" });
 		const kept = updateCandidateStatus(cwd, ok.imported[0].candidate_id, "rejected_policy");
 		expect(() => updateCandidateStatus(cwd, kept.candidate_id, "pending")).toThrow(/invalid candidate status transition/);
+	});
+});
+
+describe("candidate path protection (issue #80 C-004)", () => {
+	// safeRepoRelativePath が candidate.ts から共有ヘルパー (permissions.ts) に集約され、
+	// .git/.pi/.codex/.agents を unsafe_path として弾くことを検証する。
+
+	it("extractTouchedPathsFromPatch は保護ディレクトリ配下の path を除外する", () => {
+		const patch = [
+			"--- a/.git/config", "+++ b/.git/config", "@@ -1 +1 @@", "-old", "+new",
+			"--- a/.pi/ledger.json", "+++ b/.pi/ledger.json", "@@ -1 +1 @@", "-old", "+new",
+			"--- a/src/a.ts", "+++ b/src/a.ts", "@@ -1 +1 @@", "-old", "+new",
+		].join("\n");
+		const paths = extractTouchedPathsFromPatch(patch);
+		expect(paths).toEqual(["src/a.ts"]);
+		expect(paths).not.toContain(".git/config");
+		expect(paths).not.toContain(".pi/ledger.json");
+	});
+
+	it("validateTouchedAgainstContract は保護ディレクトリ配下の touched path を unsafe_path で拒否する", () => {
+		const c = contract();
+		for (const p of [".git/config", ".git/HEAD", ".pi/state.json", ".codex/config", ".agents/state.json"]) {
+			const res = validateTouchedAgainstContract([p], c);
+			expect(res).toMatchObject({ ok: false, reason: "unsafe_path", details: p });
+		}
+	});
+
+	it("validateTouchedAgainstContract は通常 path の allowed/outside 判定を維持する", () => {
+		const allowSrc = { ...contract(), scope: { ...contract().scope, allowedWritePaths: ["src/"] } };
+		expect(validateTouchedAgainstContract(["src/a.ts"], allowSrc)).toMatchObject({ ok: true });
+		expect(validateTouchedAgainstContract(["other/x.ts"], allowSrc)).toMatchObject({ ok: false, reason: "outside_allowed_write_paths" });
 	});
 });

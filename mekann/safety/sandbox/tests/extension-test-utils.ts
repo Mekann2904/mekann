@@ -45,6 +45,7 @@ vi.mock("../permissions.js", () => ({
 	resolveSafeRealPath: vi.fn((p: string) => Promise.resolve(p)),
 	assertPathInsideRoot: vi.fn(() => Promise.resolve()),
 	isProtectedPath: vi.fn(() => false),
+	protectedDirsSbplAlternation: vi.fn(() => "\\.git|\\.pi|\\.codex|\\.agents"),
 	checkUnsafeRoot: vi.fn(() => Promise.resolve(null)),
 	readOnlyPolicy: vi.fn((cwd: string, workspaceRoots: string[] = []) => ({ mode: "read_only", cwd, workspaceRoots, writableRoots: [], network: false })),
 	workspaceWritePolicy: vi.fn(),
