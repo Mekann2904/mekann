@@ -34,6 +34,122 @@ export interface LockFile {
 }
 
 // ---------------------------------------------------------------------------
+// Lock file validation (symmetric with validateContractV1)
+// ---------------------------------------------------------------------------
+
+export interface LockFileV1ValidationResult {
+	valid: boolean;
+	errors: string[];
+}
+
+const LOCK_AGGREGATES = new Set(["median", "mean", "min", "max"]);
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isString(value: unknown): value is string {
+	return typeof value === "string";
+}
+
+function isNumber(value: unknown): value is number {
+	return typeof value === "number" && !Number.isNaN(value);
+}
+
+function isNumberArray(value: unknown): value is number[] {
+	return Array.isArray(value) && value.every((v) => isNumber(v));
+}
+
+/**
+ * Validate a parsed value against the autoresearch-lock/v1 lock file shape.
+ * Returns all structural errors as human-readable strings.
+ *
+ * Mirrors readCurrentContract / validateContractV1 symmetry: a lock file that
+ * fails validation must not be handed back as a `LockFile` via raw `as` casts,
+ * otherwise corrupted/partial files yield undefined fields (e.g. contractHash)
+ * and silently trigger "contract hash mismatch" pauses on every run.
+ */
+export function validateLockFileV1(value: unknown): LockFileV1ValidationResult {
+	const errors: string[] = [];
+
+	if (!isPlainObject(value)) {
+		errors.push("lock file must be a JSON object");
+		return { valid: false, errors };
+	}
+
+	const lock = value as Record<string, unknown>;
+
+	if (lock.schemaVersion !== "autoresearch-lock/v1") {
+		errors.push(
+			'schemaVersion must be "autoresearch-lock/v1" (got ' +
+			JSON.stringify(lock.schemaVersion) + ")",
+		);
+	}
+	if (!isString(lock.contractId)) errors.push("contractId must be a string");
+	if (!isString(lock.contractHash)) errors.push("contractHash must be a string");
+	if (!isNumber(lock.approvedAt)) errors.push("approvedAt must be a number");
+	if (!isString(lock.approvedBy)) errors.push("approvedBy must be a string");
+
+	const baseline = lock.baseline;
+	if (!isPlainObject(baseline)) {
+		errors.push("baseline must be an object");
+	} else {
+		if (!isString(baseline.gitCommit)) errors.push("baseline.gitCommit must be a string");
+		if (!LOCK_AGGREGATES.has(baseline.aggregate as string)) {
+			errors.push(
+				'baseline.aggregate must be one of median|mean|min|max (got ' +
+				JSON.stringify(baseline.aggregate) + ")",
+			);
+		}
+		if (!isNumber(baseline.primaryMetricValue)) {
+			errors.push("baseline.primaryMetricValue must be a number");
+		}
+		if (!Array.isArray(baseline.runs)) {
+			errors.push("baseline.runs must be an array");
+		} else {
+			baseline.runs.forEach((run, i) => {
+				if (!isPlainObject(run)) {
+					errors.push("baseline.runs[" + i + "] must be an object");
+					return;
+				}
+				if (!isString(run.runId)) errors.push("baseline.runs[" + i + "].runId must be a string");
+				if (!isNumber(run.metric)) errors.push("baseline.runs[" + i + "].metric must be a number");
+				if (!isNumber(run.durationSeconds)) {
+					errors.push("baseline.runs[" + i + "].durationSeconds must be a number");
+				}
+			});
+		}
+		const noise = baseline.noise;
+		if (!isPlainObject(noise)) {
+			errors.push("baseline.noise must be an object");
+		} else {
+			if (!isNumberArray(noise.samples)) errors.push("baseline.noise.samples must be an array of numbers");
+			for (const field of ["aggregate", "min", "max", "mean", "stddev", "relativeRange"] as const) {
+				if (!isNumber(noise[field])) {
+					errors.push("baseline.noise." + field + " must be a number");
+				}
+			}
+		}
+	}
+
+	const env = lock.environment;
+	if (!isPlainObject(env)) {
+		errors.push("environment must be an object");
+	} else {
+		for (const field of [
+			"platform", "arch", "nodeVersion", "npmVersion", "timezone",
+			"packageJsonHash", "packageLockHash", "immutableReadSetHash",
+		] as const) {
+			if (!isString(env[field])) {
+				errors.push("environment." + field + " must be a string");
+			}
+		}
+	}
+
+	return { valid: errors.length === 0, errors };
+}
+
+// ---------------------------------------------------------------------------
 // .autoresearch path helpers
 // ---------------------------------------------------------------------------
 
@@ -111,7 +227,10 @@ export function readLockFile(cwd: string): LockFile | null {
 	const fp = currentLockPath(cwd);
 	if (!fs.existsSync(fp)) return null;
 	try {
-		return JSON.parse(fs.readFileSync(fp, "utf8")) as LockFile;
+		const data = JSON.parse(fs.readFileSync(fp, "utf8"));
+		const validation = validateLockFileV1(data);
+		if (validation.valid) return data as LockFile;
+		return null;
 	} catch {
 		return null;
 	}

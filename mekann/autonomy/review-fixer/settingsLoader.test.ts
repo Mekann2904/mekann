@@ -28,8 +28,8 @@ describe("loadReviewFixerSettings", () => {
     const settings = loadReviewFixerSettings();
     expect(settings.model).toEqual({ provider: "zai", modelId: "glm-5.2" });
     expect(settings.reasoningEffort).toBe("xhigh");
-    // review-fixer feature still owns enabled + capacity.
-    expect(settings.enabled).toBe(true);
+    // review-fixer feature still owns capacity (enabled is gated separately
+    // via isFeatureEnabled, not part of ReviewFixerSettings — see issue #82).
     expect(settings.maxFixRetries).toBe(5);
   });
 

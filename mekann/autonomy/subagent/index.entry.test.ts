@@ -90,6 +90,12 @@ describe("extension entry point", () => {
     const unsafeFlag = mock._registeredFlags.find((f) => f.name === "subagent-allow-unsafe-external-pi")!;
     expect((displayFlag.config as any).default).toBe("external-split");
     expect((unsafeFlag.config as any).default).toBe("true");
+    // The --subagent-max-agents description must report the enforced hard cap
+    // (4), not the default (1). Issue #83 / C-010.
+    const maxAgentsFlag = mock._registeredFlags.find((f) => f.name === "subagent-max-agents")!;
+    const maxAgentsDesc = (maxAgentsFlag.config as any).description as string;
+    expect(maxAgentsDesc).toContain("Hard-capped at 4");
+    expect(maxAgentsDesc).not.toContain("Hard-capped at 1");
     expect(flagNames).toContain("subagent-allow-nested");
     expect(flagNames).toContain("subagent-default-reasoning-effort");
   });

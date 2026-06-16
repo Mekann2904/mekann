@@ -24,7 +24,6 @@ export function loadReviewFixerSettings(): ReviewFixerSettings {
   const thinking = (modes.thinking ?? {}) as Record<string, unknown>;
 
   return {
-    enabled: raw.enabled === true,
     model: isValidModel(models.review_fix) ? models.review_fix : undefined,
     reasoningEffort: isValidEffort(thinking.review_fix) ? thinking.review_fix : DEFAULT_SETTINGS.reasoningEffort,
     maxFixRetries: typeof raw.maxFixRetries === "number" && Number.isInteger(raw.maxFixRetries) && raw.maxFixRetries >= 1 && raw.maxFixRetries <= 10
