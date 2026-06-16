@@ -1070,6 +1070,69 @@ describe("AgentControl", () => {
       expect(result.status).toBe("pending_init");
     });
   });
+
+  describe("retryAgentResult() retry budget", () => {
+    async function setupControl(cwd: string, options?: Record<string, unknown>) {
+      const pi = createControlMockPi();
+      const control = new (AgentControl as any)(pi, 4, 2, undefined, undefined, options);
+      control.registry.ensureRoot("root");
+      const store = control.resultStoreFor(cwd);
+      const agent = {
+        agentId: "agent-retry",
+        agentPath: "/root/task",
+        authority: { mode: "propose_patch" as const, require_base_hash: true, max_patch_bytes: 50000 },
+        authorityEnforced: true,
+        workspaceCwd: cwd,
+      };
+      const save = (summary: string) => store.save(agent as any, { schema: "subagent.result.v1", outcome: "no_change", summary } as any);
+      return { control, store, save };
+    }
+
+    it("honors a configured maxResultRetries and reports retry_limit_reached (issue #83 / C-014)", async () => {
+      const { mkdtempSync } = await import("node:fs");
+      const { tmpdir } = await import("node:os");
+      const { join } = await import("node:path");
+      const cwd = mkdtempSync(join(tmpdir(), "pi-retry-budget-"));
+
+      const { control, store, save } = await setupControl(cwd, { maxResultRetries: 1 });
+      const original = save("first");
+      const retry = save("second");
+      // Bump the retry chain count to 1 on `retry` via a retry link.
+      store.linkRetry(original.result_id, retry.result_id);
+
+      const result = await control.retryAgentResult(
+        { result_id: retry.result_id, reason: "stale" },
+        { cwd } as any,
+      );
+
+      expect(result.status).toBe("retry_limit_reached");
+      expect(result.retries).toBe(1);
+    });
+
+    it("uses the default retry budget (3) when the option is omitted", async () => {
+      const { mkdtempSync } = await import("node:fs");
+      const { tmpdir } = await import("node:os");
+      const { join } = await import("node:path");
+      const cwd = mkdtempSync(join(tmpdir(), "pi-retry-budget-"));
+
+      const { control, store, save } = await setupControl(cwd);
+      // Build a chain of 3 retries so the leaf has retry_count = 3.
+      let prev = save("0");
+      for (let i = 1; i <= 3; i++) {
+        const next = save(String(i));
+        store.linkRetry(prev.result_id, next.result_id);
+        prev = next;
+      }
+
+      const result = await control.retryAgentResult(
+        { result_id: prev.result_id, reason: "stale" },
+        { cwd } as any,
+      );
+
+      expect(result.status).toBe("retry_limit_reached");
+      expect(result.retries).toBe(3);
+    });
+  });
 });
 
 // ─── Registry additional coverage ───────────────────────────────

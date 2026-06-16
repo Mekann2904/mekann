@@ -64,13 +64,14 @@ Pi 上では `/mekann-settings` を使って設定を確認・編集できます
       "maxSubagents": 1,
       "maxQueuedSubagents": 2,
       "display": "external-split",
-      "defaultReasoningEffort": "low"
+      "defaultReasoningEffort": "low",
+      "maxResultRetries": 3
     }
   }
 }
 ```
 
-`display` は `none`、`external-pi`、`external-split` のいずれかです。Kitty 以外では表示機能が制限される場合があります。
+`display` は `none`、`external-pi`、`external-split` のいずれかです。Kitty 以外では表示機能が制限される場合があります。`maxSubagents` は hard-cap の `4` まで指定できます。`maxResultRetries`（1〜10、既定 3）は `agent_results action=retry` で1つの結果を再実行できる回数上限です。
 
 ### Command Normalization
 

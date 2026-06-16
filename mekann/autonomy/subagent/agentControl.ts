@@ -56,6 +56,7 @@ const DEFAULT_MAX_DEPTH = MEKANN_SUBAGENT_DEFAULTS.maxDepth;
 const DEFAULT_MAX_QUEUED_SUBAGENTS = MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents;
 const DEFAULT_WAIT_TIMEOUT_MS = MEKANN_SUBAGENT_DEFAULTS.defaultWaitTimeoutMs;
 const MIN_WAIT_TIMEOUT_MS = MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs;
+const DEFAULT_MAX_RESULT_RETRIES = MEKANN_SUBAGENT_DEFAULTS.maxResultRetries;
 
 export const DEFAULT_AUTHORITY: SubagentAuthority = { mode: "propose_patch", require_base_hash: true, max_patch_bytes: MEKANN_SUBAGENT_DEFAULTS.maxPatchBytes };
 
@@ -87,6 +88,8 @@ export interface AgentControlOptions {
   externalPiSlots?: number;
   allowNestedSubagents?: boolean;
   defaultReasoningEffort?: string;
+  /** Max re-runs per result via `agent_results action=retry` (issue #83 / C-014). */
+  maxResultRetries?: number;
 }
 
 // ─── Agent control ───────────────────────────────────────────────
@@ -110,6 +113,7 @@ export class AgentControl {
   private maxExternalPiSubagents: number;
   private allowNestedSubagents: boolean;
   private defaultReasoningEffort: string;
+  private maxResultRetries: number;
   private sessionSpawnCount = 0;
   readonly resultStore: SubagentResultStore;
   readonly lifecycle: SubagentLifecycle;
@@ -143,6 +147,7 @@ export class AgentControl {
     this.maxExternalPiSubagents = options.externalPiSlots ?? (this.allowUnsafeExternalPi && this.displayMode !== "none" ? 1 : MEKANN_SUBAGENT_DEFAULTS.externalPiSlots);
     this.allowNestedSubagents = options.allowNestedSubagents ?? MEKANN_SUBAGENT_DEFAULTS.allowNestedSubagents;
     this.defaultReasoningEffort = options.defaultReasoningEffort ?? MEKANN_SUBAGENT_DEFAULTS.defaultReasoningEffort;
+    this.maxResultRetries = options.maxResultRetries ?? DEFAULT_MAX_RESULT_RETRIES;
     this.lifecycle = new SubagentLifecycle(this.registry, this.mailbox, process.cwd());
     this.resultStore = this.lifecycle.resultStore;
     this.sessionControl = new AgentSessionControl({
@@ -452,10 +457,10 @@ export class AgentControl {
     const store = this.resultStoreFor(ctx.cwd);
     const stored = store.load(params.result_id);
 
-    // Enforce max retry limit (default 3)
-    const maxRetries = 3;
+    // Enforce configured retry budget (subagent.maxResultRetries, default 3,
+    // hard-clamped to 1–10 in controlFactory). Issue #83 / C-014.
     const currentRetries = store.getRetryCount(params.result_id);
-    if (currentRetries >= maxRetries) {
+    if (currentRetries >= this.maxResultRetries) {
       return { result_id: params.result_id, status: "retry_limit_reached", retries: currentRetries };
     }
 
