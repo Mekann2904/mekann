@@ -1,6 +1,13 @@
 #!/bin/bash
 # Parallel prepush: runs typecheck + fast module tests concurrently.
 # Full CI should run npm test to include slow autoresearch tests.
+#
+# Concurrency is capped (default 3) to avoid CPU oversubscription: each test
+# module spawns its own Vitest workers (~CPU-1), so 14 unbounded jobs on an
+# 8-core machine drives load average past 14 and slows everything via
+# context-switch thrashing. Override the cap with PREPUSH_MAX_JOBS for CI or
+# machines with more/fewer cores. Outer cap only — per-module workers are left
+# at the Vitest default since they are productively used within each module.
 set -euo pipefail
 
 start_ms=$(python3 -c 'import time; print(int(time.time()*1000))')
@@ -12,6 +19,11 @@ tmpdir=$(mktemp -d)
 trap "rm -rf $tmpdir" EXIT
 
 declare -A pids
+# Cap simultaneous jobs so total processes stay within the CPU budget.
+# Profiled on an 8-core box: 3 jobs -> load1≈4.7, wall≈18s (vs unbounded
+# load1≈14.8; sequential CI build ≈35s). Bumping inner Vitest workers down
+# instead is counter-productive (mekann's 184 files starve a 2-worker pool).
+MAX_JOBS="${PREPUSH_MAX_JOBS:-3}"
 declare -A names=( [typecheck]="npm run typecheck"
   [prepare-ci]="npm run check:prepare-ci"
   [workflows]="npm run check:workflows"
@@ -28,6 +40,16 @@ declare -A names=( [typecheck]="npm run typecheck"
   [ledger]="npm run test:ledger" )
 
 for name in "${!names[@]}"; do
+  # Gate on the running count before launching the next job. kill -0 (not
+  # `wait -n`) keeps this compatible with macOS' bundled bash 3.2.
+  while true; do
+    active=0
+    for n in "${!pids[@]}"; do
+      kill -0 "${pids[$n]}" 2>/dev/null && active=$((active + 1))
+    done
+    [ "$active" -lt "$MAX_JOBS" ] && break
+    sleep 0.2
+  done
   eval "${names[$name]}" > "$tmpdir/$name.log" 2>&1 & pids[$name]=$!
 done
 
