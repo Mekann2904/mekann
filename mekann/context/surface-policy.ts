@@ -14,6 +14,14 @@ export function shouldExposeManualOrAlwaysSurface(input: {
 	return input.configuredSurface === "always" || input.manualActive;
 }
 
-export function normalizePromptSurface(value: string): "off" | "locator" | "full" {
-	return value === "off" || value === "full" ? value : "locator";
+/**
+ * Normalize a configured `promptSurface` value to the active surface.
+ *
+ * `full` is deprecated: it injected the generated AGENTS.md/domain-docs
+ * fragments even though the base system already embeds AGENTS.md (and often
+ * domain docs) via <project_context>, causing double injection. It now falls
+ * back to `locator`, which exposes only the small retrieval locator.
+ */
+export function normalizePromptSurface(value: string): "off" | "locator" {
+	return value === "off" ? "off" : "locator";
 }

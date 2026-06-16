@@ -22,7 +22,19 @@ export const cacheableContextSettingsSchema: FeatureSettingsSchema = {
   title: "Cacheable Context Prefix",
   settings: [
     bool("enabled", "General", true, "CONTEXT.md / AGENTS.md / ADR index から検索用 fragment を生成します。初期値では system prompt には小さな locator だけを追加し、詳細は agent が通常の read/rg で探索します。LLM tool は追加しません。"),
-    stringEnum("promptSurface", "General", "locator", ["locator", "full", "off"], "system prompt への露出方式。locator は保存場所と探索方針だけ、full は生成済み fragment 本文を注入、off は prompt 露出なし。"),
+    {
+      key: "promptSurface",
+      type: "string",
+      defaultValue: "locator",
+      description: "system prompt への露出方式。locator は保存場所と探索方針だけを出し、off は prompt 露出なし。full は非推奨（base system が既に AGENTS.md / domain docs を注入するため二重注入になる）で、指定時は locator にフォールバックします。",
+      category: "General",
+      scopes: ["global", "workspace"],
+      restartRequired: true,
+      validate(value) {
+        if (value === "full") return ["非推奨: full は base system と二重注入するため locator にフォールバックします。locator または off に設定してください。"];
+        return typeof value === "string" && ["locator", "off"].includes(value) ? [] : ["locator / off のいずれかである必要があります"];
+      },
+    },
     stringEnum("contextMode", "Content", "term-index", ["off", "term-index", "distilled", "full"], "CONTEXT.md の取り込み方式。初期値は term-index で、用語名と検索方針だけを含めます。"),
     bool("includeAgents", "Content", true, "AGENTS.md の要約 fragment を含めます。"),
     bool("includeDomainDocs", "Content", true, "docs/agents/domain.md の要約 fragment を含めます。"),
