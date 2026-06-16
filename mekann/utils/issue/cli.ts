@@ -10,13 +10,16 @@
 
 import { parseIssueArgs } from "./args.js";
 import { addDependencyStatus, listOpenIssues, type IssueDependencyStatus, type IssueWithStatus, getIssueStatus, getIssueDependencyStatus, getIssueLabels } from "./github.js";
-import { getRepoInfo, createWorktree, removeWorktree, worktreeDir, listExistingWorktrees, issueBranch, parseIssueNumberFromBranch, type WorktreeInfo, type RepoInfo } from "./worktree.js";
+import { getRepoInfo, createWorktree, removeWorktree, worktreeDir, listExistingWorktrees, issueBranch, parseIssueNumberFromBranch, resolveIssueWorktreePath, type WorktreeInfo, type RepoInfo } from "./worktree.js";
 import { mountIssueList } from "./app.js";
 import { launchPiSessionInKittySplit } from "../terminal/pi-session.js";
 import { createOrchestrationDeps } from "./orchestration/deps.js";
 import { startOrchestration, type LaunchWorkPi } from "./orchestration/lifecycle.js";
 import { buildIssueSessionSystemPrompt, buildIssueSessionInitialMessage } from "./prompts.js";
 import { bulkLaunchIssues, type BulkLaunchDeps } from "./bulk-launch.js";
+import { createAutopilotDeps } from "./orchestration/autopilot/deps.js";
+import { buildAutopilotConfig, buildAutopilotLauncher } from "./orchestration/autopilot/extension.js";
+import { runAutopilotSupervisor, type AutopilotLoopHooks } from "./orchestration/autopilot/lifecycle.js";
 
 export { buildIssueSessionSystemPrompt, buildIssueSessionInitialMessage } from "./prompts.js";
 
@@ -40,6 +43,11 @@ async function main(): Promise<void> {
 
 	if (args.value.mode === "orchestrate") {
 		await runOrchestration(args.value.issueNumber!);
+		return;
+	}
+
+	if (args.value.mode === "autopilot") {
+		await runAutopilot();
 		return;
 	}
 
@@ -101,10 +109,7 @@ async function runDirect(issueNumber: number): Promise<void> {
  * Shared by orchestration launches so the CLI and the shutdown hook stay in sync.
  */
 function resolveChildWorktreePath(repoRoot: string, child: number): string {
-	const branch = issueBranch(child);
-	const dir = worktreeDir(repoRoot, branch);
-	const existing = listExistingWorktrees(repoRoot).find((worktree) => worktree.branch === branch);
-	return existing ? existing.path : createWorktree(repoRoot, branch, dir).path;
+	return resolveIssueWorktreePath(repoRoot, child);
 }
 
 /**
@@ -145,6 +150,51 @@ async function runOrchestration(parentNumber: number): Promise<void> {
 		const outcome = await startOrchestration(parentNumber, repoInfo.root, deps, launchWorkPi);
 		console.log(outcome.message);
 		if (outcome.kind === "no-children") process.exitCode = 0;
+	} catch (error) {
+		console.error(error instanceof Error ? error.message : String(error));
+		process.exitCode = 1;
+	}
+}
+
+/**
+ * Loop hooks for the standalone CLI autopilot run. Unlike the Main Pi extension
+ * loop, these timers stay ref'd so `mekann-issue autopilot` cannot exit before
+ * the supervisor reaches a terminal state.
+ */
+function createAutopilotCliHooks(): AutopilotLoopHooks {
+	return {
+		sleep(ms: number): Promise<void> {
+			return new Promise((resolve) => {
+				setTimeout(() => resolve(), ms);
+			});
+		},
+		shouldStop: () => false,
+		now: () => Date.now(),
+		notify: (message, level) => {
+			if (level === "error" || level === "warning") console.error(message);
+			else console.log(message);
+		},
+	};
+}
+
+/**
+ * Run the autopilot supervisor as a standalone process (issue #112).
+ * `mekann-issue autopilot`. Sequentially drives every ready-for-agent issue to
+ * a PR until the candidate set is exhausted, then exits.
+ */
+async function runAutopilot(): Promise<void> {
+	const repoInfo = getRepoInfo();
+	if (!repoInfo) { console.error("Not in git repo."); process.exitCode = 1; return; }
+
+	const deps = createAutopilotDeps({ remote: repoInfo.remote, repoRoot: repoInfo.root });
+	const launchWorkPi = buildAutopilotLauncher(repoInfo.root);
+	const hooks = createAutopilotCliHooks();
+
+	try {
+		const result = await runAutopilotSupervisor(deps, launchWorkPi, hooks, buildAutopilotConfig());
+		// A hard stop (launch failure / repeated no-show) is a non-zero exit so CI
+		// and scripts can detect it; natural completion and no-candidates are 0.
+		if (result.kind === "stopped") process.exitCode = 1;
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : String(error));
 		process.exitCode = 1;

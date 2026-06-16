@@ -17,6 +17,19 @@ export function issueBranch(issueNumber: number): string {
 	return `issue-${issueNumber}`;
 }
 
+/**
+ * Resolve an issue worktree's path, reusing an existing worktree for the issue
+ * branch when present and otherwise creating one. Shared by direct `/issue`,
+ * parent/child orchestration, and the autopilot supervisor so they never drift
+ * on path resolution.
+ */
+export function resolveIssueWorktreePath(repoRoot: string, issueNumber: number): string {
+	const branch = issueBranch(issueNumber);
+	const dir = worktreeDir(repoRoot, branch);
+	const existing = listExistingWorktrees(repoRoot).find((worktree) => worktree.branch === branch);
+	return existing ? existing.path : createWorktree(repoRoot, branch, dir).path;
+}
+
 export function parseIssueNumberFromBranch(branch: string): number | null {
 	const match = branch.match(/^issue-(\d+)$/);
 	return match ? parseInt(match[1], 10) : null;
