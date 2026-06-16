@@ -32,7 +32,8 @@ export {
 	computeBaselineNoise,
 } from "./contractV1/crypto.js";
 export {
-	type LockFile, autoresearchDir, currentContractPath, currentLockPath,
+	type LockFile, type LockFileV1ValidationResult, validateLockFileV1,
+	autoresearchDir, currentContractPath, currentLockPath,
 	eventsPath, metricsPath, decisionsPath, planPath, ensureAutoresearchDir,
 	writeCurrentContract, readCurrentContract, writeLockFile, readLockFile,
 	type ContractEvent, appendEvent, type DecisionEntry, appendDecision,
