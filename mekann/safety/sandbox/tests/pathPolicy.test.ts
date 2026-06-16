@@ -14,6 +14,9 @@ import {
 	assertPathInsideRoot,
 	resolveRealPaths,
 	validateWorkspaceRoot,
+	safeRepoRelativePath,
+	protectedDirsSbplAlternation,
+	PROTECTED_DIRS,
 } from "../permissions.js";
 
 // ─── isProtectedPath ──────────────────────────────────────────────
@@ -37,6 +40,12 @@ describe("isProtectedPath", () => {
 	it(".agents を保護対象として判定する", () => {
 		expect(isProtectedPath("/tmp/project/.agents")).toBe(true);
 		expect(isProtectedPath("/tmp/project/.agents/state.json")).toBe(true);
+	});
+
+	it(".pi を保護対象として判定する (issue #80 C-005)", () => {
+		expect(isProtectedPath("/tmp/project/.pi")).toBe(true);
+		expect(isProtectedPath("/tmp/project/.pi/subagent-results/x.json")).toBe(true);
+		expect(isProtectedPath("/tmp/project/.pi/ledger.json")).toBe(true);
 	});
 
 	it("ネストされた .git パスを保護対象として判定する", () => {
@@ -64,6 +73,74 @@ describe("isProtectedPath", () => {
 
 	it("/ 直下の .git は保護対象", () => {
 		expect(isProtectedPath("/.git")).toBe(true);
+	});
+});
+
+// ─── safeRepoRelativePath (shared path-safety primitive) ────────
+
+describe("safeRepoRelativePath", () => {
+	it("accepts normal relative paths", () => {
+		expect(safeRepoRelativePath("src/index.ts")).toBe("src/index.ts");
+		expect(safeRepoRelativePath("a/b/c.ts")).toBe("a/b/c.ts");
+	});
+
+	it("normalizes backslashes to forward slashes", () => {
+		expect(safeRepoRelativePath("src\\a.ts")).toBe("src/a.ts");
+	});
+
+	it("normalizes ./ prefix and double slashes", () => {
+		expect(safeRepoRelativePath("./src/a.ts")).toBe("src/a.ts");
+		expect(safeRepoRelativePath("src//a.ts")).toBe("src/a.ts");
+	});
+
+	it("rejects empty, null bytes, absolute, drive-letter paths", () => {
+		expect(safeRepoRelativePath("")).toBeUndefined();
+		expect(safeRepoRelativePath("src\0evil.ts")).toBeUndefined();
+		expect(safeRepoRelativePath("/tmp/x.ts")).toBeUndefined();
+		expect(safeRepoRelativePath("C:\\Users\\x.ts")).toBeUndefined();
+		expect(safeRepoRelativePath("c:/x.ts")).toBeUndefined();
+		// backslash-leading path that becomes absolute after slash normalization
+		expect(safeRepoRelativePath("\\evil\\x.ts")).toBeUndefined();
+	});
+
+	it("rejects parent traversal", () => {
+		expect(safeRepoRelativePath("..")).toBeUndefined();
+		expect(safeRepoRelativePath(".")).toBeUndefined();
+		expect(safeRepoRelativePath("../x.ts")).toBeUndefined();
+		expect(safeRepoRelativePath("a/../../b.ts")).toBeUndefined();
+		expect(safeRepoRelativePath("../../x.ts")).toBeUndefined();
+	});
+
+	it("rejects protected metadata dirs at top level (issue #80 C-004)", () => {
+		for (const dir of PROTECTED_DIRS) {
+			expect(safeRepoRelativePath(dir)).toBeUndefined();
+			expect(safeRepoRelativePath(`${dir}/config`)).toBeUndefined();
+		}
+		// .pi explicitly: subagent/autoresearch now share this protection
+		expect(safeRepoRelativePath(".pi")).toBeUndefined();
+		expect(safeRepoRelativePath(".pi/state.json")).toBeUndefined();
+		expect(safeRepoRelativePath(".codex")).toBeUndefined();
+		expect(safeRepoRelativePath(".agents/state.json")).toBeUndefined();
+	});
+
+	it("does NOT reject look-alike names (.github/.gitignore/.gitconfig)", () => {
+		expect(safeRepoRelativePath(".github/workflows/ci.yml")).toBe(".github/workflows/ci.yml");
+		expect(safeRepoRelativePath(".gitignore")).toBe(".gitignore");
+		expect(safeRepoRelativePath(".gitconfig")).toBe(".gitconfig");
+	});
+});
+
+// ─── protectedDirsSbplAlternation (single source for SBPL regex) ──
+
+describe("protectedDirsSbplAlternation", () => {
+	it("escapes every PROTECTED_DIRS entry and joins with |", () => {
+		const alt = protectedDirsSbplAlternation();
+		for (const dir of PROTECTED_DIRS) {
+			const escaped = dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+			expect(alt).toContain(escaped);
+		}
+		// .pi must be present so SBPL enforcement matches subagent protection (issue #80 C-005)
+		expect(alt).toContain("\\.pi");
 	});
 });
 

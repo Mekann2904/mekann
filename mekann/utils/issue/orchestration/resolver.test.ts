@@ -10,6 +10,7 @@ function child(n: number, overrides: Partial<ChildState> = {}): ChildState {
 		prMerged: false,
 		prExists: false,
 		openBlockers: [],
+		readyForAgent: true,
 		hasWorktree: false,
 		hasActiveWorkPi: false,
 		...overrides,
@@ -20,7 +21,7 @@ describe("pickNextChild", () => {
 	it("picks the only startable child", () => {
 		const result = pickNextChild([child(67), child(68, { prMerged: true })]);
 		expect(result.next?.state.number).toBe(67);
-		expect(result.summary).toEqual({ total: 2, done: [68], blocked: [], active: [], startable: [67] });
+		expect(result.summary).toEqual({ total: 2, done: [68], blocked: [], active: [], notReady: [], startable: [67] });
 	});
 
 	it("picks the lowest-numbered startable child (deterministic ordering)", () => {
@@ -53,6 +54,12 @@ describe("pickNextChild", () => {
 		expect(result.next?.state.number).toBe(68);
 	});
 
+	it("skips not-ready children", () => {
+		const result = pickNextChild([child(67, { readyForAgent: false }), child(68)]);
+		expect(result.next?.state.number).toBe(68);
+		expect(result.summary.notReady).toEqual([67]);
+	});
+
 	it("prefers fresh start and resume equally (both startable), by number", () => {
 		const result = pickNextChild([child(70, { hasWorktree: true }), child(68)]);
 		expect(result.next?.state.number).toBe(68);
@@ -74,12 +81,12 @@ describe("pickNextChild", () => {
 
 describe("isComplete", () => {
 	it("false when total is 0", () => {
-		expect(isComplete({ total: 0, done: [], blocked: [], active: [], startable: [] })).toBe(false);
+		expect(isComplete({ total: 0, done: [], blocked: [], active: [], notReady: [], startable: [] })).toBe(false);
 	});
 	it("true when all done", () => {
-		expect(isComplete({ total: 2, done: [1, 2], blocked: [], active: [], startable: [] })).toBe(true);
+		expect(isComplete({ total: 2, done: [1, 2], blocked: [], active: [], notReady: [], startable: [] })).toBe(true);
 	});
 	it("false when some remain", () => {
-		expect(isComplete({ total: 2, done: [1], blocked: [], active: [], startable: [2] })).toBe(false);
+		expect(isComplete({ total: 2, done: [1], blocked: [], active: [], notReady: [], startable: [2] })).toBe(false);
 	});
 });

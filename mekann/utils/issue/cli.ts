@@ -9,7 +9,7 @@
  */
 
 import { parseIssueArgs } from "./args.js";
-import { addDependencyStatus, listOpenIssues, type IssueDependencyStatus, type IssueWithStatus, getIssueStatus, getIssueDependencyStatus } from "./github.js";
+import { addDependencyStatus, listOpenIssues, type IssueDependencyStatus, type IssueWithStatus, getIssueStatus, getIssueDependencyStatus, getIssueLabels } from "./github.js";
 import { getRepoInfo, createWorktree, removeWorktree, worktreeDir, listExistingWorktrees, issueBranch, parseIssueNumberFromBranch, resolveIssueWorktreePath, type WorktreeInfo, type RepoInfo } from "./worktree.js";
 import { mountIssueList } from "./app.js";
 import { launchPiSessionInKittySplit } from "../terminal/pi-session.js";
@@ -92,8 +92,11 @@ async function runDirect(issueNumber: number): Promise<void> {
 	const repoInfo = getRepoInfo();
 	if (!repoInfo) { console.error("Not in git repo."); process.exitCode = 1; return; }
 
-	const dependencyStatus = await getIssueDependencyStatus(repoInfo.remote, issueNumber);
-	if (!ensureIssueCanStart(issueNumber, dependencyStatus)) return;
+	const [dependencyStatus, labels] = await Promise.all([
+		getIssueDependencyStatus(repoInfo.remote, issueNumber),
+		getIssueLabels(repoInfo.remote, issueNumber).catch(() => []),
+	]);
+	if (!ensureIssueCanStart(issueNumber, { ...dependencyStatus, labels })) return;
 
 	const branch = issueBranch(issueNumber);
 	const dir = worktreeDir(repoInfo.root, branch);
@@ -277,6 +280,7 @@ async function runInteractive(): Promise<void> {
 				issueNumber: issue.number,
 				hasWorktree: issue.hasWorktree,
 				worktreePath: issue.worktreePath,
+				labels: issue.labels,
 			}));
 			// bulkLaunchIssues never throws on issue-level failures: a failing issue
 			// (worktree create or Pi launch) is reported in `skipped` and the rest
@@ -316,20 +320,20 @@ function createBulkLaunchDeps(repoInfo: RepoInfo): BulkLaunchDeps {
 				throw new Error(`Failed to create worktree for #${issueNumber}: ${(err as Error).message}`);
 			}
 		},
-		async launchPiSession(issueNumber: number, worktreePath: string): Promise<void> {
+		async launchPiSession(issueNumber: number, worktreePath: string, labels: string[]): Promise<void> {
 			await launchPiSessionInKittySplit({
 				cwd: worktreePath,
 				title: `Issue #${issueNumber}`,
 				nodeBin: process.env.MEKANN_NODE_BIN,
-				appendSystemPrompt: buildIssueSessionSystemPrompt(issueNumber),
-				initialMessage: buildIssueSessionInitialMessage(issueNumber),
+				appendSystemPrompt: buildIssueSessionSystemPrompt(issueNumber, labels),
+				initialMessage: buildIssueSessionInitialMessage(issueNumber, labels),
 				hold: process.env.MEKANN_ISSUE_DEBUG === "1",
 			});
 		},
 	};
 }
 
-function ensureIssueCanStart(issueNumber: number, dependencyStatus: IssueDependencyStatus): boolean {
+function ensureIssueCanStart(issueNumber: number, dependencyStatus: IssueDependencyStatus & { labels?: string[] }): boolean {
 	if (dependencyStatus.error) {
 		console.error(`Issue #${issueNumber} cannot be started because dependencies could not be verified.`);
 		console.error(dependencyStatus.error);
@@ -346,6 +350,14 @@ function ensureIssueCanStart(issueNumber: number, dependencyStatus: IssueDepende
 		}
 		console.error("");
 		console.error("Resolve or close the blocking issues first.");
+		process.exitCode = 1;
+		return false;
+	}
+
+	const labels = dependencyStatus.labels ?? [];
+	if (!labels.includes("ready-for-agent") && !labels.includes("ready-for-human")) {
+		console.error(`Issue #${issueNumber} cannot be started because it has neither the ready-for-agent nor the ready-for-human label.`);
+		console.error("ready-for-agent opens an implementation worktree; ready-for-human opens an Agreement-phase worktree. Ask a human to triage it first.");
 		process.exitCode = 1;
 		return false;
 	}

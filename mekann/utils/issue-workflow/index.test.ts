@@ -48,7 +48,7 @@ describe("schema/runtime drift", () => {
 			const err = validateActionArgs({ action });
 			expect(err === null || !/Unknown issue_workflow action/.test(err)).toBe(true);
 		}
-		expect(ISSUE_WORKFLOW_ACTIONS).toHaveLength(11);
+		expect(ISSUE_WORKFLOW_ACTIONS).toHaveLength(13);
 	});
 });
 
@@ -79,6 +79,13 @@ describe("validateActionArgs", () => {
 		expect(validateActionArgs({ action: "issue_comment" })).toMatch(/body/);
 	});
 
+	it("accepts promote/demote label actions with no required fields", () => {
+		expect(validateActionArgs({ action: "promote_to_ready_for_agent" })).toBeNull();
+		expect(validateActionArgs({ action: "demote_to_ready_for_human" })).toBeNull();
+		expect(validateActionArgs({ action: "promote_to_ready_for_agent", issue: 42 })).toBeNull();
+		expect(validateActionArgs({ action: "demote_to_ready_for_human", issue: 42 })).toBeNull();
+	});
+
 	it("accepts read-only and push/ready with no extra fields", () => {
 		for (const action of ["current_branch", "status", "diff", "view_pr", "push", "ready"] as const) {
 			expect(validateActionArgs({ action })).toBeNull();
@@ -89,6 +96,8 @@ describe("validateActionArgs", () => {
 		expect(validateActionArgs({ action: "status", message: "should not be here" })).toMatch(/does not accept field/);
 		expect(validateActionArgs({ action: "push", title: "not a PR" })).toMatch(/does not accept field/);
 		expect(validateActionArgs({ action: "create_pr", title: "t", body: "b", files: ["x.ts"] })).toMatch(/does not accept field/);
+		expect(validateActionArgs({ action: "promote_to_ready_for_agent", body: "not a comment" })).toMatch(/does not accept field/);
+		expect(validateActionArgs({ action: "demote_to_ready_for_human", title: "not a PR" })).toMatch(/does not accept field/);
 	});
 });
 
@@ -126,11 +135,11 @@ describe("executeAction worktree gate", () => {
 	});
 
 	it("every non-status action is classified as mutating vs read-only consistently", () => {
-		const mutating = ["commit", "push", "create_pr", "update_pr", "ready", "comment", "issue_comment"];
+		const mutating = ["commit", "push", "create_pr", "update_pr", "ready", "comment", "issue_comment", "promote_to_ready_for_agent", "demote_to_ready_for_human"];
 		const readonly = ["current_branch", "status", "diff", "view_pr"];
 		for (const a of mutating) expect(MUTATING_ACTIONS.has(a as never)).toBe(true);
 		for (const a of readonly) expect(MUTATING_ACTIONS.has(a as never)).toBe(false);
-		expect(ISSUE_WORKFLOW_ACTIONS).toHaveLength(11);
+		expect(ISSUE_WORKFLOW_ACTIONS).toHaveLength(13);
 	});
 });
 
@@ -301,6 +310,29 @@ describe("executeAction issue_comment", () => {
 		expect(comment && comment[2]).toBe("99");
 	});
 
+	it("posts from outside an issue worktree when an explicit issue is supplied (#78)", async () => {
+		const gitCalls: string[][] = [];
+		const git = vi.fn((args: string[]): ExecOut => {
+			gitCalls.push(args);
+			// Deliberately NOT an issue worktree (e.g. main Pi on `main`).
+			if (args[0] === "branch" && args[1] === "--show-current") return { stdout: "main\n", stderr: "" };
+			return { stdout: "", stderr: "" };
+		});
+		const gh = vi.fn((args: string[]): ExecOut => {
+			if (args[0] === "issue" && args[1] === "comment") {
+				return { stdout: "https://github.com/o/r/issues/42#issuecomment-9\n", stderr: "" };
+			}
+			return { stdout: "", stderr: "" };
+		});
+		const { runner } = createMockRunner({ git, gh });
+		const result = await executeAction({ action: "issue_comment", issue: 42, body: "note" }, "/repo", runner);
+		expect(result.isError).toBe(false);
+		expect(result.text).toContain("https://github.com/o/r/issues/42#issuecomment-9");
+		// The worktree gate must not even probe the branch when an issue is explicit.
+		expect(gitCalls.find((a) => a[0] === "branch")).toBeUndefined();
+		expect(result.details.issue).toBe(42);
+	});
+
 	it("is blocked by the worktree gate when not on an issue branch", async () => {
 		const { runner } = createMockRunner({
 			git: () => ({ stdout: "main\n", stderr: "" }),
@@ -308,6 +340,122 @@ describe("executeAction issue_comment", () => {
 		const result = await executeAction({ action: "issue_comment", body: "x" }, "/repo", runner);
 		expect(result.isError).toBe(true);
 		expect(result.text).toMatch(/only allowed inside an issue worktree/);
+	});
+});
+
+// ── executeAction: label switching (promote / demote) ───────────────
+
+describe("executeAction label switching", () => {
+	it("promote_to_ready_for_agent adds ready-for-agent and removes ready-for-human", async () => {
+		const seen: string[][] = [];
+		const git = vi.fn((args: string[]): ExecOut => {
+			seen.push(args);
+			if (args[0] === "branch" && args[1] === "--show-current") return { stdout: "issue-42\n", stderr: "" };
+			return { stdout: "", stderr: "" };
+		});
+		const gh = vi.fn((args: string[]): ExecOut => {
+			seen.push(args);
+			return { stdout: "", stderr: "" };
+		});
+		const { runner } = createMockRunner({ git, gh });
+		const result = await executeAction({ action: "promote_to_ready_for_agent" }, "/repo", runner);
+		expect(result.isError).toBe(false);
+		const edit = seen.find((a) => a[0] === "issue" && a[1] === "edit");
+		expect(edit).toBeDefined();
+		// gh issue edit <n> --add-label ready-for-agent --remove-label ready-for-human
+		expect(edit && edit[2]).toBe("42");
+		expect(edit && edit.includes("--add-label") && edit.includes("ready-for-agent")).toBe(true);
+		expect(edit && edit.includes("--remove-label") && edit.includes("ready-for-human")).toBe(true);
+		expect(result.details).toMatchObject({ action: "promote_to_ready_for_agent", issue: 42, addLabel: "ready-for-agent", removeLabel: "ready-for-human" });
+	});
+
+	it("demote_to_ready_for_human adds ready-for-human and removes ready-for-agent", async () => {
+		const seen: string[][] = [];
+		const git = vi.fn((args: string[]): ExecOut => {
+			seen.push(args);
+			if (args[0] === "branch" && args[1] === "--show-current") return { stdout: "issue-42\n", stderr: "" };
+			return { stdout: "", stderr: "" };
+		});
+		const gh = vi.fn((args: string[]): ExecOut => {
+			seen.push(args);
+			return { stdout: "", stderr: "" };
+		});
+		const { runner } = createMockRunner({ git, gh });
+		const result = await executeAction({ action: "demote_to_ready_for_human" }, "/repo", runner);
+		expect(result.isError).toBe(false);
+		const edit = seen.find((a) => a[0] === "issue" && a[1] === "edit");
+		expect(edit).toBeDefined();
+		expect(edit && edit.includes("--add-label") && edit.includes("ready-for-human")).toBe(true);
+		expect(edit && edit.includes("--remove-label") && edit.includes("ready-for-agent")).toBe(true);
+		expect(result.details).toMatchObject({ action: "demote_to_ready_for_human", issue: 42, addLabel: "ready-for-human", removeLabel: "ready-for-agent" });
+	});
+
+	it("uses an explicit issue number when provided", async () => {
+		const seen: string[][] = [];
+		const git = vi.fn((args: string[]): ExecOut => {
+			seen.push(args);
+			if (args[0] === "branch" && args[1] === "--show-current") return { stdout: "issue-7\n", stderr: "" };
+			return { stdout: "", stderr: "" };
+		});
+		const gh = vi.fn((args: string[]): ExecOut => {
+			seen.push(args);
+			return { stdout: "", stderr: "" };
+		});
+		const { runner } = createMockRunner({ git, gh });
+		await executeAction({ action: "promote_to_ready_for_agent", issue: 99 }, "/repo", runner);
+		const edit = seen.find((a) => a[0] === "issue" && a[1] === "edit");
+		expect(edit && edit[2]).toBe("99");
+	});
+
+	it("runs promote/demote outside a worktree when an explicit issue is supplied (parity with #78)", async () => {
+		// Like issue_comment (#78), the label actions target a remote issue via the
+		// GitHub API and never touch local worktree state, so an explicit `issue`
+		// bypasses the worktree gate — the branch must not even be probed.
+		for (const action of ["promote_to_ready_for_agent", "demote_to_ready_for_human"] as const) {
+			const gitCalls: string[][] = [];
+			const git = vi.fn((args: string[]): ExecOut => {
+				gitCalls.push(args);
+				if (args[0] === "branch" && args[1] === "--show-current") return { stdout: "main\n", stderr: "" };
+				return { stdout: "", stderr: "" };
+			});
+			const gh = vi.fn((args: string[]): ExecOut => {
+				return { stdout: "", stderr: "" };
+			});
+			const { runner } = createMockRunner({ git, gh });
+			const result = await executeAction({ action, issue: 55 }, "/repo", runner);
+			expect(result.isError).toBe(false);
+			expect(gitCalls.find((a) => a[0] === "branch")).toBeUndefined();
+			expect(result.details).toMatchObject({ action, issue: 55 });
+		}
+	});
+
+	it("is blocked by the worktree gate when not on an issue branch", async () => {
+		const { runner } = createMockRunner({
+			git: () => ({ stdout: "main\n", stderr: "" }),
+		});
+		const result = await executeAction({ action: "promote_to_ready_for_agent" }, "/repo", runner);
+		expect(result.isError).toBe(true);
+		expect(result.text).toMatch(/only allowed inside an issue worktree/);
+	});
+
+	it("turns gh failure into a structured error result", async () => {
+		const git = vi.fn((args: string[]): ExecOut => {
+			if (args[0] === "branch" && args[1] === "--show-current") return { stdout: "issue-42\n", stderr: "" };
+			return { stdout: "", stderr: "" };
+		});
+		const { runner } = createMockRunner({
+			git,
+			gh: () => {
+				const e = new Error("label missing") as Error & { stderr: string; stdout: string; code: number };
+				e.stderr = "could not add label: ready-for-agent does not exist";
+				e.stdout = "";
+				e.code = 1;
+				throw e;
+			},
+		});
+		const result = await executeAction({ action: "promote_to_ready_for_agent" }, "/repo", runner);
+		expect(result.isError).toBe(true);
+		expect(result.text).toContain("does not exist");
 	});
 });
 
@@ -492,15 +640,19 @@ describe("issue_workflow tool registration", () => {
 				pi.tools[def.name] = def;
 			},
 		};
-		const prev = process.env.MEKANN_ISSUE_PI;
+		const prevIssuePi = process.env.MEKANN_ISSUE_PI;
+		const prevRole = process.env.PI_SUBAGENT_ROLE;
 		process.env.MEKANN_ISSUE_PI = "1";
+		delete process.env.PI_SUBAGENT_ROLE;
 		try {
 			const { default: issueWorkflowExtension } = await import("./index.js");
 			// isFeatureEnabled defaults to enabled when settings absent.
 			issueWorkflowExtension(pi as never);
 		} finally {
-			if (prev === undefined) delete process.env.MEKANN_ISSUE_PI;
-			else process.env.MEKANN_ISSUE_PI = prev;
+			if (prevIssuePi === undefined) delete process.env.MEKANN_ISSUE_PI;
+			else process.env.MEKANN_ISSUE_PI = prevIssuePi;
+			if (prevRole === undefined) delete process.env.PI_SUBAGENT_ROLE;
+			else process.env.PI_SUBAGENT_ROLE = prevRole;
 		}
 		expect(pi.tools["issue_workflow"]).toBeDefined();
 		expect(() => pi.tools["issue_workflow"].prepareArguments({ action: "commit" })).toThrow(/message/);

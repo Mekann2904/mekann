@@ -8,7 +8,7 @@
 
 import { Type, type Static } from "@sinclair/typebox";
 
-/** The 11 actions exposed by the issue_workflow tool. Single runtime source of truth. */
+/** The 13 actions exposed by the issue_workflow tool. Single runtime source of truth. */
 export const ISSUE_WORKFLOW_ACTIONS = [
 	"current_branch",
 	"status",
@@ -21,6 +21,8 @@ export const ISSUE_WORKFLOW_ACTIONS = [
 	"ready",
 	"comment",
 	"issue_comment",
+	"promote_to_ready_for_agent",
+	"demote_to_ready_for_human",
 ] as const;
 
 export type IssueWorkflowAction = (typeof ISSUE_WORKFLOW_ACTIONS)[number];
@@ -42,10 +44,12 @@ const ACTION_UNION = Type.Union(
 		Type.Literal("ready"),
 		Type.Literal("comment"),
 		Type.Literal("issue_comment"),
+		Type.Literal("promote_to_ready_for_agent"),
+		Type.Literal("demote_to_ready_for_human"),
 	],
 	{
 		description:
-			"Single workflow action to perform. Mutating actions (commit, push, create_pr, update_pr, ready, comment, issue_comment) only run inside an issue worktree (branch issue-<number>).",
+			"Single workflow action to perform. Mutating actions (commit, push, create_pr, update_pr, ready, comment, issue_comment, promote_to_ready_for_agent, demote_to_ready_for_human) only run inside an issue worktree (branch issue-<number>). issue_comment, promote_to_ready_for_agent, and demote_to_ready_for_human are exempt when an explicit 'issue' number is supplied.",
 	},
 );
 
@@ -92,7 +96,7 @@ export const IssueWorkflowParamsSchema = Type.Object(
 			Type.String({ description: "PR number or URL (actions: view_pr, update_pr, ready, comment). Defaults to the current branch PR." }),
 		),
 		issue: Type.Optional(
-			Type.Number({ description: "Issue number (action: issue_comment). Defaults to the current issue worktree." }),
+			Type.Number({ description: "Issue number (actions: issue_comment, promote_to_ready_for_agent, demote_to_ready_for_human). When supplied, these remote-issue actions run even outside an issue worktree; otherwise they default to the current issue worktree branch." }),
 		),
 	},
 	{

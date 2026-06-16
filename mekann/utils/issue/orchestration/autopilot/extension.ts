@@ -58,8 +58,8 @@ export function buildAutopilotLauncher(repoRoot: string): (child: AutopilotChild
 			cwd: wtPath,
 			title: `Issue #${child.number}`,
 			nodeBin: process.env.MEKANN_NODE_BIN,
-			appendSystemPrompt: buildIssueSessionSystemPrompt(child.number),
-			initialMessage: buildIssueSessionInitialMessage(child.number),
+			appendSystemPrompt: buildIssueSessionSystemPrompt(child.number, child.labels),
+			initialMessage: buildIssueSessionInitialMessage(child.number, child.labels),
 			autopilotChild: child.number,
 			hold: process.env.MEKANN_ISSUE_DEBUG === "1",
 		});

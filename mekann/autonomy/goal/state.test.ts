@@ -684,28 +684,22 @@ describe("continuation fields", () => {
 	it("createGoal initializes continuation fields", () => {
 		const { store } = makeStore();
 		const goal = store.createGoal("t1", "Test");
-		expect(goal.continuation_count).toBe(0);
-		expect(goal.max_continuations).toBe(5);
 		expect(goal.last_continued_at_ms).toBeNull();
 	});
 
 	it("replaceGoal initializes continuation fields", () => {
 		const { store } = makeStore();
 		const goal = store.replaceGoal("t1", "Test");
-		expect(goal.continuation_count).toBe(0);
-		expect(goal.max_continuations).toBe(5);
 		expect(goal.last_continued_at_ms).toBeNull();
 	});
 
-	it("updateGoal can set continuation_count and last_continued_at_ms", () => {
+	it("updateGoal can set last_continued_at_ms", () => {
 		const { store } = makeStore();
 		store.createGoal("t1", "Test");
 		const now = Date.now();
 		const updated = store.updateGoal({
-			continuation_count: 2,
 			last_continued_at_ms: now,
 		});
-		expect(updated.continuation_count).toBe(2);
 		expect(updated.last_continued_at_ms).toBe(now);
 	});
 });
@@ -715,7 +709,7 @@ describe("continuation fields", () => {
 // ---------------------------------------------------------------------------
 
 describe("fromEntries normalization", () => {
-	it("normalizes old goal entries missing continuation fields", () => {
+	it("normalizes old goal entries missing last_continued_at_ms", () => {
 		const oldGoal: any = {
 			thread_id: "t1",
 			goal_id: "g1",
@@ -726,7 +720,7 @@ describe("fromEntries normalization", () => {
 			time_used_seconds: 5,
 			created_at_ms: 1000,
 			updated_at_ms: 2000,
-			// continuation fields missing
+			// last_continued_at_ms missing
 		};
 
 		const entries: GoalStateEntry[] = [
@@ -737,13 +731,16 @@ describe("fromEntries normalization", () => {
 		const store = GoalStore.fromEntries(entries, (e) => persisted.push(e));
 
 		const got = store.getGoal()!;
-		expect(got.continuation_count).toBe(0);
-		expect(got.max_continuations).toBe(5);
 		expect(got.last_continued_at_ms).toBeNull();
+		expect(got).not.toHaveProperty("continuation_count");
+		expect(got).not.toHaveProperty("max_continuations");
 	});
 
-	it("normalizes invalid max_continuations to default", () => {
-		const goalWithInvalid: any = {
+	it("strips stale continuation_count/max_continuations from older persisted goals", () => {
+		// These fields were removed in favor of Codex-compatible unlimited
+		// continuations. Older persisted goal entries may still carry them;
+		// reconstruction must not retain dead state or re-persist it through later updates.
+		const staleGoal: any = {
 			thread_id: "t1",
 			goal_id: "g1",
 			objective: "Test",
@@ -753,20 +750,22 @@ describe("fromEntries normalization", () => {
 			time_used_seconds: 0,
 			created_at_ms: 1000,
 			updated_at_ms: 1000,
-			continuation_count: 0,
-			max_continuations: -1,
+			continuation_count: 7,
+			max_continuations: 5,
 			last_continued_at_ms: null,
 		};
 
 		const entries: GoalStateEntry[] = [
-			{ kind: "set", goal: goalWithInvalid, source: "user" },
+			{ kind: "set", goal: staleGoal, source: "user" },
 		];
 
 		const persisted: GoalStateEntry[] = [];
 		const store = GoalStore.fromEntries(entries, (e) => persisted.push(e));
 
 		const got = store.getGoal()!;
-		expect(got.max_continuations).toBe(5);
+		expect(got.last_continued_at_ms).toBeNull();
+		expect(got).not.toHaveProperty("continuation_count");
+		expect(got).not.toHaveProperty("max_continuations");
 	});
 });
 
@@ -775,43 +774,10 @@ describe("fromEntries normalization", () => {
 // ---------------------------------------------------------------------------
 
 describe("updateGoal continuation validation", () => {
-	it("rejects negative continuation_count", () => {
+	it("accepts null last_continued_at_ms", () => {
 		const { store } = makeStore();
 		store.createGoal("t1", "Test");
-		expect(() => store.updateGoal({ continuation_count: -1 })).toThrow(GoalError);
-		expect(() => store.updateGoal({ continuation_count: -1 })).toThrow("non-negative integer");
-	});
-
-	it("rejects non-integer continuation_count", () => {
-		const { store } = makeStore();
-		store.createGoal("t1", "Test");
-		expect(() => store.updateGoal({ continuation_count: 1.5 })).toThrow(GoalError);
-	});
-
-	it("rejects zero max_continuations", () => {
-		const { store } = makeStore();
-		store.createGoal("t1", "Test");
-		expect(() => store.updateGoal({ max_continuations: 0 })).toThrow(GoalError);
-		expect(() => store.updateGoal({ max_continuations: 0 })).toThrow("positive integer");
-	});
-
-	it("rejects negative max_continuations", () => {
-		const { store } = makeStore();
-		store.createGoal("t1", "Test");
-		expect(() => store.updateGoal({ max_continuations: -5 })).toThrow(GoalError);
-	});
-
-	it("accepts valid max_continuations", () => {
-		const { store } = makeStore();
-		store.createGoal("t1", "Test");
-		const updated = store.updateGoal({ max_continuations: 10 });
-		expect(updated.max_continuations).toBe(10);
-	});
-
-	it("accepts zero continuation_count", () => {
-		const { store } = makeStore();
-		store.createGoal("t1", "Test");
-		const updated = store.updateGoal({ continuation_count: 0 });
-		expect(updated.continuation_count).toBe(0);
+		const updated = store.updateGoal({ last_continued_at_ms: null });
+		expect(updated.last_continued_at_ms).toBeNull();
 	});
 });

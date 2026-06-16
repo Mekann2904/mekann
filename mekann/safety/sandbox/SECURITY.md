@@ -47,7 +47,7 @@ This extension uses `@earendil-works/pi-coding-agent` as a peer dependency becau
 | Mode | Workspace 読み取り | Workspace 書き込み | Isolated Temp 書き込み | Isolated HOME | Network |
 |------|----------|----------|-----------|---------|---------|
 | `read_only` | ON | OFF | ON (per-run isolated) | ON (per-run isolated) | OFF |
-| `workspace_write` | ON | ON (.git/.codex/.agents 除く) | ON (per-run isolated) | ON (per-run isolated) | opt-in |
+| `workspace_write` | ON | ON (.git/.pi/.codex/.agents 除く) | ON (per-run isolated) | ON (per-run isolated) | opt-in |
 | `yolo` | 制限なし | 制限なし | N/A | N/A | 制限なし |
 
 ### read_only の正確な意味
@@ -64,7 +64,7 @@ This extension uses `@earendil-works/pi-coding-agent` as a peer dependency becau
 ### workspace_write の正確な意味
 
 - Workspace 内への書き込みを許可
-- ただし repo metadata は保護: `.git`, `.codex`, `.agents` 配下への書き込みは deny
+- ただし repo metadata は保護: `.git`, `.pi`, `.codex`, `.agents` 配下への書き込みは deny
 - `.git` が pointer file の場合、resolved gitdir への書き込みも deny
 - symlink 経由で workspace 外に書き込むことはできない (Seatbelt が canonical path を評価)
 - **Isolated HOME**: `$HOME` は workspace/cwd ではなく isolated temp に設定される
@@ -228,7 +228,7 @@ Unit and integration tests covering:
 - maxOutputBytes combined (stdout + stderr 合計)
 - macOS 統合テスト:
   - read_only: 読み取り可、書き込み不可、/Users 不可、per-run temp 書き込み可
-  - workspace_write: 書き込み可、.git/.codex/.agents 保護、symlink escape 防止、resolved gitdir 保護
+  - workspace_write: 書き込み可、.git/.pi/.codex/.agents 保護、symlink escape 防止、resolved gitdir 保護
   - network: false で通信不可
   - env: secret が子プロセスに渡らない
   - timeout / output cap

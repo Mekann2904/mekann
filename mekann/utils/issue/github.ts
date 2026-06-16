@@ -84,6 +84,15 @@ export async function listOpenIssues(remote: string): Promise<GitHubIssue[]> {
  */
 export type IssueCleanupStatus = "closed" | "open" | "error";
 
+export async function getIssueLabels(remote: string, issueNumber: number): Promise<string[]> {
+	const issue = await ghJson<RawGitHubIssue>([
+		"issue", "view", String(issueNumber),
+		"--repo", remote,
+		"--json", "number,title,labels,url,body",
+	], { timeout: 10000 });
+	return normalizeIssue(issue).labels;
+}
+
 export async function getIssueDependencyStatus(remote: string, issueNumber: number): Promise<IssueDependencyStatus> {
 	const { execFile } = await import("node:child_process");
 	const { promisify } = await import("node:util");
