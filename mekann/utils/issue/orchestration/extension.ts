@@ -21,6 +21,7 @@ import { continueOrchestration, ORCHESTRATION_CHILD_ENV, ORCHESTRATION_PARENT_EN
 import { createWorktree, getRepoInfo, issueBranch, listExistingWorktrees, worktreeDir } from "../worktree.js";
 import { launchPiSessionInKittySplit } from "../../terminal/pi-session.js";
 import { buildIssueSessionInitialMessage, buildIssueSessionSystemPrompt } from "../prompts.js";
+import { resolveIssueWorkPiModel } from "./issueModel.js";
 
 export default function orchestrationExtension(pi: ExtensionAPI): void {
 	if (!isFeatureEnabled("issue-orchestration")) return;
@@ -49,12 +50,15 @@ export default function orchestrationExtension(pi: ExtensionAPI): void {
 			const dir = worktreeDir(repoInfo.root, branch);
 			const existing = listExistingWorktrees(repoInfo.root).find((worktree) => worktree.branch === branch);
 			const wtPath = existing ? existing.path : createWorktree(repoInfo.root, branch, dir).path;
+			const { model, thinking } = resolveIssueWorkPiModel();
 			await launchPiSessionInKittySplit({
 				cwd: wtPath,
 				title: options.title,
 				nodeBin: process.env.MEKANN_NODE_BIN,
 				appendSystemPrompt: buildIssueSessionSystemPrompt(options.child),
 				initialMessage: buildIssueSessionInitialMessage(options.child),
+				model,
+				thinking,
 				orchestrationParent: options.parent,
 				orchestrationChild: options.child,
 				hold: process.env.MEKANN_ISSUE_DEBUG === "1",

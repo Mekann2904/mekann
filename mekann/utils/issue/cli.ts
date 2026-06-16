@@ -15,6 +15,7 @@ import { mountIssueList } from "./app.js";
 import { launchPiSessionInKittySplit } from "../terminal/pi-session.js";
 import { createOrchestrationDeps } from "./orchestration/deps.js";
 import { startOrchestration, type LaunchWorkPi } from "./orchestration/lifecycle.js";
+import { resolveIssueWorkPiModel } from "./orchestration/issueModel.js";
 import { buildIssueSessionSystemPrompt, buildIssueSessionInitialMessage } from "./prompts.js";
 import { bulkLaunchIssues, type BulkLaunchDeps } from "./bulk-launch.js";
 import { createAutopilotDeps } from "./orchestration/autopilot/deps.js";
@@ -119,12 +120,15 @@ function resolveChildWorktreePath(repoRoot: string, child: number): string {
 function buildOrchestrationLauncher(parent: number, repoRoot: string): LaunchWorkPi {
 	return async (options) => {
 		const wtPath = resolveChildWorktreePath(repoRoot, options.child);
+		const { model, thinking } = resolveIssueWorkPiModel();
 		await launchPiSessionInKittySplit({
 			cwd: wtPath,
 			title: options.title,
 			nodeBin: process.env.MEKANN_NODE_BIN,
 			appendSystemPrompt: buildIssueSessionSystemPrompt(options.child),
 			initialMessage: buildIssueSessionInitialMessage(options.child),
+			model,
+			thinking,
 			orchestrationParent: options.parent,
 			orchestrationChild: options.child,
 			hold: process.env.MEKANN_ISSUE_DEBUG === "1",
@@ -321,12 +325,15 @@ function createBulkLaunchDeps(repoInfo: RepoInfo): BulkLaunchDeps {
 			}
 		},
 		async launchPiSession(issueNumber: number, worktreePath: string, labels: string[]): Promise<void> {
+			const { model, thinking } = resolveIssueWorkPiModel();
 			await launchPiSessionInKittySplit({
 				cwd: worktreePath,
 				title: `Issue #${issueNumber}`,
 				nodeBin: process.env.MEKANN_NODE_BIN,
 				appendSystemPrompt: buildIssueSessionSystemPrompt(issueNumber, labels),
 				initialMessage: buildIssueSessionInitialMessage(issueNumber, labels),
+				model,
+				thinking,
 				hold: process.env.MEKANN_ISSUE_DEBUG === "1",
 			});
 		},

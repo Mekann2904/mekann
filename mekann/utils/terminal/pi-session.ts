@@ -25,6 +25,10 @@ export interface PiSessionLaunchRequest {
 	appendSystemPrompt?: string;
 	/** Initial user message sent to the launched Pi session. */
 	initialMessage?: string;
+	/** Model override for the launched Pi session (modes Work Pi profile). Format matches pi's `--model provider/id`. */
+	model?: { provider: string; modelId: string };
+	/** Thinking level override for the launched Pi session (modes Work Pi profile). */
+	thinking?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 	/** Keep the window open after Pi exits. Intended for debugging only. */
 	hold?: boolean;
 	/** Parent issue number when this Work Pi is part of an orchestration (issue #71). */
@@ -66,6 +70,15 @@ export async function launchPiSessionInKittySplit(request: PiSessionLaunchReques
 	// shell), and `--copy-env` propagates the launcher's environment, so the new
 	// pane still gets a full PATH/env profile without needing a login shell.
 	const piArgv = [piBin, "--name", request.title];
+	if (request.model) {
+		// Work Pi model from the modes `issue` profile. pi's --model takes
+		// provider/id directly (supports optional :thinking too, but we pass
+		// thinking separately below for clarity).
+		piArgv.push("--model", `${request.model.provider}/${request.model.modelId}`);
+	}
+	if (request.thinking) {
+		piArgv.push("--thinking", request.thinking);
+	}
 	if (request.appendSystemPrompt) {
 		piArgv.push("--append-system-prompt", request.appendSystemPrompt);
 	}

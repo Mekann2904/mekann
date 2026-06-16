@@ -27,6 +27,7 @@ import { buildIssueSessionInitialMessage, buildIssueSessionSystemPrompt } from "
 import { getRepoInfo, resolveIssueWorktreePath } from "../../worktree.js";
 import { checkIssuePrerequisites } from "../../prerequisites.js";
 import { createAutopilotDeps } from "./deps.js";
+import { resolveIssueWorkPiModel } from "../issueModel.js";
 import { DEFAULT_AUTOPILOT_CONFIG, runAutopilotSupervisor, type AutopilotLoopHooks, type AutopilotSupervisorConfig } from "./lifecycle.js";
 import { readAutopilotChildEnv } from "./markers.js";
 import type { AutopilotChildState } from "./state.js";
@@ -53,12 +54,15 @@ export function buildAutopilotConfig(): AutopilotSupervisorConfig {
 export function buildAutopilotLauncher(repoRoot: string): (child: AutopilotChildState) => Promise<void> {
 	return async (child) => {
 		const wtPath = resolveIssueWorktreePath(repoRoot, child.number);
+		const { model, thinking } = resolveIssueWorkPiModel();
 		await launchPiSessionInKittySplit({
 			cwd: wtPath,
 			title: `Issue #${child.number}`,
 			nodeBin: process.env.MEKANN_NODE_BIN,
 			appendSystemPrompt: buildIssueSessionSystemPrompt(child.number, child.labels),
 			initialMessage: buildIssueSessionInitialMessage(child.number, child.labels),
+			model,
+			thinking,
 			autopilotChild: child.number,
 			hold: process.env.MEKANN_ISSUE_DEBUG === "1",
 		});

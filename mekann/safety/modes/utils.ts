@@ -64,8 +64,28 @@ export interface ModelRef { provider: string; modelId: string; }
 /** All mode names managed by modes extension. */
 export type ModeName = "main" | "read_only" | "auto" | "sub";
 
+/**
+ * Every mode/profile whose model + thinking preferences are stored under the
+ * `modes` feature. This is the superset of:
+ * - runtime-switchable collaboration modes (main/read_only/auto/sub — see
+ *   {@link MekannMode}), AND
+ * - Work Pi profiles (review_fix, issue) whose model is applied once at the
+ *   launch of a separate Pi session (no runtime transition).
+ *
+ * Single source of truth so the settings schema, the on-disk config shape, and
+ * the normalizer never drift on which profiles exist.
+ */
+export const MODE_PROFILE_NAMES = ["main", "read_only", "auto", "sub", "review_fix", "issue"] as const;
+
+/** A mode/profile name that can carry a model + thinking preference. */
+export type ModeProfileName = (typeof MODE_PROFILE_NAMES)[number];
+
 /** Configuration file shape stored under the `modes` feature in ~/.pi/agent/mekann.json */
-export interface ModesConfig { version: typeof MEKANN_CONFIG_VERSION; models: { main?: ModelRef; read_only?: ModelRef; auto?: ModelRef; sub?: ModelRef; }; thinking: { main?: ThinkingLevel; read_only?: ThinkingLevel; auto?: ThinkingLevel; sub?: ThinkingLevel; }; }
+export interface ModesConfig {
+	version: typeof MEKANN_CONFIG_VERSION;
+	models: Partial<Record<ModeProfileName, ModelRef>>;
+	thinking: Partial<Record<ModeProfileName, ThinkingLevel>>;
+}
 
 export function createDefaultConfig(): ModesConfig {
 	return { version: MEKANN_CONFIG_VERSION, models: {}, thinking: {} };
@@ -84,20 +104,18 @@ export function normalizeConfig(raw: Record<string, unknown>): ModesConfig {
 	const m = raw.models;
 	if (m && typeof m === "object") {
 		const mi = m as Record<string, unknown>;
-		if (isModelRef(mi.main)) models.main = mi.main;
-		if (isModelRef(mi.read_only)) models.read_only = mi.read_only;
-		if (isModelRef(mi.auto)) models.auto = mi.auto;
-		if (isModelRef(mi.sub)) models.sub = mi.sub;
+		for (const name of MODE_PROFILE_NAMES) {
+			if (isModelRef(mi[name])) models[name] = mi[name];
+		}
 	}
 
-	const t = raw.thinking;
 	const thinking: ModesConfig["thinking"] = {};
+	const t = raw.thinking;
 	if (t && typeof t === "object") {
 		const ti = t as Record<string, unknown>;
-		if (isThinkingLevel(ti.main)) thinking.main = ti.main;
-		if (isThinkingLevel(ti.read_only)) thinking.read_only = ti.read_only;
-		if (isThinkingLevel(ti.auto)) thinking.auto = ti.auto;
-		if (isThinkingLevel(ti.sub)) thinking.sub = ti.sub;
+		for (const name of MODE_PROFILE_NAMES) {
+			if (isThinkingLevel(ti[name])) thinking[name] = ti[name];
+		}
 	}
 	return { version: MEKANN_CONFIG_VERSION, models, thinking };
 }
@@ -144,7 +162,7 @@ export function saveModelConfig(config: ModesConfig, explicitPath?: string): voi
 export function updateConfigField<T>(
 	config: ModesConfig,
 	section: "models" | "thinking",
-	mode: ModeName,
+	mode: ModeProfileName,
 	value: T | undefined,
 	path?: string,
 ): void {

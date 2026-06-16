@@ -1,17 +1,32 @@
 import { boolSetting } from "../../settings/simpleSchema.js";
 import type { FeatureSettingsSchema, SettingSchema } from "../../settings/types.js";
-import type { ModelRef, ThinkingLevel } from "./utils.js";
+import { MODE_PROFILE_NAMES, type ModeProfileName, type ModelRef, type ThinkingLevel } from "./utils.js";
 
-const modes = ["main", "read_only", "auto", "sub"] as const;
+/** Collaboration modes the user toggles between at runtime. */
+const RUNTIME_MODES: ModeProfileName[] = ["main", "read_only", "auto", "sub"];
+/** Profiles whose model is applied once when a separate Pi session launches. */
+const WORK_PI_PROFILES: ModeProfileName[] = ["review_fix", "issue"];
 const thinkingValues = ["off", "minimal", "low", "medium", "high", "xhigh"];
 
-function modelSetting(mode: typeof modes[number]): SettingSchema<ModelRef | undefined> {
+function profileCategory(name: ModeProfileName): string {
+  return WORK_PI_PROFILES.includes(name) ? "Work Pi profiles" : "Mode profiles";
+}
+
+function profileLabel(name: ModeProfileName): string {
+  switch (name) {
+    case "review_fix": return "Review Fixer の child Pi";
+    case "issue": return "Issue Work Pi";
+    default: return `${name} mode`;
+  }
+}
+
+function modelSetting(name: ModeProfileName): SettingSchema<ModelRef | undefined> {
   return {
-    key: `models.${mode}`,
+    key: `models.${name}`,
     type: "modelRef",
     defaultValue: undefined,
-    description: `${mode} mode で使う provider/modelId。未設定なら Pi の現在 model を使います。`,
-    category: "Mode profiles",
+    description: `${profileLabel(name)} で使う provider/modelId。未設定なら Pi の現在 model を使います。`,
+    category: profileCategory(name),
     scopes: ["global", "workspace"],
     restartRequired: true,
     validate(value) {
@@ -23,13 +38,13 @@ function modelSetting(mode: typeof modes[number]): SettingSchema<ModelRef | unde
   };
 }
 
-function thinkingSetting(mode: typeof modes[number]): SettingSchema<ThinkingLevel | undefined> {
+function thinkingSetting(name: ModeProfileName): SettingSchema<ThinkingLevel | undefined> {
   return {
-    key: `thinking.${mode}`,
+    key: `thinking.${name}`,
     type: "enum",
     defaultValue: undefined,
-    description: `${mode} mode の reasoning effort。未設定なら Pi の現在値を使います。`,
-    category: "Mode profiles",
+    description: `${profileLabel(name)} の reasoning effort。未設定なら Pi の現在値を使います。`,
+    category: profileCategory(name),
     scopes: ["global", "workspace"],
     restartRequired: true,
     enumValues: thinkingValues,
@@ -42,6 +57,6 @@ export const modesSettingsSchema: FeatureSettingsSchema = {
   title: "Collaboration Modes",
   settings: [
     boolSetting("enabled", "General", true, "read-only/sub mode commands と mode instructions を有効にします。false の場合、LLM-visible surface を登録しません。", true),
-    ...modes.flatMap((m) => [modelSetting(m), thinkingSetting(m)]),
+    ...MODE_PROFILE_NAMES.flatMap((name) => [modelSetting(name), thinkingSetting(name)]),
   ],
 };

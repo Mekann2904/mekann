@@ -130,6 +130,31 @@ describe("launchPiSessionInKittySplit argv construction (no shell re-parse)", ()
 		// appears exactly twice (once as system prompt value, once as initial msg)
 		expect(kittenLaunchArgs!.filter((a) => a === hostile).length).toBe(2);
 	});
+
+	it("forwards model and thinking as --model / --thinking flags when provided", async () => {
+		// Issue Work Pi's model comes from the modes Work Pi profile (`issue`);
+		// the launcher must translate the ModelRef + thinking level into pi's
+		// --model provider/id and --thinking flags so the new pane runs that model.
+		const { launchPiSessionInKittySplit } = await import("./pi-session.js");
+		await launchPiSessionInKittySplit({
+			cwd: "/repo",
+			title: "Issue #42",
+			nodeBin: "/usr/bin/node",
+			model: { provider: "zai", modelId: "glm-5.2" },
+			thinking: "xhigh",
+		});
+		expect(kittenLaunchArgs).not.toBeNull();
+		const args = kittenLaunchArgs!;
+		expect(args[args.indexOf("--model") + 1]).toBe("zai/glm-5.2");
+		expect(args[args.indexOf("--thinking") + 1]).toBe("xhigh");
+	});
+
+	it("omits --model / --thinking when not provided (inherit pi default)", async () => {
+		const { launchPiSessionInKittySplit } = await import("./pi-session.js");
+		await launchPiSessionInKittySplit({ cwd: "/repo", title: "Issue #42", nodeBin: "/usr/bin/node" });
+		expect(kittenLaunchArgs).not.toContain("--model");
+		expect(kittenLaunchArgs).not.toContain("--thinking");
+	});
 });
 
 describe("launchPiSessionInKittySplit split-anchor direction (issue #102)", () => {

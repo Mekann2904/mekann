@@ -5,7 +5,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
-import { createInitialState, isReadOnlyMode, isReadOnlyCommandIntent, classifyCommandIntent, buildBlockReason, loadPrompt, READ_ONLY_MODE_TOOLS, sameModelRef, loadModelConfig, updateConfigField, type ModelRef, type ThinkingLevel, type MekannMode, type ModeName } from "./utils.js";
+import { createInitialState, isReadOnlyMode, isReadOnlyCommandIntent, classifyCommandIntent, buildBlockReason, loadPrompt, READ_ONLY_MODE_TOOLS, sameModelRef, loadModelConfig, updateConfigField, type ModelRef, type ThinkingLevel, type MekannMode, type ModeProfileName } from "./utils.js";
 import { createModelManager, registerModeModelPersistence } from "../../core/model-manager.js";
 import {
 	SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, MODE_STATUS_EVENT,
@@ -239,7 +239,7 @@ export default function modesExtension(pi: ExtensionAPI): void {
 	// Track config changes per-mode
 	function persistIfChanged<T>(
 		section: "models" | "thinking",
-		mode: ModeName,
+		mode: ModeProfileName,
 		value: T | undefined,
 		isEqual: (a: T | undefined, b: T | undefined) => boolean,
 	): void {
