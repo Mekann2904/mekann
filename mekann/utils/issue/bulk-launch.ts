@@ -28,6 +28,8 @@ export interface BulkLaunchIssue {
 	hasWorktree: boolean;
 	/** Present only when {@link hasWorktree} is true. */
 	worktreePath?: string;
+	/** Issue labels, used to select the session prompt/message (ADR-0025 slice E). */
+	labels?: string[];
 }
 
 /**
@@ -40,7 +42,13 @@ export interface BulkLaunchIssue {
  */
 export interface BulkLaunchDeps {
 	createWorktree: (issueNumber: number) => string;
-	launchPiSession: (issueNumber: number, worktreePath: string) => Promise<void>;
+	/**
+	 * Start an independent Pi session in a Kitty split for an issue rooted at
+	 * the given worktree path. Called once per issue. The issue's labels are
+	 * forwarded so the launcher can branch into the Agreement phase when the
+	 * issue carries `ready-for-human` (ADR-0025 slice E).
+	 */
+	launchPiSession: (issueNumber: number, worktreePath: string, labels: string[]) => Promise<void>;
 }
 
 /** An issue that could not be opened, with the error that stopped it. */
@@ -82,7 +90,7 @@ export async function bulkLaunchIssues(
 				issue.hasWorktree && issue.worktreePath
 					? issue.worktreePath
 					: deps.createWorktree(issue.issueNumber);
-			await deps.launchPiSession(issue.issueNumber, worktreePath);
+			await deps.launchPiSession(issue.issueNumber, worktreePath, issue.labels ?? []);
 			launched.push(issue.issueNumber);
 		} catch (error) {
 			skipped.push({
