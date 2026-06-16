@@ -1,6 +1,7 @@
 import { buildSnapshot, snapshotWatermarkMatches } from "./snapshot.js";
 import { readBoundedLatestSnapshot, writeLatestSnapshot } from "./snapshot-store.js";
 import { clearContext, contextDir, eventsPath, readEvents } from "./store.js";
+import { MEKANN_CONTEXT_LEDGER_DEFAULTS } from "../../config.js";
 import { computeStats, formatSearchResult, projectContextEvents, searchEvents } from "./query.js";
 import type { MekannContextEventKind } from "./schema.js";
 
@@ -126,7 +127,7 @@ export async function runContextLedgerCommand(cwd: string, args: string | undefi
 		const xml = buildSnapshot(events, { maxBytes });
 
 		if (shouldWrite) {
-			const result = await writeLatestSnapshot(cwd, xml);
+			const result = await writeLatestSnapshot(cwd, xml, undefined, { retentionMaxFiles: MEKANN_CONTEXT_LEDGER_DEFAULTS.snapshotRetentionMaxFiles });
 			return { kind: "notify", level: "info", text: `Snapshot saved:\n  latest: ${result.latestPath}\n  timestamped: ${result.snapshotPath}\n  size: ${result.bytes} bytes` };
 		}
 		return { kind: "notify", text: xml, level: "info" };
@@ -144,7 +145,7 @@ export async function runContextLedgerCommand(cwd: string, args: string | undefi
 		const events = await readEvents(cwd);
 		if (!xml || !snapshotWatermarkMatches(xml, events)) {
 			xml = buildSnapshot(events, { maxBytes });
-			if (shouldWrite) await writeLatestSnapshot(cwd, xml);
+			if (shouldWrite) await writeLatestSnapshot(cwd, xml, undefined, { retentionMaxFiles: MEKANN_CONTEXT_LEDGER_DEFAULTS.snapshotRetentionMaxFiles });
 		}
 
 		return { kind: "notify", text: xml, level: "info" };

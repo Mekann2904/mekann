@@ -83,6 +83,19 @@ export const MEKANN_AUTORESEARCH_RUNS_DEFAULTS = {
 } as const;
 
 /**
+ * context-ledger snapshot retention defaults (issue #76 / C-018).
+ *
+ * `/context-ledger snapshot --write` (and `restore --write`) create a new
+ * timestamped snapshot on every invocation with no pruning, so disk usage
+ * grows unbounded across long sessions. To keep it bounded, only the
+ * `snapshotRetentionMaxFiles` newest timestamped snapshots are retained;
+ * `latest.xml` is never pruned.
+ */
+export const MEKANN_CONTEXT_LEDGER_DEFAULTS = {
+	snapshotRetentionMaxFiles: 50,
+} as const;
+
+/**
  * Resolved max completed runs kept per plan. Honors the
  * `MEKANN_AUTORESEARCH_MAX_RUNS_PER_PLAN` env override (non-negative integer);
  * falls back to {@link MEKANN_AUTORESEARCH_RUNS_DEFAULTS.maxRunsPerPlan}.
