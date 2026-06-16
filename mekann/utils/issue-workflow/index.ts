@@ -76,7 +76,7 @@ export default function issueWorkflowExtension(pi: ExtensionAPI): void {
 		name: "issue_workflow",
 		label: "Issue workflow (git/gh actions)",
 		description:
-			"Run git/gh workflow actions for issue worktrees: current_branch, status, diff, view_pr, commit, push, create_pr, update_pr, ready, comment, issue_comment. " +
+			"Run git/gh workflow actions for issue worktrees: current_branch, status, diff, view_pr, commit, push, create_pr, update_pr, ready, comment, issue_comment, promote_to_ready_for_agent, demote_to_ready_for_human. " +
 			"Messages and bodies are passed via temp files (-F / --body-file) so $, backticks, newlines, and code blocks survive verbatim and bypass git-safety's bash confirmation. " +
 			"Mutating actions only run inside an issue worktree (branch issue-<number>).",
 		promptSnippet:
@@ -84,7 +84,7 @@ export default function issueWorkflowExtension(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Use issue_workflow for Phase 3 of issue work: status → diff → commit → push → create_pr. Do NOT run git/gh through the bash tool — git-safety intercepts bash mutating git/gh and commit/PR messages get mangled by shell expansion of $, backticks, newlines, and code blocks.",
 			"issue_workflow writes message/body to a temp file and passes it via -F / --body-file, so commit messages and PR bodies survive shell-special characters verbatim.",
-			"Mutating actions (commit, push, create_pr, update_pr, ready, comment, issue_comment) only run inside an issue worktree (branch issue-<number>) and are auto-approved there. Read-only actions (current_branch, status, diff, view_pr) work anywhere.",
+			"Mutating actions (commit, push, create_pr, update_pr, ready, comment, issue_comment, promote_to_ready_for_agent, demote_to_ready_for_human) only run inside an issue worktree (branch issue-<number>) and are auto-approved there. Read-only actions (current_branch, status, diff, view_pr) work anywhere.",
 			"create_pr should produce a ready (non-draft) PR — review_fixer has already gated implementation quality.",
 		],
 		parameters: IssueWorkflowParamsSchema,

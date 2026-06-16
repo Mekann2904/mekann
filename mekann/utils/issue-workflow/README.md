@@ -34,11 +34,19 @@ so git-safety never sees it) and passes messages/bodies via temp files
 | `ready` | `gh pr ready` | yes | yes |
 | `comment` | `gh pr comment --body-file <tmpfile>` | yes | yes |
 | `issue_comment` | `gh issue comment <n> --body-file <tmpfile>` | yes | yes |
+| `promote_to_ready_for_agent` | `gh issue edit <n> --add-label ready-for-agent --remove-label ready-for-human` | yes | yes |
+| `demote_to_ready_for_human` | `gh issue edit <n> --add-label ready-for-human --remove-label ready-for-agent` | yes | yes |
 
 Mutating actions are only permitted inside an issue worktree (branch
 `issue-<number>`); otherwise they return a clear error so `main` etc. can never
 be touched by accident. `issue_comment` derives the issue number from the
 current branch when `issue` is not supplied.
+
+`promote_to_ready_for_agent` / `demote_to_ready_for_human` toggle the triage
+state-role labels (`ready-for-human` ↔ `ready-for-agent`; see
+`docs/agents/triage-labels.md`) for the consensus phase and F3 demotion in
+ADR-0025. The issue number resolves from `issue` or the current `issue-<n>`
+branch.
 
 ## Message safety
 
