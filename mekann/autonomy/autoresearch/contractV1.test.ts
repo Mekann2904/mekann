@@ -26,6 +26,7 @@ import {
 	readCurrentContract,
 	writeLockFile,
 	readLockFile,
+	validateLockFileV1,
 	currentContractPath,
 	currentLockPath,
 	autoresearchDir,
@@ -250,6 +251,40 @@ describe("contractV1 module", () => {
 			].join("\n");
 			expect(() => extractContractBlockFromPlan(md)).toThrow("no contract block");
 		});
+
+		// C-008: error messages must interpolate the actual CONTRACT_BLOCK_LANG
+		// value, not emit the literal "${CONTRACT_BLOCK_LANG}".
+		it("zero-block error interpolates the contract block language", () => {
+			const md = "# Plan\n\nNo contract block here.";
+			try {
+				extractContractBlockFromPlan(md);
+				throw new Error("expected extractContractBlockFromPlan to throw");
+			} catch (e) {
+				const msg = (e as Error).message;
+				expect(msg).toContain("autoresearch-contract jsonc");
+				expect(msg).not.toContain("${CONTRACT_BLOCK_LANG}");
+			}
+		});
+
+		it("multiple-block error interpolates the contract block language", () => {
+			const md = [
+				"# Plan",
+				"```autoresearch-contract jsonc",
+				'{"a":1}',
+				"```",
+				"```autoresearch-contract jsonc",
+				'{"b":2}',
+				"```",
+			].join("\n");
+			try {
+				extractContractBlockFromPlan(md);
+				throw new Error("expected extractContractBlockFromPlan to throw");
+			} catch (e) {
+				const msg = (e as Error).message;
+				expect(msg).toContain("autoresearch-contract jsonc");
+				expect(msg).not.toContain("${CONTRACT_BLOCK_LANG}");
+			}
+		});
 	});
 
 	describe("canonical JSON + hash", () => {
@@ -456,6 +491,100 @@ describe("contractV1 module", () => {
 		});
 
 		it("readLockFile returns null for non-existent file", () => {
+			expect(readLockFile(testDir)).toBeNull();
+		});
+
+		// C-017: readLockFile must validate against the lock schema, symmetric
+		// with readCurrentContract / validateContractV1, so corrupted or partial
+		// lock files never surface as a LockFile with undefined fields.
+		function validLockData(): Record<string, unknown> {
+			return {
+				schemaVersion: "autoresearch-lock/v1",
+				contractId: "0001",
+				contractHash: "sha256:abc123",
+				approvedAt: 1_700_000_000_000,
+				approvedBy: "user",
+				baseline: {
+					gitCommit: "abc123",
+					runs: [
+						{ runId: "run-1", metric: 1.23, durationSeconds: 1.23 },
+						{ runId: "run-2", metric: 1.25, durationSeconds: 1.25 },
+						{ runId: "run-3", metric: 1.21, durationSeconds: 1.21 },
+					],
+					aggregate: "median",
+					primaryMetricValue: 1.23,
+					noise: {
+						samples: [1.23, 1.25, 1.21],
+						aggregate: 1.23,
+						min: 1.21,
+						max: 1.25,
+						mean: 1.23,
+						stddev: 0.0163,
+						relativeRange: 0.0325,
+					},
+				},
+				environment: {
+					platform: "darwin",
+					arch: "arm64",
+					nodeVersion: "v22.0.0",
+					npmVersion: "10.0.0",
+					timezone: "Asia/Tokyo",
+					packageJsonHash: "sha256:pkg",
+					packageLockHash: "sha256:lock",
+					immutableReadSetHash: "sha256:immutable",
+				},
+			};
+		}
+
+		it("validateLockFileV1 accepts a well-formed lock", () => {
+			const result = validateLockFileV1(validLockData());
+			expect(result.valid).toBe(true);
+			expect(result.errors).toEqual([]);
+		});
+
+		it("validateLockFileV1 rejects non-object", () => {
+			expect(validateLockFileV1(null).valid).toBe(false);
+			expect(validateLockFileV1("oops").valid).toBe(false);
+			expect(validateLockFileV1([]).valid).toBe(false);
+		});
+
+		it("validateLockFileV1 rejects wrong schemaVersion", () => {
+			const data = validLockData();
+			data.schemaVersion = "autoresearch-lock/v2";
+			const result = validateLockFileV1(data);
+			expect(result.valid).toBe(false);
+			expect(result.errors.some((e) => e.includes("schemaVersion"))).toBe(true);
+		});
+
+		it("validateLockFileV1 rejects a partial lock missing contractHash", () => {
+			const data = validLockData();
+			delete data.contractHash;
+			const result = validateLockFileV1(data);
+			expect(result.valid).toBe(false);
+			expect(result.errors.some((e) => e.includes("contractHash"))).toBe(true);
+		});
+
+		it("validateLockFileV1 rejects invalid baseline.aggregate", () => {
+			const data = validLockData();
+			const baseline = data.baseline as Record<string, unknown>;
+			baseline.aggregate = "average";
+			expect(validateLockFileV1(data).valid).toBe(false);
+		});
+
+		it("readLockFile returns null for a partial/corrupted lock on disk", () => {
+			ensureAutoresearchDir(testDir);
+			// Partial lock: missing contractHash — would yield undefined on raw cast.
+			const partial = validLockData();
+			delete partial.contractHash;
+			fs.writeFileSync(currentLockPath(testDir), JSON.stringify(partial), "utf8");
+			expect(readLockFile(testDir)).toBeNull();
+		});
+
+		it("readLockFile returns null for a wrong-schemaVersion lock on disk", () => {
+			ensureAutoresearchDir(testDir);
+			const bad = validLockData();
+			bad.schemaVersion = "autoresearch-lock/v9";
+			fs.writeFileSync(currentLockPath(testDir), JSON.stringify(bad), "utf8");
 			expect(readLockFile(testDir)).toBeNull();
 		});
 

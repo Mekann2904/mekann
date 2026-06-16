@@ -104,14 +104,14 @@ export function extractContractBlockFromPlan(markdown: string): {
 	if (blocks.length === 0) {
 		throw new Error(
 			"plan has no contract block.\n" +
-			"exactly one ${CONTRACT_BLOCK_LANG} fenced code block is required.",
+			"exactly one " + CONTRACT_BLOCK_LANG + " fenced code block is required.",
 		);
 	}
 
 	if (blocks.length > 1) {
 		throw new Error(
 			"plan has " + blocks.length + " contract blocks.\n" +
-			"exactly one ${CONTRACT_BLOCK_LANG} block is required.",
+			"exactly one " + CONTRACT_BLOCK_LANG + " block is required.",
 		);
 	}
 
