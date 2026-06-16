@@ -7,6 +7,7 @@
  */
 
 import type { ResolvedIssueContext } from "./issueContext.js";
+import { REVIEW_FIXER_FALLBACK_SKILL } from "./constants.js";
 
 export interface ChildPromptOptions {
   maxFixRetries: number;
@@ -14,10 +15,10 @@ export interface ChildPromptOptions {
 
 export function buildChildPrompt(issueContext: ResolvedIssueContext, _cwd: string, options: ChildPromptOptions): string {
   return [
-    "/skill:thermo-nuclear-code-quality-review",
+    `/skill:${REVIEW_FIXER_FALLBACK_SKILL}`,
     "",
     "Issue worktree の current branch changes をレビューしてください。",
-    "既存の thermo-nuclear-code-quality-review skill の手順・出力形式・判断基準に従ってください。",
+    `既存の ${REVIEW_FIXER_FALLBACK_SKILL} skill の手順・出力形式・判断基準に従ってください。`,
     "必要な修正があれば、この workspace に直接 edit してください。",
     `verification が失敗した場合は、最大 ${options.maxFixRetries} 回まで修正と再検証を試みてください。`,
     "commit / push / PR 作成は行わないでください。",

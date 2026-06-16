@@ -23,6 +23,7 @@ import { buildChildPrompt } from "./childPrompt.js";
 import { registerReviewFixerPromptProvider } from "./promptProvider.js";
 import { ISSUE_PI_ENV } from "../../utils/terminal/pi-session.js";
 import { snapshotContentHashes, computeChangedFiles } from "./changedFiles.js";
+import { REVIEW_FIXER_FALLBACK_SKILL } from "./constants.js";
 
 export function extractReviewFixerResult(output: string | undefined): ReviewFixerResult | null {
   // Legacy helper kept for callers/tests that still parse old structured output.
@@ -195,7 +196,7 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
               `**Status**: FAILED — subagent status: ${delegate.status}`,
               "Do NOT proceed with commit / push / PR creation. Investigate the failure.",
               "",
-              "**Fallback**: you can run the same review manually in this session with `/skill:thermo-nuclear-code-quality-review` (it is force-loadable even though it is hidden from the Issue Work Pi skill surface — see ADR-0023).",
+              `**Fallback**: you can run the same review manually in this session with \`/skill:${REVIEW_FIXER_FALLBACK_SKILL}\` (it is force-loadable even though it is hidden from the Issue Work Pi skill surface — see ADR-0023).`,
             ].join("\n"),
           }],
           details: {

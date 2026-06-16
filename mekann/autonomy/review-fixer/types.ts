@@ -34,7 +34,13 @@ export interface ReviewFixerResult {
 }
 
 export interface ReviewFixerSettings {
-  enabled: boolean;
+  /**
+   * NOTE: there is intentionally no `enabled` field here. The review-fixer
+   * enable/disable gate is owned solely by `isFeatureEnabled("review-fixer")`
+   * (mekann/settings/enabled.ts) and surfaced in the settings editor via
+   * settingsSchema.ts (default `true`). Keeping a parallel `enabled` here
+   * created a dead, contradictory default — see issue #82.
+   */
   model: { provider: string; modelId: string } | undefined;
   reasoningEffort: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   maxFixRetries: number;
