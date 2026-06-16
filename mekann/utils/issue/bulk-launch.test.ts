@@ -5,7 +5,7 @@ import { bulkLaunchIssues } from "./bulk-launch.js";
 describe("bulkLaunchIssues", () => {
 	it("creates a worktree and launches Pi once per issue with no existing worktree", async () => {
 		const createWorktree = vi.fn((n: number) => `/wt/issue-${n}`);
-		const launchPiSession = vi.fn(async (_n: number, _path: string) => {});
+		const launchPiSession = vi.fn(async (_n: number, _path: string, _labels: string[]) => {});
 		const deps = { createWorktree, launchPiSession };
 
 		await bulkLaunchIssues(
@@ -17,13 +17,13 @@ describe("bulkLaunchIssues", () => {
 		expect(createWorktree).toHaveBeenNthCalledWith(1, 67);
 		expect(createWorktree).toHaveBeenNthCalledWith(2, 68);
 		expect(launchPiSession).toHaveBeenCalledTimes(2);
-		expect(launchPiSession).toHaveBeenNthCalledWith(1, 67, "/wt/issue-67");
-		expect(launchPiSession).toHaveBeenNthCalledWith(2, 68, "/wt/issue-68");
+		expect(launchPiSession).toHaveBeenNthCalledWith(1, 67, "/wt/issue-67", []);
+		expect(launchPiSession).toHaveBeenNthCalledWith(2, 68, "/wt/issue-68", []);
 	});
 
 	it("reuses the existing worktree and only launches Pi for issues that already have one", async () => {
 		const createWorktree = vi.fn((n: number) => `/wt/issue-${n}`);
-		const launchPiSession = vi.fn(async (_n: number, _path: string) => {});
+		const launchPiSession = vi.fn(async (_n: number, _path: string, _labels: string[]) => {});
 		const deps = { createWorktree, launchPiSession };
 
 		await bulkLaunchIssues(
@@ -33,12 +33,12 @@ describe("bulkLaunchIssues", () => {
 
 		expect(createWorktree).not.toHaveBeenCalled();
 		expect(launchPiSession).toHaveBeenCalledTimes(1);
-		expect(launchPiSession).toHaveBeenCalledWith(67, "/existing/issue-67");
+		expect(launchPiSession).toHaveBeenCalledWith(67, "/existing/issue-67", []);
 	});
 
 	it("mixes reuse and create correctly across a batch", async () => {
 		const createWorktree = vi.fn((n: number) => `/wt/issue-${n}`);
-		const launchPiSession = vi.fn(async (_n: number, _path: string) => {});
+		const launchPiSession = vi.fn(async (_n: number, _path: string, _labels: string[]) => {});
 		const deps = { createWorktree, launchPiSession };
 
 		await bulkLaunchIssues(
@@ -58,9 +58,9 @@ describe("bulkLaunchIssues", () => {
 
 		// All three issues still launch a Pi session.
 		expect(launchPiSession).toHaveBeenCalledTimes(3);
-		expect(launchPiSession).toHaveBeenNthCalledWith(1, 67, "/existing/issue-67");
-		expect(launchPiSession).toHaveBeenNthCalledWith(2, 68, "/wt/issue-68");
-		expect(launchPiSession).toHaveBeenNthCalledWith(3, 69, "/wt/issue-69");
+		expect(launchPiSession).toHaveBeenNthCalledWith(1, 67, "/existing/issue-67", []);
+		expect(launchPiSession).toHaveBeenNthCalledWith(2, 68, "/wt/issue-68", []);
+		expect(launchPiSession).toHaveBeenNthCalledWith(3, 69, "/wt/issue-69", []);
 	});
 
 	it("launches in order (serial)", async () => {
@@ -95,6 +95,33 @@ describe("bulkLaunchIssues", () => {
 		expect(result.launched).toEqual([]);
 		expect(result.skipped).toEqual([]);
 	});
+
+	it("forwards each issue's labels to the launcher so the session can branch into the Agreement phase (ADR-0025 slice E)", async () => {
+		const createWorktree = vi.fn((n: number) => `/wt/issue-${n}`);
+		const launchPiSession = vi.fn(async (_n: number, _path: string, _labels: string[]) => {});
+		const deps = { createWorktree, launchPiSession };
+
+		await bulkLaunchIssues(
+			[
+				{ issueNumber: 67, hasWorktree: false, labels: ["ready-for-human"] },
+				{ issueNumber: 68, hasWorktree: false, labels: ["ready-for-agent"] },
+			],
+			deps,
+		);
+
+		expect(launchPiSession).toHaveBeenNthCalledWith(1, 67, "/wt/issue-67", ["ready-for-human"]);
+		expect(launchPiSession).toHaveBeenNthCalledWith(2, 68, "/wt/issue-68", ["ready-for-agent"]);
+	});
+
+	it("defaults labels to an empty array when an issue carries none", async () => {
+		const createWorktree = vi.fn((n: number) => `/wt/issue-${n}`);
+		const launchPiSession = vi.fn(async (_n: number, _path: string, _labels: string[]) => {});
+		const deps = { createWorktree, launchPiSession };
+
+		await bulkLaunchIssues([{ issueNumber: 67, hasWorktree: false }], deps);
+
+		expect(launchPiSession).toHaveBeenCalledWith(67, "/wt/issue-67", []);
+	});
 });
 
 describe("bulkLaunchIssues error continuation (issue #68)", () => {
@@ -103,7 +130,7 @@ describe("bulkLaunchIssues error continuation (issue #68)", () => {
 			if (n === 68) throw new Error("path collision for issue-68");
 			return `/wt/issue-${n}`;
 		});
-		const launchPiSession = vi.fn(async (_n: number, _path: string) => {});
+		const launchPiSession = vi.fn(async (_n: number, _path: string, _labels: string[]) => {});
 		const deps = { createWorktree, launchPiSession };
 
 		const result = await bulkLaunchIssues(
@@ -118,9 +145,9 @@ describe("bulkLaunchIssues error continuation (issue #68)", () => {
 		// The failing issue is skipped; both neighbours still create + launch.
 		expect(createWorktree).toHaveBeenCalledTimes(3);
 		expect(launchPiSession).toHaveBeenCalledTimes(2);
-		expect(launchPiSession).toHaveBeenCalledWith(67, "/wt/issue-67");
-		expect(launchPiSession).toHaveBeenCalledWith(69, "/wt/issue-69");
-		expect(launchPiSession).not.toHaveBeenCalledWith(68, expect.anything());
+		expect(launchPiSession).toHaveBeenCalledWith(67, "/wt/issue-67", []);
+		expect(launchPiSession).toHaveBeenCalledWith(69, "/wt/issue-69", []);
+		expect(launchPiSession).not.toHaveBeenCalledWith(68, expect.anything(), expect.anything());
 
 		expect(result.launched).toEqual([67, 69]);
 		expect(result.skipped).toEqual([
@@ -157,7 +184,7 @@ describe("bulkLaunchIssues error continuation (issue #68)", () => {
 			if (n === 67) throw new Error("branch already checked out elsewhere");
 			return `/wt/issue-${n}`;
 		});
-		const launchPiSession = vi.fn(async (_n: number, _path: string) => {});
+		const launchPiSession = vi.fn(async (_n: number, _path: string, _labels: string[]) => {});
 		const deps = { createWorktree, launchPiSession };
 
 		const result = await bulkLaunchIssues(
@@ -169,7 +196,7 @@ describe("bulkLaunchIssues error continuation (issue #68)", () => {
 		);
 
 		expect(launchPiSession).toHaveBeenCalledTimes(1);
-		expect(launchPiSession).toHaveBeenCalledWith(68, "/wt/issue-68");
+		expect(launchPiSession).toHaveBeenCalledWith(68, "/wt/issue-68", []);
 		expect(result.launched).toEqual([68]);
 		expect(result.skipped).toEqual([
 			{ issueNumber: 67, reason: "branch already checked out elsewhere" },
@@ -202,7 +229,7 @@ describe("bulkLaunchIssues error continuation (issue #68)", () => {
 
 	it("reports an empty skip list when every issue succeeds (slice-1 behaviour)", async () => {
 		const createWorktree = vi.fn((n: number) => `/wt/issue-${n}`);
-		const launchPiSession = vi.fn(async (_n: number, _path: string) => {});
+		const launchPiSession = vi.fn(async (_n: number, _path: string, _labels: string[]) => {});
 		const deps = { createWorktree, launchPiSession };
 
 		const result = await bulkLaunchIssues(

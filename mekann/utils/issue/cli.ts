@@ -230,6 +230,7 @@ async function runInteractive(): Promise<void> {
 				issueNumber: issue.number,
 				hasWorktree: issue.hasWorktree,
 				worktreePath: issue.worktreePath,
+				labels: issue.labels,
 			}));
 			// bulkLaunchIssues never throws on issue-level failures: a failing issue
 			// (worktree create or Pi launch) is reported in `skipped` and the rest
@@ -269,13 +270,13 @@ function createBulkLaunchDeps(repoInfo: RepoInfo): BulkLaunchDeps {
 				throw new Error(`Failed to create worktree for #${issueNumber}: ${(err as Error).message}`);
 			}
 		},
-		async launchPiSession(issueNumber: number, worktreePath: string): Promise<void> {
+		async launchPiSession(issueNumber: number, worktreePath: string, labels: string[]): Promise<void> {
 			await launchPiSessionInKittySplit({
 				cwd: worktreePath,
 				title: `Issue #${issueNumber}`,
 				nodeBin: process.env.MEKANN_NODE_BIN,
-				appendSystemPrompt: buildIssueSessionSystemPrompt(issueNumber),
-				initialMessage: buildIssueSessionInitialMessage(issueNumber),
+				appendSystemPrompt: buildIssueSessionSystemPrompt(issueNumber, labels),
+				initialMessage: buildIssueSessionInitialMessage(issueNumber, labels),
 				hold: process.env.MEKANN_ISSUE_DEBUG === "1",
 			});
 		},
@@ -303,9 +304,10 @@ function ensureIssueCanStart(issueNumber: number, dependencyStatus: IssueDepende
 		return false;
 	}
 
-	if (!dependencyStatus.labels?.includes("ready-for-agent")) {
-		console.error(`Issue #${issueNumber} cannot be started because it is missing the ready-for-agent label.`);
-		console.error("Ask a human to triage it or add ready-for-agent before opening an implementation worktree.");
+	const labels = dependencyStatus.labels ?? [];
+	if (!labels.includes("ready-for-agent") && !labels.includes("ready-for-human")) {
+		console.error(`Issue #${issueNumber} cannot be started because it has neither the ready-for-agent nor the ready-for-human label.`);
+		console.error("ready-for-agent opens an implementation worktree; ready-for-human opens an Agreement-phase worktree. Ask a human to triage it first.");
 		process.exitCode = 1;
 		return false;
 	}
