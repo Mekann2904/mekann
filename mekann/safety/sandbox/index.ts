@@ -474,9 +474,9 @@ export default function sandboxExtension(pi: ExtensionAPI): void {
 		refreshStatusBar();
 	});
 	pi.events.on("mekann:codex-usage:status", (data: unknown) => {
-		if (data != null && typeof data !== "object") return;
-		const event = data as { text?: unknown } | undefined;
-		safetyProfile.rightStatus = typeof event?.text === "string" && event.text.trim() ? event.text : undefined;
+		if (data == null || typeof data !== "object") return;
+		const event = data as { text?: unknown };
+		safetyProfile.rightStatus = typeof event.text === "string" && event.text.trim() ? event.text : undefined;
 		refreshStatusBar();
 	});
 
