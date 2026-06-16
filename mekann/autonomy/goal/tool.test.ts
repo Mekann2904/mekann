@@ -336,9 +336,6 @@ describe("goal tools", () => {
     expect(result.content[0].text).toContain("Persisted goal");
     expect(result.content[0].text).toContain("Token budget: 5000");
     expect(result.details.goal.status).toBe("active");
-    // Continuation fields should be normalized
-    expect(result.details.goal.continuation_count).toBe(0);
-    expect(result.details.goal.max_continuations).toBe(5);
   });
 
   // 9. get_goal returns budget info when budget is null (no budget set)

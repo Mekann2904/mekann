@@ -12,9 +12,6 @@
 /** Goal status values. */
 export type GoalStatus = "active" | "paused" | "blocked" | "usage_limited" | "budget_limited" | "complete";
 
-/** Default maximum number of automatic continuations. */
-export const DEFAULT_MAX_CONTINUATIONS = 5;
-
 /** Cooldown between continuations in milliseconds. */
 export const CONTINUATION_COOLDOWN_MS = 2000;
 
@@ -38,10 +35,6 @@ export interface Goal {
   created_at_ms: number;
   /** Last update timestamp (ms) */
   updated_at_ms: number;
-  /** How many continuation turns have been sent for this goal. */
-  continuation_count: number;
-  /** Maximum number of automatic continuations allowed. */
-  max_continuations: number;
   /** Timestamp of the last continuation sent (ms), or null. */
   last_continued_at_ms: number | null;
 }
@@ -106,19 +99,20 @@ export function validateTokenBudget(budget: unknown): number | null {
 /** Normalize a goal to ensure all fields have valid defaults. */
 function normalizeGoal(goal: Goal | Record<string, unknown>): Goal {
   return {
-    ...goal,
-    continuation_count: Number.isInteger((goal as any).continuation_count)
-      ? (goal as any).continuation_count
-      : 0,
-    max_continuations:
-      Number.isInteger((goal as any).max_continuations) && (goal as any).max_continuations > 0
-        ? (goal as any).max_continuations
-        : DEFAULT_MAX_CONTINUATIONS,
+    thread_id: (goal as any).thread_id,
+    goal_id: (goal as any).goal_id,
+    objective: (goal as any).objective,
+    status: (goal as any).status,
+    token_budget: (goal as any).token_budget,
+    tokens_used: (goal as any).tokens_used,
+    time_used_seconds: (goal as any).time_used_seconds,
+    created_at_ms: (goal as any).created_at_ms,
+    updated_at_ms: (goal as any).updated_at_ms,
     last_continued_at_ms:
       typeof (goal as any).last_continued_at_ms === "number"
         ? (goal as any).last_continued_at_ms
         : null,
-  } as Goal;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -218,8 +212,6 @@ export class GoalStore {
       time_used_seconds: 0,
       created_at_ms: now,
       updated_at_ms: now,
-      continuation_count: 0,
-      max_continuations: DEFAULT_MAX_CONTINUATIONS,
       last_continued_at_ms: null,
     };
 
@@ -254,8 +246,6 @@ export class GoalStore {
       time_used_seconds: 0,
       created_at_ms: now,
       updated_at_ms: now,
-      continuation_count: 0,
-      max_continuations: DEFAULT_MAX_CONTINUATIONS,
       last_continued_at_ms: null,
     };
 
@@ -278,8 +268,6 @@ export class GoalStore {
       objective?: string;
       status?: GoalStatus;
       token_budget?: number | null;
-      continuation_count?: number;
-      max_continuations?: number;
       last_continued_at_ms?: number | null;
     },
     expectedGoalId?: string,
@@ -316,20 +304,6 @@ export class GoalStore {
       ) {
         goal.status = "active";
       }
-    }
-
-    if (patch.continuation_count !== undefined) {
-      if (!Number.isInteger(patch.continuation_count) || patch.continuation_count < 0) {
-        throw new GoalError("continuation_count must be a non-negative integer");
-      }
-      goal.continuation_count = patch.continuation_count;
-    }
-
-    if (patch.max_continuations !== undefined) {
-      if (!Number.isInteger(patch.max_continuations) || patch.max_continuations <= 0) {
-        throw new GoalError("max_continuations must be a positive integer");
-      }
-      goal.max_continuations = patch.max_continuations;
     }
 
     if (patch.last_continued_at_ms !== undefined) {

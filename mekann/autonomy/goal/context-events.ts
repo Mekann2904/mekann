@@ -31,8 +31,7 @@ export type GoalAction =
 	| "completed"
 	| "blocked"
 	| "cleared"
-	| "budget_exhausted"
-	| "continuation_limit";
+	| "budget_exhausted";
 
 export interface RecordGoalEventInput {
 	action: GoalAction;
@@ -51,7 +50,6 @@ export function goalPriority(action: GoalAction): 0 | 1 | 2 | 3 | 4 {
 		case "updated":
 			return 1;
 		case "budget_exhausted":
-		case "continuation_limit":
 			return 1;
 		case "paused":
 		case "completed":
@@ -62,7 +60,7 @@ export function goalPriority(action: GoalAction): 0 | 1 | 2 | 3 | 4 {
 }
 
 export function goalKind(action: GoalAction): "task" | "error" {
-	if (action === "budget_exhausted" || action === "continuation_limit") return "error";
+	if (action === "budget_exhausted") return "error";
 	return "task";
 }
 
@@ -74,7 +72,7 @@ export function goalTitle(action: GoalAction, goal?: Goal | null): string {
 }
 
 export function goalEvidenceLevel(action: GoalAction, source?: GoalSource): "observed" | "tool_reported" | "user_decided" {
-	if (action === "budget_exhausted" || action === "continuation_limit") return "observed";
+	if (action === "budget_exhausted") return "observed";
 	if (source === "user") return "user_decided";
 	if (source === "tool") return "tool_reported";
 	return "observed";
@@ -90,9 +88,6 @@ export function goalSummary(action: GoalAction, goal?: Goal | null): string {
 	if (goal.token_budget !== null) {
 		parts.push(`budget=${goal.token_budget}`);
 		parts.push(`used=${goal.tokens_used}`);
-	}
-	if (action === "continuation_limit") {
-		parts.push(`continuations=${goal.continuation_count}/${goal.max_continuations}`);
 	}
 	return parts.join("; ");
 }

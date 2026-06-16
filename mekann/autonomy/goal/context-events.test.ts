@@ -24,8 +24,6 @@ function makeGoal(overrides: Partial<Goal> = {}): Goal {
 		time_used_seconds: 30,
 		created_at_ms: 1700000000000,
 		updated_at_ms: 1700000001000,
-		continuation_count: 1,
-		max_continuations: 5,
 		last_continued_at_ms: null,
 		...overrides,
 	};
@@ -37,15 +35,13 @@ describe("context-events helpers", () => {
 		expect(goalPriority("resumed")).toBe(1);
 		expect(goalPriority("updated")).toBe(1);
 		expect(goalPriority("budget_exhausted")).toBe(1);
-		expect(goalPriority("continuation_limit")).toBe(1);
 		expect(goalPriority("paused")).toBe(2);
 		expect(goalPriority("completed")).toBe(2);
 		expect(goalPriority("cleared")).toBe(2);
 	});
 
-	it("goalKind returns error for budget/continuation, task otherwise", () => {
+	it("goalKind returns error for budget, task otherwise", () => {
 		expect(goalKind("budget_exhausted")).toBe("error");
-		expect(goalKind("continuation_limit")).toBe("error");
 		expect(goalKind("set")).toBe("task");
 		expect(goalKind("completed")).toBe("task");
 		expect(goalKind("cleared")).toBe("task");
@@ -83,10 +79,10 @@ describe("context-events helpers", () => {
 		expect(summary).toContain("used=1000");
 	});
 
-	it("goalSummary includes continuation count for continuation_limit", () => {
-		const goal = makeGoal({ continuation_count: 5, max_continuations: 5 });
-		const summary = goalSummary("continuation_limit", goal);
-		expect(summary).toContain("continuations=5/5");
+	it("goalSummary omits budget info when absent", () => {
+		const goal = makeGoal({ token_budget: null });
+		const summary = goalSummary("set", goal);
+		expect(summary).not.toContain("budget=");
 	});
 
 	it("goalSummary works without goal", () => {
