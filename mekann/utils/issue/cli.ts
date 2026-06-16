@@ -18,6 +18,7 @@ import { startOrchestration, type LaunchWorkPi } from "./orchestration/lifecycle
 import { resolveIssueWorkPiModel } from "./orchestration/issueModel.js";
 import { buildIssueSessionSystemPrompt, buildIssueSessionInitialMessage } from "./prompts.js";
 import { bulkLaunchIssues, type BulkLaunchDeps } from "./bulk-launch.js";
+import { mapWithConcurrency } from "../concurrency.js";
 import { createAutopilotDeps } from "./orchestration/autopilot/deps.js";
 import { buildAutopilotConfig, buildAutopilotLauncher } from "./orchestration/autopilot/extension.js";
 import { runAutopilotSupervisor, type AutopilotLoopHooks } from "./orchestration/autopilot/lifecycle.js";
@@ -233,15 +234,30 @@ async function runInteractive(): Promise<void> {
 	const existing = listExistingWorktrees(repoInfo.root);
 	const existingBranches = new Set(existing.map((wt) => wt.branch));
 
-	const issuesWithStatus: IssueWithStatus[] = [];
-	for (const issue of issues) {
-		const issueWithDependencies = await addDependencyStatus(repoInfo.remote, issue);
-		issuesWithStatus.push({
-			...issueWithDependencies,
-			hasWorktree: existingBranches.has(issueBranch(issue.number)),
-			worktreePath: existing.find((wt) => wt.branch === issueBranch(issue.number))?.path,
-		});
-	}
+	// Resolve dependency status with bounded concurrency. Each issue triggers
+	// one `gh api /repos/.../issues/N/dependencies/blocked_by` call (the only way
+	// to read issue dependencies — no bulk/GraphQL endpoint exists). The old code
+	// awaited these serially, so the TUI only opened after N sequential network
+	// round-trips (the lag before the list appeared). Parallelising collapses
+	// that, but a plain Promise.all would fire all ~100 calls at once and sit on
+	// or exceed GitHub's secondary rate limit (~100 concurrent requests, shared
+	// across REST/GraphQL, independent of auth). Capping at 10 keeps peak
+	// in-flight well under the limit while still collapsing N serial round-trips
+	// into ⌈N/10⌉ batches. mapWithConcurrency preserves input order, so the
+	// displayed list order is unchanged.
+	const DEPENDENCY_FETCH_CONCURRENCY = 10;
+	const issuesWithStatus: IssueWithStatus[] = await mapWithConcurrency(
+		issues,
+		DEPENDENCY_FETCH_CONCURRENCY,
+		async (issue): Promise<IssueWithStatus> => {
+			const issueWithDependencies = await addDependencyStatus(repoInfo.remote, issue);
+			return {
+				...issueWithDependencies,
+				hasWorktree: existingBranches.has(issueBranch(issue.number)),
+				worktreePath: existing.find((wt) => wt.branch === issueBranch(issue.number))?.path,
+			};
+		},
+	);
 
 	const { createCliRenderer } = await import("@opentui/core");
 	const renderer = await createCliRenderer({ exitOnCtrlC: false });
