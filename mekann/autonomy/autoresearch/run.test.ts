@@ -22,7 +22,7 @@ describe("autoresearchExtension", () => {
 	let ctx: MockCtx;
 
 	beforeEach(() => {
-		({ pi, ctx } = autoresearchTestSetup());
+		({ pi, ctx } = autoresearchTestSetup({ initGit: false }));
 	});
 
 	describe("autoresearch_run execute (active)", () => {

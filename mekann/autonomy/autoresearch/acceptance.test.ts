@@ -206,5 +206,32 @@ describe("acceptance module (V1)", () => {
 			});
 			expect(r2.accepted).toBe(true);
 		});
+
+		// C-007 regression: evaluateAcceptance は input.aggregate に従う(以前は "single" hardcode だった)。
+		it("respects aggregate method when multiple measurements are provided (C-007)", () => {
+			const policy = v1Policy({ mode: "better_than_baseline", minRelativeImprovement: 0 });
+			// [100, 30, 30] の single(values[0]=100) と median(sorted [30,30,100]→30) は異なる。
+			const result = evaluateAcceptance({
+				candidateMetric: 100, bestMetric: null, baselineMetric: 100,
+				direction: "lower", policy,
+				allMeasurements: [100, 30, 30],
+				aggregate: "median",
+			});
+			// median=30 が baseline 100 を下回るため改善 = accepted
+			expect(result.representativeMetric).toBe(30);
+			expect(result.accepted).toBe(true);
+		});
+
+		it("defaults to single (first measurement) when aggregate is omitted", () => {
+			const policy = v1Policy({ mode: "better_than_baseline", minRelativeImprovement: 0 });
+			const result = evaluateAcceptance({
+				candidateMetric: 100, bestMetric: null, baselineMetric: 200,
+				direction: "lower", policy,
+				allMeasurements: [100, 50, 50],
+				// aggregate 省略 → "single" → values[0] = 100
+			});
+			expect(result.representativeMetric).toBe(100);
+			expect(result.accepted).toBe(true);
+		});
 	});
 });

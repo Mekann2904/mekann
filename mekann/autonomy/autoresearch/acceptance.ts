@@ -45,6 +45,11 @@ export interface AcceptanceInput {
 	policy: AcceptancePolicy;
 	/** 繰り返し実行の全測定値。省略時は candidateMetric をそのまま使う */
 	allMeasurements?: number[];
+	/**
+	 * 測定値の集計方法。省略時は "single" (allMeasurements の先頭)。
+	 * contract の benchmark.aggregate を渡すこと(legacy "single" は V1 に存在しない)。
+	 */
+	aggregate?: AggregateMethod;
 	/** baseline の noise relativeRange。requireImprovementAboveNoiseFloor 時に閾値に上乗せする。省略時は 0 */
 	baselineNoiseRelativeRange?: number;
 }
@@ -170,9 +175,9 @@ function selectReference(
 export function evaluateAcceptance(input: AcceptanceInput): AcceptanceResult {
 	const { policy, direction } = input;
 
-	// 集計
+	// 集計: contract の aggregate に従う。省略時は "single" (plan-scoped init→log の単発評価との後方互換)。
 	const measurements = input.allMeasurements ?? [input.candidateMetric];
-	const representative = aggregateMeasurements(measurements, "single");
+	const representative = aggregateMeasurements(measurements, input.aggregate ?? "single");
 	if (representative === null) {
 		return {
 			accepted: false,

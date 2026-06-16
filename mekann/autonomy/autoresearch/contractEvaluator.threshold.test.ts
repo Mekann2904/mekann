@@ -27,7 +27,7 @@ function makeContract(overrides: Partial<AutoresearchContractV1> = {}): Autorese
 				command: { argv: ["echo", "METRIC x=1"], cwd: "." },
 				timeoutSeconds: 10,
 				repeats: 1,
-				aggregate: "single",
+				aggregate: "median",
 			},
 			primaryMetric: {
 				name: "total_ms",
@@ -73,7 +73,7 @@ function makeLock(baselineValue: number): LockFile {
 		baseline: {
 			gitCommit: "abc",
 			runs: [{ runId: "r1", metric: baselineValue, durationSeconds: 1 }],
-			aggregate: "single",
+			aggregate: "median",
 			primaryMetricValue: baselineValue,
 			noise: {
 				samples: [baselineValue],

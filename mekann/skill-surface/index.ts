@@ -4,6 +4,19 @@ import { fileURLToPath } from "node:url";
 import { featureBooleanValue } from "../settings/enabled.js";
 import { registerPromptProvider } from "../core/prompt-core/index.js";
 import { SKILL_SURFACE_DEFINITIONS, skillSettingKey } from "./skills.js";
+import { ISSUE_PI_ENV } from "../utils/terminal/pi-session.js";
+
+/**
+ * Skill allowlist for Issue Work Pi sessions (ADR-0023 context optimization).
+ *
+ * The Issue Work Pi is a narrow phase-execution machine: implement → review_fixer
+ * (Phase 2) → issue_workflow (Phase 3). Issue-creation / planning / exploratory /
+ * meta skills are context noise there and are hidden. Force-load
+ * (`/skill:<name>`) still works regardless of this list, so a hidden skill can
+ * be pulled in on demand (e.g. thermo-nuclear-code-quality-review as a
+ * review_fixer failure fallback in autonomy/review-fixer/index.ts).
+ */
+const ISSUE_PI_SKILL_ALLOWLIST = new Set(["diagnose", "tdd", "zoom-out"]);
 
 type SkillMeta = { name: string; description: string; filePath: string };
 
@@ -34,6 +47,14 @@ function discoverSkills(): SkillMeta[] {
 }
 
 function visibleSkills(cwd: string, skills: SkillMeta[]): SkillMeta[] {
+	// Issue Work Pi: narrow the surface to the skills actually used during
+	// implementation (tdd, diagnose, zoom-out). Everything else (issue creation,
+	// planning, exploratory review, meta/setup) is hidden to cut context noise.
+	// Hidden skills remain force-loadable via /skill:<name>; they are not deleted,
+	// just not advertised in this surface. See ADR-0023.
+	if (process.env[ISSUE_PI_ENV] === "1") {
+		return skills.filter((skill) => ISSUE_PI_SKILL_ALLOWLIST.has(skill.name));
+	}
 	const defaults = new Map(SKILL_SURFACE_DEFINITIONS.map((skill) => [skill.name, skill.defaultSurface === "on"]));
 	return skills.filter((skill) => featureBooleanValue("skills", skillSettingKey(skill.name), defaults.get(skill.name) ?? false, cwd));
 }

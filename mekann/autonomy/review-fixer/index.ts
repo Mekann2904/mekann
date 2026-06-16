@@ -193,7 +193,9 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
               `## Review Fixer FAILED for Issue #${issueContext.number}`,
               "",
               `**Status**: FAILED — subagent status: ${delegate.status}`,
-              "Do NOT proceed with commit / push / PR creation. Re-run review_fixer or investigate the failure.",
+              "Do NOT proceed with commit / push / PR creation. Investigate the failure.",
+              "",
+              "**Fallback**: you can run the same review manually in this session with `/skill:thermo-nuclear-code-quality-review` (it is force-loadable even though it is hidden from the Issue Work Pi skill surface — see ADR-0023).",
             ].join("\n"),
           }],
           details: {
