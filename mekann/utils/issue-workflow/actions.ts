@@ -384,6 +384,11 @@ async function resolveIssueNumber(runner: CommandRunner, cwd: string, params: Is
 	return parseIssueNumberFromBranch(branch);
 }
 
+function requiresIssueWorktreeGate(params: IssueWorkflowParams): boolean {
+	if (!MUTATING_ACTIONS.has(params.action)) return false;
+	return params.action !== "issue_comment" || typeof params.issue !== "number";
+}
+
 async function doIssueComment(runner: CommandRunner, cwd: string, params: IssueWorkflowParams): Promise<ActionResult> {
 	const out: string[] = [];
 	const issue = await resolveIssueNumber(runner, cwd, params);
@@ -420,8 +425,10 @@ export async function executeAction(
 ): Promise<ActionResult> {
 	const action = params.action;
 
-	// Gate mutating actions to issue worktrees (branch issue-<n>).
-	if (MUTATING_ACTIONS.has(action)) {
+	// Gate mutating actions to issue worktrees (branch issue-<n>). Explicit
+	// `issue_comment` targets a remote issue directly, so it does not need local
+	// worktree context; implicit `issue_comment` still derives from the branch.
+	if (requiresIssueWorktreeGate(params)) {
 		let branch: string;
 		try {
 			branch = await currentBranch(runner, cwd);
