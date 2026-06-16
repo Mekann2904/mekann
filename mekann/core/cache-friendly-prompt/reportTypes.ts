@@ -30,6 +30,34 @@ export type ActualProviderSummary = {
 
 export type PercentileSummary = { p50: number | null; p90: number | null; p99: number | null };
 
+/** One row in the warning code distribution (code + severity + occurrence count). */
+export type WarningBreakdownEntry = { code: string; severity: string; count: number };
+
+/** Warning counts split by origin: base system prompt vs cacheable fragments vs other. */
+export type WarningCategoryBreakdown = { baseSystem: number; fragment: number; other: number; total: number };
+
+/** Metrics computed over the most recent N requests, kept separate from all-time totals. */
+export type RecentWindowSummary = {
+  /** Configured request-count cap that defines the recent window. */
+  windowCapacity: number;
+  /** Proxy request rows that fell inside the recent window. */
+  windowRequestCount: number;
+  /** Oldest timestamp inside the recent window (null when empty). */
+  windowStartTimestamp: string | null;
+  /** Newest timestamp inside the recent window (null when empty). */
+  windowEndTimestamp: string | null;
+  /** Total warnings emitted by proxy rows in the recent window. */
+  warningCount: number;
+  /** Distinct scoped reuse keys (`provider/model/reuse key`) in the recent window. */
+  uniqueScopedReuseKeys: number;
+  /** Adjacent prefix reuse rate (prefix continuity proxy) over the recent window. */
+  adjacentPrefixReuseRate: number | null;
+  /** Actual-usage rows that fell inside the recent actual window (independent cap). */
+  actualRequestCount: number;
+  /** Weighted tokenHitRate over the recent actual-usage window. */
+  actualTokenHitRateWeighted: number | null;
+};
+
 export type CacheFriendlySummary = {
   generatedAt: string;
   totalRequests: number;
@@ -44,6 +72,8 @@ export type CacheFriendlySummary = {
   recentSameReuseKeyStreak: number;
   adjacentPrefixReuseRate: number | null;
   windowPrefixReuseRate: number | null;
+  /** Distinct `provider/model/reuse key` prefixes seen over all time (cacheable-prefix churn). */
+  uniqueScopedReuseKeyCount: number;
   uniqueScopedReuseKeyRatio: number | null;
   /** @deprecated Use uniqueScopedReuseKeyRatio. */
   uniqueReuseKeyRatio: number | null;
@@ -62,6 +92,14 @@ export type CacheFriendlySummary = {
   dynamicTruncationRenderedChars: number;
   dynamicTruncationOmittedChars: number;
   warningCount: number;
+  /** Warning distribution by code/severity over the recent window and all-time. */
+  warningBreakdownRecent: WarningBreakdownEntry[];
+  warningBreakdownAll: WarningBreakdownEntry[];
+  /** Warning origin split (base system vs fragment vs other) over recent and all-time. */
+  warningCategoriesRecent: WarningCategoryBreakdown;
+  warningCategoriesAll: WarningCategoryBreakdown;
+  /** Most-recent-N window metrics, kept separate from all-time totals. */
+  recentWindow: RecentWindowSummary;
   providers: Record<string, ProviderSummary>;
   actualRequestCount: number;
   actualTokenHitRateAvg: number | null;
