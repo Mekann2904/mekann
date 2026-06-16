@@ -370,10 +370,10 @@ describe("GoalRuntime", () => {
 
   // ─── 11. Codex-compatible continuation does not auto-pause at max ────────────
 
-  it("continues instead of auto-pausing when continuation_count is at max", () => {
+  it("continues regardless of prior continuation history (Codex-compatible, no max)", () => {
     const { runtime, pi, ctx, store } = setupRuntimeWithGoal();
 
-    store.updateGoal({ continuation_count: 5, last_continued_at_ms: Date.now() - 5000 });
+    store.updateGoal({ last_continued_at_ms: Date.now() - 5000 });
 
     runtime.maybeContinueIfIdle(ctx);
 
@@ -385,7 +385,6 @@ describe("GoalRuntime", () => {
 
     const goal = store.getGoal()!;
     expect(goal.status).toBe("active");
-    expect(goal.continuation_count).toBe(6);
     expect(runtime.continuation_active).toBe(true);
   });
 
@@ -395,7 +394,7 @@ describe("GoalRuntime", () => {
     const { runtime, pi, ctx, store } = setupRuntimeWithGoal();
 
     // Set last_continued_at_ms to recent time (within cooldown)
-    store.updateGoal({ continuation_count: 2, last_continued_at_ms: Date.now() - 1000 });
+    store.updateGoal({ last_continued_at_ms: Date.now() - 1000 });
 
     runtime.maybeContinueIfIdle(ctx);
 
@@ -406,19 +405,18 @@ describe("GoalRuntime", () => {
 
   // ─── 13. continuation increments count and updates timestamp ─
 
-  it("continuation increments count and updates timestamp", () => {
+  it("continuation updates timestamp", () => {
     const { runtime, pi, ctx, store } = setupRuntimeWithGoal();
 
-    // Set to 2 continuations with old timestamp (past cooldown)
+    // Old timestamp (past cooldown)
     const oldTs = Date.now() - 5000;
-    store.updateGoal({ continuation_count: 2, last_continued_at_ms: oldTs });
+    store.updateGoal({ last_continued_at_ms: oldTs });
 
     runtime.maybeContinueIfIdle(ctx);
 
     expect(pi.sendUserMessage).toHaveBeenCalledTimes(1);
 
     const goal = store.getGoal()!;
-    expect(goal.continuation_count).toBe(3);
     expect(goal.last_continued_at_ms).toBeGreaterThan(oldTs);
   });
 
@@ -483,20 +481,6 @@ describe("GoalRuntime", () => {
     // goal B should not have inherited A's wall-clock time
     const goalBAfter = store.getGoal()!;
     expect(goalBAfter.time_used_seconds).toBe(0);
-  });
-
-  // ─── 16. continuation counter is telemetry, not a stop condition ──
-
-  it("continuation counter at max still allows continuation", () => {
-    const { runtime, ctx, store } = setupRuntimeWithGoal();
-
-    store.updateGoal({ continuation_count: 5, last_continued_at_ms: Date.now() - 5000 });
-
-    runtime.maybeContinueIfIdle(ctx);
-
-    const goal = store.getGoal()!;
-    expect(goal.status).toBe("active");
-    expect(goal.continuation_count).toBe(6);
   });
 
   // ─── 17. getGoal accessor ────────────────────────────────
@@ -833,28 +817,6 @@ describe("GoalRuntime", () => {
     }));
   });
 
-  it("invokes goalEventCallback on continuation limit", () => {
-    const persistFn = vi.fn();
-    const store = new GoalStore(persistFn);
-    const pi = createMockPi() as any;
-    const onGoalEvent = vi.fn();
-    const runtime = new GoalRuntime(store, pi, onGoalEvent);
-    const ctx = createMockCtx();
-
-    const goal = store.createGoal("test-thread-1", "Build feature");
-    store.updateGoal({ continuation_count: 5, max_continuations: 5 }, goal.goal_id, "runtime");
-    runtime.onSessionStart(ctx);
-    runtime.onAgentStart();
-    // End the turn so active_turn_marker is false
-    runtime.onTurnEnd({ turnIndex: 0 }, ctx);
-    runtime.onAgentEnd({ messages: [] } as any, ctx);
-
-    // Trigger idle continuation check
-    runtime.maybeContinueIfIdle(ctx);
-
-    expect(onGoalEvent).not.toHaveBeenCalledWith("continuation_limit", expect.anything());
-  });
-
   // ─── Compaction-before-continuation (issue #13) ─────────────
 
   describe("compaction before continuation (issue #13)", () => {
@@ -879,10 +841,8 @@ describe("GoalRuntime", () => {
       expect(pi.sendUserMessage).not.toHaveBeenCalled();
       // Should trigger compaction
       expect(ctx.compact).toHaveBeenCalledTimes(1);
-      // continuation_active should be true (prevents re-entry)
+      // continuation_active stays true (prevents re-entry) across compaction
       expect(runtime.continuation_active).toBe(true);
-      // continuation_count should have been incremented
-      expect(store.getGoal()!.continuation_count).toBe(1);
     });
 
     it("sends continuation after compaction completes", () => {

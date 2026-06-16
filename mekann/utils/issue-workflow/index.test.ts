@@ -310,6 +310,29 @@ describe("executeAction issue_comment", () => {
 		expect(comment && comment[2]).toBe("99");
 	});
 
+	it("posts from outside an issue worktree when an explicit issue is supplied (#78)", async () => {
+		const gitCalls: string[][] = [];
+		const git = vi.fn((args: string[]): ExecOut => {
+			gitCalls.push(args);
+			// Deliberately NOT an issue worktree (e.g. main Pi on `main`).
+			if (args[0] === "branch" && args[1] === "--show-current") return { stdout: "main\n", stderr: "" };
+			return { stdout: "", stderr: "" };
+		});
+		const gh = vi.fn((args: string[]): ExecOut => {
+			if (args[0] === "issue" && args[1] === "comment") {
+				return { stdout: "https://github.com/o/r/issues/42#issuecomment-9\n", stderr: "" };
+			}
+			return { stdout: "", stderr: "" };
+		});
+		const { runner } = createMockRunner({ git, gh });
+		const result = await executeAction({ action: "issue_comment", issue: 42, body: "note" }, "/repo", runner);
+		expect(result.isError).toBe(false);
+		expect(result.text).toContain("https://github.com/o/r/issues/42#issuecomment-9");
+		// The worktree gate must not even probe the branch when an issue is explicit.
+		expect(gitCalls.find((a) => a[0] === "branch")).toBeUndefined();
+		expect(result.details.issue).toBe(42);
+	});
+
 	it("is blocked by the worktree gate when not on an issue branch", async () => {
 		const { runner } = createMockRunner({
 			git: () => ({ stdout: "main\n", stderr: "" }),
@@ -382,6 +405,28 @@ describe("executeAction label switching", () => {
 		await executeAction({ action: "promote_to_ready_for_agent", issue: 99 }, "/repo", runner);
 		const edit = seen.find((a) => a[0] === "issue" && a[1] === "edit");
 		expect(edit && edit[2]).toBe("99");
+	});
+
+	it("runs promote/demote outside a worktree when an explicit issue is supplied (parity with #78)", async () => {
+		// Like issue_comment (#78), the label actions target a remote issue via the
+		// GitHub API and never touch local worktree state, so an explicit `issue`
+		// bypasses the worktree gate — the branch must not even be probed.
+		for (const action of ["promote_to_ready_for_agent", "demote_to_ready_for_human"] as const) {
+			const gitCalls: string[][] = [];
+			const git = vi.fn((args: string[]): ExecOut => {
+				gitCalls.push(args);
+				if (args[0] === "branch" && args[1] === "--show-current") return { stdout: "main\n", stderr: "" };
+				return { stdout: "", stderr: "" };
+			});
+			const gh = vi.fn((args: string[]): ExecOut => {
+				return { stdout: "", stderr: "" };
+			});
+			const { runner } = createMockRunner({ git, gh });
+			const result = await executeAction({ action, issue: 55 }, "/repo", runner);
+			expect(result.isError).toBe(false);
+			expect(gitCalls.find((a) => a[0] === "branch")).toBeUndefined();
+			expect(result.details).toMatchObject({ action, issue: 55 });
+		}
 	});
 
 	it("is blocked by the worktree gate when not on an issue branch", async () => {

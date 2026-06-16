@@ -529,44 +529,17 @@ describe("/goal command", () => {
     );
   });
 
-  // 40. resume resets continuation count when at max continuations
-  it("resume resets continuation count when at max continuations", async () => {
+  // 40. resume reactivates a paused goal after prior continuation activity
+  it("resume reactivates a paused goal after prior continuation activity", async () => {
     await goalCommand.handler("Continue goal", ctx);
+    // Pause then resume should bring the goal back to active. Prior continuations
+    // no longer gate resume (the per-goal continuation ceiling was removed).
     await goalCommand.handler("pause", ctx);
-    // Drive continuation_count to max via runtime's maybeContinueIfIdle
-    const agentStartHandler = mockPi.on.mock.calls.find(
-      (call: any[]) => call[0] === "agent_start",
-    )?.[1] as Function;
-    const turnStartHandler = mockPi.on.mock.calls.find(
-      (call: any[]) => call[0] === "turn_start",
-    )?.[1] as Function;
-    const msgEndHandler = mockPi.on.mock.calls.find(
-      (call: any[]) => call[0] === "message_end",
-    )?.[1] as Function;
-
-    // First resume and drive continuation to max
-    await goalCommand.handler("resume", ctx);
-    // Simulate 5 continuation cycles (DEFAULT_MAX_CONTINUATIONS is 5)
-    for (let i = 0; i < 5; i++) {
-      if (agentStartHandler) await agentStartHandler();
-      if (turnStartHandler) await turnStartHandler({}, ctx);
-      if (msgEndHandler) {
-        await msgEndHandler(
-          { message: { role: "assistant", timestamp: Date.now(), usage: { input: 10, output: 10, cacheRead: 0 } } },
-          ctx,
-        );
-      }
-      // Wait for cooldown (CONTINUATION_COOLDOWN_MS = 2000)
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    // Goal should be auto-paused at max continuations
-    // Now resume should reset continuation_count
     ctx.ui.notify.mockClear();
     await goalCommand.handler("resume", ctx);
-    // Check if it was resumed (if auto-paused) or already active
+
     const allNotifies = ctx.ui.notify.mock.calls.map((c: any[]) => c[0]);
-    // Should either resume successfully or say already active
-    expect(allNotifies.some((n: string) => n.includes("resumed") || n.includes("already active") || n.includes("Goal resumed"))).toBe(true);
+    expect(allNotifies.some((n: string) => n.includes("resumed") || n.includes("Goal resumed"))).toBe(true);
   });
 
   // 41. /goal budget sets valid budget

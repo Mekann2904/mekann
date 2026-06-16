@@ -394,6 +394,23 @@ async function resolveIssueNumber(runner: CommandRunner, cwd: string, params: Is
 	return parseIssueNumberFromBranch(branch);
 }
 
+/**
+ * Remote-issue-targeting actions hit the GitHub API for an arbitrary issue
+ * and never touch local worktree state, so they bypass the worktree gate when an
+ * explicit `issue` number is supplied. Without `issue` they still derive the
+ * number from the branch, so the gate applies. See ADR-0019 and issue #78.
+ */
+const REMOTE_ISSUE_ACTIONS: ReadonlySet<IssueWorkflowAction> = new Set<IssueWorkflowAction>([
+	"issue_comment",
+	"promote_to_ready_for_agent",
+	"demote_to_ready_for_human",
+]);
+
+function requiresIssueWorktreeGate(params: IssueWorkflowParams): boolean {
+	if (!MUTATING_ACTIONS.has(params.action)) return false;
+	return !REMOTE_ISSUE_ACTIONS.has(params.action) || typeof params.issue !== "number";
+}
+
 async function doIssueComment(runner: CommandRunner, cwd: string, params: IssueWorkflowParams): Promise<ActionResult> {
 	const out: string[] = [];
 	const issue = await resolveIssueNumber(runner, cwd, params);
@@ -421,8 +438,9 @@ async function doIssueComment(runner: CommandRunner, cwd: string, params: IssueW
 /**
  * Toggle the two triage state-role labels on an issue via `gh issue edit`.
  * Used by promote_to_ready_for_agent (ready-for-human → ready-for-agent) and
- * demote_to_ready_for_human (ready-for-agent → ready-for-human); see ADR-0025
- * slices E (consensus) and F (F3 demotion). Issue number resolves from the
+ * demote_to_ready_for_human (ready-for-agent → ready-for-human); these back the
+ * consensus phase (slice E) and F3 demotion (slice F) of the issue-autopilot
+ * label-gated-parallel design (issue #111). Issue number resolves from the
  * `issue` param or the current issue-<n> branch.
  */
 async function doSwitchLabel(
@@ -472,8 +490,12 @@ export async function executeAction(
 ): Promise<ActionResult> {
 	const action = params.action;
 
-	// Gate mutating actions to issue worktrees (branch issue-<n>).
-	if (MUTATING_ACTIONS.has(action)) {
+	// Gate mutating actions to issue worktrees (branch issue-<n>). Remote-issue
+	// actions (issue_comment, promote_to_ready_for_agent, demote_to_ready_for_human)
+	// target a remote issue directly via the GitHub API, so they do not need local
+	// worktree context when an explicit `issue` is supplied; the implicit forms
+	// still derive the number from the branch. See issue #78.
+	if (requiresIssueWorktreeGate(params)) {
 		let branch: string;
 		try {
 			branch = await currentBranch(runner, cwd);

@@ -147,7 +147,7 @@ describe("buildMacSeatbeltPolicy", () => {
 		expect(sbpl).toContain("(allow process-info* (target same-sandbox))");
 	});
 
-	it("workspace_write は writable rules と .git deny を含む", () => {
+	it("workspace_write は writable rules と保護ディレクトリ deny (.git/.pi/.codex/.agents) を含む", () => {
 		const policy = workspaceWritePolicy(tmpDir, [tmpDir], [tmpDir], false);
 		const sbpl = buildMacSeatbeltPolicy(policy);
 
@@ -155,8 +155,9 @@ describe("buildMacSeatbeltPolicy", () => {
 		expect(sbpl).toContain("allow file-write*");
 		// writable roots が含まれる
 		expect(sbpl).toContain(`subpath "${tmpDir}"`);
-		// 保護パス deny
+		// 保護パス deny — PROTECTED_DIRS 単一ソース (issue #80 C-005: .pi 追加で subagent と一致)
 		expect(sbpl).toContain("\\.git");
+		expect(sbpl).toContain("\\.pi");
 		expect(sbpl).toContain("\\.codex");
 		expect(sbpl).toContain("\\.agents");
 		// network なし
@@ -581,6 +582,11 @@ describe("isProtectedPath", () => {
 
 	it(".agents 配下を保護対象として判定する", () => {
 		expect(isProtectedPath("/tmp/project/.agents/state")).toBe(true);
+	});
+
+	it(".pi 配下を保護対象として判定する (issue #80 C-005)", () => {
+		expect(isProtectedPath("/tmp/project/.pi/ledger.json")).toBe(true);
+		expect(isProtectedPath("/tmp/project/.pi")).toBe(true);
 	});
 
 	it("通常のパスは保護対象ではない", () => {

@@ -49,7 +49,7 @@ const ACTION_UNION = Type.Union(
 	],
 	{
 		description:
-			"Single workflow action to perform. Mutating actions (commit, push, create_pr, update_pr, ready, comment, issue_comment, promote_to_ready_for_agent, demote_to_ready_for_human) only run inside an issue worktree (branch issue-<number>).",
+			"Single workflow action to perform. Mutating actions (commit, push, create_pr, update_pr, ready, comment, issue_comment, promote_to_ready_for_agent, demote_to_ready_for_human) only run inside an issue worktree (branch issue-<number>). issue_comment, promote_to_ready_for_agent, and demote_to_ready_for_human are exempt when an explicit 'issue' number is supplied.",
 	},
 );
 
@@ -96,7 +96,7 @@ export const IssueWorkflowParamsSchema = Type.Object(
 			Type.String({ description: "PR number or URL (actions: view_pr, update_pr, ready, comment). Defaults to the current branch PR." }),
 		),
 		issue: Type.Optional(
-			Type.Number({ description: "Issue number (actions: issue_comment, promote_to_ready_for_agent, demote_to_ready_for_human). Defaults to the current issue worktree." }),
+			Type.Number({ description: "Issue number (actions: issue_comment, promote_to_ready_for_agent, demote_to_ready_for_human). When supplied, these remote-issue actions run even outside an issue worktree; otherwise they default to the current issue worktree branch." }),
 		),
 	},
 	{

@@ -8,6 +8,7 @@ import { SubagentResultStore } from "../subagent/resultStore.js";
 import { admitPatchProposal } from "../subagent/patchProposalIntake.js";
 import { getChangedFiles } from "./runner.js";
 import { getPlanDir, readState } from "./layout.js";
+import { safeRepoRelativePath } from "../../safety/sandbox/permissions.js";
 
 export type CandidateStatus = "pending" | "leased" | "trial_applied" | "evaluating" | "kept" | "discarded" | "stale_base" | "rejected_policy" | "paused_dirty";
 
@@ -73,7 +74,6 @@ export function extractTouchedPathsFromPatch(patch: string): string[] {
 	}
 	return [...paths].sort();
 }
-export function safeRepoRelativePath(p: string): string | null { const n = p.replace(/\\/g, "/"); if (!n || n.includes("\0") || n.startsWith("/") || /^[A-Za-z]:\//.test(n)) return null; const norm = path.posix.normalize(n); if (norm === "." || norm.startsWith("../") || norm === "..") return null; return norm; }
 function matchesAny(file: string, scopes: string[]): boolean { return scopes.length === 0 || matchesAnyPattern(file, scopes); }
 export function candidateChangedFiles(cwd: string): string[] {
 	const out = new Set<string>();

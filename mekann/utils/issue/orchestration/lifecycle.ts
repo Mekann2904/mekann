@@ -44,7 +44,7 @@ export type OrchestrationOutcome =
 	| { kind: "not-merged"; childNumber: number; summary: ResolutionSummary; message: string };
 
 function formatSummaryLine(summary: ResolutionSummary): string {
-	return `done=${summary.done.length} active=${summary.active.length} blocked=${summary.blocked.length} startable=${summary.startable.length} total=${summary.total}`;
+	return `done=${summary.done.length} active=${summary.active.length} blocked=${summary.blocked.length} notReady=${summary.notReady.length} startable=${summary.startable.length} total=${summary.total}`;
 }
 
 /**
