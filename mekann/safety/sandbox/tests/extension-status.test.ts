@@ -190,6 +190,71 @@ describe("MODE_STATUS_EVENT validation", () => {
 	});
 });
 
+describe("mekann:codex-usage:status validation", () => {
+	it("text 文字列で rightStatus が status bar に描画される", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+
+		mock._eventHandlers["mekann:codex-usage:status"]({ text: "codex: 42%" });
+
+		const lastCall = ctx.ui.setWidget.mock.calls[ctx.ui.setWidget.mock.calls.length - 1];
+		const widget = lastCall[1](undefined, ctx.ui.theme);
+		expect(widget.render(80)).toEqual(expect.arrayContaining([expect.stringContaining("codex: 42%")]));
+	});
+
+	it("invalid payload では rightStatus が変わらない (guard が null/非 object を弾く)", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+
+		// Set rightStatus to a known value first
+		mock._eventHandlers["mekann:codex-usage:status"]({ text: "codex: 42%" });
+
+		// Invalid payloads — must be ignored by the guard, NOT clear rightStatus
+		mock._eventHandlers["mekann:codex-usage:status"](null);
+		mock._eventHandlers["mekann:codex-usage:status"](undefined);
+		mock._eventHandlers["mekann:codex-usage:status"]("string");
+		mock._eventHandlers["mekann:codex-usage:status"](42);
+
+		// rightStatus should still be "codex: 42%" after all invalid payloads
+		const lastCall = ctx.ui.setWidget.mock.calls[ctx.ui.setWidget.mock.calls.length - 1];
+		const widget = lastCall[1](undefined, ctx.ui.theme);
+		const rendered = widget.render(80);
+		expect(rendered[0]).toContain("codex: 42%");
+	});
+
+	it("空文字列・空白のみの text は rightStatus に設定しない", async () => {
+		const { isMacSandboxAvailable } = await import("../macSeatbelt.js");
+		(isMacSandboxAvailable as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+
+		const mock = createMockApi();
+		mock._flags = {};
+		await loadExtension(mock);
+		const ctx = createMockCtx();
+		await mock._hooks.session_start({}, ctx);
+
+		// Empty/whitespace text should not set rightStatus
+		mock._eventHandlers["mekann:codex-usage:status"]({ text: "   " });
+
+		const lastCall = ctx.ui.setWidget.mock.calls[ctx.ui.setWidget.mock.calls.length - 1];
+		const widget = lastCall[1](undefined, ctx.ui.theme);
+		const rendered = widget.render(80);
+		// No rightStatus text on the line
+		expect(rendered[0]).not.toContain("   ");
+	});
+});
+
 describe("refreshStatusBar: no lastCtx", () => {
 	it("lastCtx が undefined でも refreshStatusBar はクラッシュしない", async () => {
 		const mock = createMockApi();
