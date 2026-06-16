@@ -8,14 +8,14 @@
  *   `setTimeout(...).unref()`). All I/O and time are injected (`AutopilotDeps` +
  *   `AutopilotLoopHooks`), so the loop is testable with fake timers and fakes.
  *
- * Sequential in this slice (ADR-0025 slice C): at most one Work Pi at a time.
- * The parallel worker pool (maxParallel > 1) is a separate issue.
+ * Parallel worker pool: up to `maxParallel` Work Pi panes may be active at
+ * once. Dependency and label gates remain the only startability gates.
  */
 
 import { nextInterval } from "../../../pr-workflow/index.js";
 import { READY_FOR_AGENT_LABEL } from "./markers.js";
 import { collectAutopilotSnapshot, type AutopilotDeps } from "./collector.js";
-import { isAutopilotComplete, isAutopilotEmpty, pickNextAutopilot, type AutopilotSummary } from "./resolver.js";
+import { isAutopilotComplete, isAutopilotEmpty, pickNextAutopilot, type AutopilotJudgement, type AutopilotSummary } from "./resolver.js";
 import type { AutopilotChildState } from "./state.js";
 
 /** Pure decision for one supervisor step over a snapshot. */
@@ -25,17 +25,40 @@ export type AutopilotDecision =
 	| { kind: "startable"; child: AutopilotChildState; summary: AutopilotSummary }
 	| { kind: "waiting"; summary: AutopilotSummary };
 
+export type AutopilotPoolDecision =
+	| { kind: "no-candidates" }
+	| { kind: "completed"; summary: AutopilotSummary }
+	| { kind: "launch"; children: AutopilotChildState[]; summary: AutopilotSummary; activeSlots: number; availableSlots: number }
+	| { kind: "waiting"; summary: AutopilotSummary; activeSlots: number; availableSlots: number };
+
 /**
  * Decide the next supervisor action from a snapshot. Pure: same input → same
  * output. This is the testable core of the supervisor's state machine.
  */
 export function decideAutopilotStep(states: AutopilotChildState[]): AutopilotDecision {
+	const decision = decideAutopilotPoolStep(states, 1);
+	if (decision.kind === "launch") return { kind: "startable", child: decision.children[0]!, summary: decision.summary };
+	if (decision.kind === "waiting") return { kind: "waiting", summary: decision.summary };
+	return decision;
+}
+
+/** Decide which candidates to launch now for the parallel worker pool. */
+export function decideAutopilotPoolStep(states: AutopilotChildState[], maxParallel: number): AutopilotPoolDecision {
 	if (states.length === 0) return { kind: "no-candidates" };
 	const result = pickNextAutopilot(states);
 	if (isAutopilotEmpty(result.summary)) return { kind: "no-candidates" };
 	if (isAutopilotComplete(result.summary)) return { kind: "completed", summary: result.summary };
-	if (result.next) return { kind: "startable", child: result.next.state, summary: result.summary };
-	return { kind: "waiting", summary: result.summary };
+
+	const limit = clampMaxParallel(maxParallel);
+	const activeSlots = result.summary.active.length;
+	const availableSlots = Math.max(0, limit - activeSlots);
+	const toLaunch = result.startable.slice(0, availableSlots).map((judgement: AutopilotJudgement) => judgement.state);
+	if (toLaunch.length > 0) return { kind: "launch", children: toLaunch, summary: result.summary, activeSlots, availableSlots };
+	return { kind: "waiting", summary: result.summary, activeSlots, availableSlots };
+}
+
+function clampMaxParallel(maxParallel: number): number {
+	return Number.isFinite(maxParallel) && maxParallel >= 1 ? Math.floor(maxParallel) : 1;
 }
 
 /** Side effect: start the Work Pi for a candidate. Injected by the caller. */
@@ -65,7 +88,7 @@ export interface AutopilotSupervisorConfig {
 }
 
 export const DEFAULT_AUTOPILOT_CONFIG: AutopilotSupervisorConfig = {
-	maxParallel: 1,
+	maxParallel: 2,
 	initialIntervalMs: 5_000,
 	maxIntervalMs: 60_000,
 	backoffFactor: 1.4,
@@ -107,30 +130,14 @@ async function waitForWorkPi(
 	return false;
 }
 
-/** Wait for an active pane to close (Work Pi finished its run and auto-closed). */
-async function waitForWorkPiClose(
-	deps: AutopilotDeps,
-	child: number,
-	hooks: AutopilotLoopHooks,
-	config: AutopilotSupervisorConfig,
-): Promise<void> {
-	let interval = config.initialIntervalMs;
-	while (!hooks.shouldStop()) {
-		if (!(await deps.hasActiveWorkPi(child))) return;
-		await hooks.sleep(interval);
-		interval = nextInterval(interval, config.backoffFactor, config.maxIntervalMs);
-	}
-}
-
 /**
  * Run the autopilot supervisor loop until it completes, finds no candidates, or
- * is asked to stop. Sequential: one Work Pi at a time.
+ * is asked to stop. It keeps up to `maxParallel` Work Pi panes active.
  *
- * After launching a candidate, the supervisor waits for its pane to appear and
- * then to disappear (the Work Pi auto-closes once its PR is created), then
- * re-snapshots from GitHub truth and picks the next startable candidate. It
- * terminates when every `ready-for-agent` candidate has a PR or is
- * `ready-for-human`.
+ * After launching candidates, the supervisor re-snapshots from GitHub truth on a
+ * bounded-backoff cadence. A Work Pi auto-closes once its PR exists; that frees
+ * a slot and the next startable candidate is launched. It terminates when every
+ * `ready-for-agent` candidate has a PR or is `ready-for-human`.
  */
 export async function runAutopilotSupervisor(
 	deps: AutopilotDeps,
@@ -138,14 +145,14 @@ export async function runAutopilotSupervisor(
 	hooks: AutopilotLoopHooks,
 	config: AutopilotSupervisorConfig = DEFAULT_AUTOPILOT_CONFIG,
 ): Promise<AutopilotSupervisorResult> {
-	hooks.notify(`Autopilot supervisor started (sequential, maxParallel=${config.maxParallel}).`, "info");
+	const maxParallel = clampMaxParallel(config.maxParallel);
+	hooks.notify(`Autopilot supervisor started (maxParallel=${maxParallel}).`, "info");
 	let interval = config.initialIntervalMs;
-	let lastChild = -1;
-	let launchAttempts = 0;
+	const launchAttempts = new Map<number, number>();
 
 	while (!hooks.shouldStop()) {
 		const states = await collectAutopilotSnapshot(deps);
-		const decision = decideAutopilotStep(states);
+		const decision = decideAutopilotPoolStep(states, maxParallel);
 
 		if (decision.kind === "no-candidates") {
 			const labelExists = await safeLabelExists(deps, READY_FOR_AGENT_LABEL);
@@ -169,49 +176,53 @@ export async function runAutopilotSupervisor(
 			return { kind: "completed", summary: decision.summary };
 		}
 
-		if (decision.kind === "startable") {
-			const child = decision.child;
-			if (child.number !== lastChild) {
-				lastChild = child.number;
-				launchAttempts = 0;
-			}
-			launchAttempts += 1;
-			if (launchAttempts > config.maxLaunchAttempts) {
-				hooks.notify(
-					`Autopilot: repeatedly failed to observe a Work Pi for #${child.number} after ${config.maxLaunchAttempts} attempts. Stopping; investigate manually.`,
-					"error",
-				);
-				return { kind: "stopped", reason: `max launch attempts exceeded for #${child.number}` };
+		if (decision.kind === "launch") {
+			hooks.notify(
+				`Autopilot: launching ${decision.children.length} issue(s); slots ${decision.activeSlots}/${maxParallel} active before launch. ${formatSummary(decision.summary)}`,
+				"info",
+			);
+			for (const child of decision.children) {
+				const attempts = (launchAttempts.get(child.number) ?? 0) + 1;
+				launchAttempts.set(child.number, attempts);
+				if (attempts > config.maxLaunchAttempts) {
+					hooks.notify(
+						`Autopilot: repeatedly failed to observe a Work Pi for #${child.number} after ${config.maxLaunchAttempts} attempts. Stopping; investigate manually.`,
+						"error",
+					);
+					return { kind: "stopped", reason: `max launch attempts exceeded for #${child.number}` };
+				}
+
+				hooks.notify(`Autopilot: starting #${child.number} — ${child.title}.`, "info");
+				try {
+					await launchWorkPi(child);
+				} catch (error) {
+					hooks.notify(
+						`Autopilot: launch failed for #${child.number}: ${error instanceof Error ? error.message : String(error)}. Stopping.`,
+						"error",
+					);
+					return { kind: "stopped", reason: `launch failed for #${child.number}` };
+				}
 			}
 
-			hooks.notify(`Autopilot: starting #${child.number} — ${child.title}.`, "info");
-			try {
-				await launchWorkPi(child);
-			} catch (error) {
-				hooks.notify(
-					`Autopilot: launch failed for #${child.number}: ${error instanceof Error ? error.message : String(error)}. Stopping.`,
-					"error",
-				);
-				return { kind: "stopped", reason: `launch failed for #${child.number}` };
-			}
-
-			const appeared = await waitForWorkPi(deps, child.number, hooks, config);
+			const appeared = await Promise.all(decision.children.map((child) => waitForWorkPi(deps, child.number, hooks, config)));
 			if (hooks.shouldStop()) return { kind: "stopped", reason: "supervisor stopped during launch" };
-			if (!appeared) {
-				hooks.notify(`Autopilot: Work Pi pane for #${child.number} did not appear; re-checking GitHub truth.`, "warning");
+			const missing = decision.children.filter((_child, index) => !appeared[index]);
+			if (missing.length > 0) {
+				hooks.notify(`Autopilot: Work Pi pane(s) did not appear for ${missing.map((child) => `#${child.number}`).join(", ")}; re-checking GitHub truth.`, "warning");
 				await hooks.sleep(interval);
 				interval = nextInterval(interval, config.backoffFactor, config.maxIntervalMs);
 				continue;
 			}
 
-			await waitForWorkPiClose(deps, child.number, hooks, config);
-			// Progress made: reset backoff for the next cycle.
+			// Progress made: reset backoff for the next cycle. Do not wait for every
+			// launched pane to close; re-snapshotting lets slots refill as soon as any
+			// Work Pi auto-closes.
 			interval = config.initialIntervalMs;
 			continue;
 		}
 
-		// waiting: in-flight/blocked candidates, none startable right now.
-		hooks.notify(`Autopilot: waiting for in-flight work to settle. ${formatSummary(decision.summary)}`, "info");
+		// waiting: pool full and/or blocked candidates, none startable right now.
+		hooks.notify(`Autopilot: waiting for worker pool to settle (${decision.activeSlots}/${maxParallel} slots used). ${formatSummary(decision.summary)}`, "info");
 		await hooks.sleep(interval);
 		interval = nextInterval(interval, config.backoffFactor, config.maxIntervalMs);
 	}

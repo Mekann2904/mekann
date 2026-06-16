@@ -449,6 +449,22 @@ _Avoid_: host session, parent pi, base session
 A Pi session opened in a Kitty split to work on a single issue's worktree, titled `Issue #<number>`. Multiple issue Pi sessions may be open at once, one per issue. Each is identified by its title prefix so pane management can find them statelessly.
 _Avoid_: worktree session, child pi, issue window
 
+**Issue autopilot**:
+An upper-level automation feature, triggered by `/issue-autopilot`, that processes every open issue labeled `ready-for-agent` across the repository without manual selection. Unlike `/issue` (where the human selects issues with the space key) or `/issue <parent>` (serial, merge-gated orchestration of one parent's children), autopilot auto-selects by label and runs up to a configurable parallel limit (`issue.autopilot.maxParallel`, default 2). Each Work Pi self-runs implement → review_fixer → PR creation, then auto-closes to free its slot. The merge stays human-controlled. Autopilot and the manual `/issue` commands coexist; autopilot is the higher-level path that removes the selection step.
+_Avoid_: issue automation, auto-issue, parallel orchestration
+
+**Autopilot supervisor**:
+The Main Pi-side extension loop that drives issue autopilot. It maintains the parallel worker pool, enforces the `ready-for-agent` label gate and the `blocked_by` dependency gate, reuses the GitHub-truth snapshot model, and stops when every `ready-for-agent` issue has produced a PR or been demoted to `ready-for-human`. It does not auto-recover from frozen or failed Work Pis; a stopped Work Pi stays as an open pane for the human to notice and handle manually.
+_Avoid_: autopilot daemon, detached orchestrator, background worker manager
+
+**Agreement phase**:
+The Issue Pi interaction mode entered when a `ready-for-human` issue is opened via the manual `/issue` command. Instead of auto-running implementation, the agent and the human converse in the Issue Pi to converge on a specification; once the human agrees, the agent flips the label to `ready-for-agent` and transitions into the normal implement → review → PR self-run. Agreement content is recorded as a triage-notes-style issue comment so it survives across sessions. Autopilot never enters the agreement phase because it only picks `ready-for-agent` issues; agreement is a manual `/issue`-only path.
+_Avoid_: planning phase, pre-implementation chat, spec negotiation window
+
+**Label-gated startability**:
+The combined readiness rule for issue work: an issue is startable only when it carries the `ready-for-agent` label and has no open `blocked_by` dependencies. The existing `judgeChild` dependency check is extended with the `ready-for-agent` label gate so that `ready-for-human` / `needs-triage` / `needs-info` / `wontfix` issues are never auto-implemented. This also fixes the legacy `/issue` behavior of opening `ready-for-human` issues straight into agent implementation.
+_Avoid_: label filter, triage filter, dependency-only startability
+
 ### Development workflow
 
 **OSS reference library**:
@@ -471,6 +487,18 @@ Domain expert: "No. Autoresearch worktrees are temporary candidate isolation ins
 
 Developer: "I already have issue #42 open. If I run `/issue` again for #43, does my Main Pi shrink again?"
 Domain expert: "No. The Main Pi is split only for the first issue Pi. On the second and later `/issue`, the existing issue Pi region is split instead, so the Main Pi keeps its stable region. Among multiple issue Pi panes, the widest one is used as the split source so no single pane shrinks to nothing."
+
+Developer: "I want all `ready-for-agent` issues processed overnight. Should I `/issue` each one?"
+Domain expert: "No. Use `/issue-autopilot`. It auto-selects every `ready-for-agent` issue, runs up to `maxParallel` Work Pis in parallel, and each Work Pi self-runs to PR creation then auto-closes to free the slot. `/issue` is the manual path where you pick issues with the space key; autopilot is the upper-level path that skips selection."
+
+Developer: "What happens when an agent gets stuck mid-implementation under autopilot?"
+Domain expert: "It demotes the issue from `ready-for-agent` to `ready-for-human`, posts a triage-notes-style comment with the open question, does NOT create a PR, and stops. Autopilot won't pick it again because it is no longer `ready-for-agent`. You resolve it later via the agreement phase in a manual `/issue` session."
+
+Developer: "A `ready-for-human` issue needs the human to decide direction. Can autopilot handle it?"
+Domain expert: "No. Autopilot only picks `ready-for-agent`. A `ready-for-human` issue opened via manual `/issue` enters the agreement phase, where the agent and human converse in the Issue Pi until the human agrees; then the agent flips the label to `ready-for-agent` and proceeds to implementation."
+
+Developer: "What if a Work Pi freezes under autopilot?"
+Domain expert: "Nothing auto-recovers it. The frozen Work Pi stays as an open pane so you notice it and handle it manually. Autopilot has no timeout or retry; the stop condition is only that every `ready-for-agent` issue has produced a PR or been demoted."
 
 Developer: "Can `/issue` work without Kitty?"
 Domain expert: "No. Issue worktree management is Kitty-only because it relies on Kitty split to open a separate pi session. Without Kitty the command is not registered."
