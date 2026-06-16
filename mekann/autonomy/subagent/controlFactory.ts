@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
+import { HARD_MAX_RESULT_RETRIES, HARD_MAX_SUBAGENTS, MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
 import { featureRawConfig } from "../../settings/enabled.js";
 import { AgentControl } from "./agentControl.js";
 import { KittyController } from "./kittyControl.js";
@@ -34,7 +34,7 @@ export function createSubagentControl(pi: ExtensionAPI, extensionPathDefault: st
   const maxSubagentsDefault = String(MEKANN_SUBAGENT_DEFAULTS.maxSubagents);
   const maxSubagents = Math.min(
     Math.max(Number(getFlagOrSetting(pi, "subagent-max-agents", "maxSubagents", maxSubagentsDefault)) || MEKANN_SUBAGENT_DEFAULTS.maxSubagents, 0),
-    4,
+    HARD_MAX_SUBAGENTS,
   );
   const configuredMaxOpenAgents = Number(getFlagOrSetting(pi, "subagent-max-open-agents", "maxOpenAgents", String(maxSubagents + 1))) || maxSubagents + 1;
   const maxAgents = Math.max(configuredMaxOpenAgents, maxSubagents + 1);
@@ -70,6 +70,12 @@ export function createSubagentControl(pi: ExtensionAPI, extensionPathDefault: st
   const externalPiSlots = isKitty && displayMode.startsWith("kitty-") ? Math.max(configuredExternalPiSlots, 1) : configuredExternalPiSlots;
   const allowNestedSubagents = truthySetting(getFlagOrSetting<string>(pi, "subagent-allow-nested", "allowNestedSubagents", String(MEKANN_SUBAGENT_DEFAULTS.allowNestedSubagents)) ?? String(MEKANN_SUBAGENT_DEFAULTS.allowNestedSubagents));
   const defaultReasoningEffort = String(getFlagOrSetting<string>(pi, "subagent-default-reasoning-effort", "defaultReasoningEffort", MEKANN_SUBAGENT_DEFAULTS.defaultReasoningEffort) ?? MEKANN_SUBAGENT_DEFAULTS.defaultReasoningEffort);
+  // Retry budget for `agent_results action=retry`. Setting-only like
+  // maxQueuedSubagents/externalPiSlots; hard-clamped to HARD_MAX_RESULT_RETRIES
+  // (shared with the schema range) so a malformed mekann.json or flag value
+  // can't disable the limit (issue #83 / C-014).
+  const rawMaxResultRetries = Number(getFlagOrSetting(pi, "subagent-max-result-retries", "maxResultRetries", String(MEKANN_SUBAGENT_DEFAULTS.maxResultRetries)));
+  const maxResultRetries = Number.isInteger(rawMaxResultRetries) && rawMaxResultRetries >= 1 && rawMaxResultRetries <= HARD_MAX_RESULT_RETRIES ? rawMaxResultRetries : MEKANN_SUBAGENT_DEFAULTS.maxResultRetries;
 
   return new AgentControl(pi, maxAgents, maxDepth, defaultWait, minWait, {
     displayMode,
@@ -82,5 +88,6 @@ export function createSubagentControl(pi: ExtensionAPI, extensionPathDefault: st
     externalPiSlots,
     allowNestedSubagents,
     defaultReasoningEffort,
+    maxResultRetries,
   });
 }

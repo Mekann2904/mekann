@@ -1,10 +1,10 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
+import { HARD_MAX_SUBAGENTS, MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
 
 /** Register all CLI flags owned by the subagent feature. */
 export function registerSubagentFlags(pi: ExtensionAPI, extensionPathDefault: string): void {
   pi.registerFlag("subagent-max-agents", {
-    description: `Maximum number of concurrent subagents. Hard-capped at ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents} (default: ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents})`,
+    description: `Maximum number of concurrent subagents. Hard-capped at ${HARD_MAX_SUBAGENTS} (default: ${MEKANN_SUBAGENT_DEFAULTS.maxSubagents})`,
     type: "string",
     default: String(MEKANN_SUBAGENT_DEFAULTS.maxSubagents),
   });

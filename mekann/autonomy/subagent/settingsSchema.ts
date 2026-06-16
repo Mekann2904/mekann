@@ -1,4 +1,4 @@
-import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
+import { HARD_MAX_RESULT_RETRIES, HARD_MAX_SUBAGENTS, MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
 import type { FeatureSettingsSchema, SettingSchema } from "../../settings/types.js";
 
 export type SubagentDisplaySetting = "none" | "external-pi" | "external-split";
@@ -28,7 +28,7 @@ export const subagentSettingsSchema: FeatureSettingsSchema = {
   title: "Subagent",
   settings: [
     bool("enabled", "General", true, "subagent tool/command、child process、IPC lifecycle を有効にします。"),
-    num("maxSubagents", "Capacity", MEKANN_SUBAGENT_DEFAULTS.maxSubagents, 1, 4, "同時実行する subagent 数。"),
+    num("maxSubagents", "Capacity", MEKANN_SUBAGENT_DEFAULTS.maxSubagents, 1, HARD_MAX_SUBAGENTS, "同時実行する subagent 数。"),
     num("maxOpenAgents", "Capacity", MEKANN_SUBAGENT_DEFAULTS.maxOpenAgents, 1, 8, "root を含む open agent 数の上限。"),
     num("maxQueuedSubagents", "Capacity", MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents, 0, 16, "待機 queue に入れられる subagent 数。"),
     num("externalPiSlots", "Capacity", MEKANN_SUBAGENT_DEFAULTS.externalPiSlots, 0, 4, "外部 Pi 表示に使う slot 数。"),
@@ -39,6 +39,7 @@ export const subagentSettingsSchema: FeatureSettingsSchema = {
     { key: "display", type: "enum", defaultValue: MEKANN_SUBAGENT_DEFAULTS.display, description: "subagent 表示方法。kitty では既定で external-split、kitty 外では none にフォールバックします。", category: "Display", scopes: ["global", "workspace"], restartRequired: true, enumValues: [...subagentDisplayValues], validate(value) { return subagentDisplayValues.includes(value as SubagentDisplaySetting) ? [] : ["display は none | external-pi | external-split のいずれかです"]; } },
     bool("allowUnsafeExternalPi", "Display", MEKANN_SUBAGENT_DEFAULTS.allowUnsafeExternalPi, "external-pi/external-split で独立 Pi process を起動することを許可します。kitty split 表示のため既定で true です。"),
     bool("allowNestedSubagents", "Capacity", MEKANN_SUBAGENT_DEFAULTS.allowNestedSubagents, "subagent からさらに subagent を spawn することを許可します。通常は cost storm 防止のため false にします。"),
+    num("maxResultRetries", "Capacity", MEKANN_SUBAGENT_DEFAULTS.maxResultRetries, 1, HARD_MAX_RESULT_RETRIES, "agent_results action=retry で1つの結果を再実行できる回数上限。review-fixer の maxFixRetries と同様の概念です。"),
     { key: "defaultReasoningEffort", type: "enum", defaultValue: MEKANN_SUBAGENT_DEFAULTS.defaultReasoningEffort, description: "spawn_agent.reasoning_effort 未指定時の subagent reasoning effort。", category: "Cost", scopes: ["global", "workspace"], restartRequired: true, enumValues: [...subagentReasoningEffortValues], validate(value) { return subagentReasoningEffortValues.includes(value as any) ? [] : ["defaultReasoningEffort が不正です"]; } },
     { key: "toolSurface", type: "enum", defaultValue: MEKANN_SUBAGENT_DEFAULTS.toolSurface, description: "LLM に見せる subagent tool surface。delegate-only では delegate_agent だけを登録し、async-tools では spawn/wait/message/list/close/agent_results も登録します。", category: "Cost", scopes: ["global", "workspace"], restartRequired: true, enumValues: [...subagentToolSurfaceValues], validate(value) { return subagentToolSurfaceValues.includes(value as any) ? [] : ["toolSurface は delegate-only | async-tools のいずれかです"]; } },
     str("logDir", "Display", MEKANN_SUBAGENT_DEFAULTS.logDir, "subagent display log directory。空文字なら default location を使います。"),

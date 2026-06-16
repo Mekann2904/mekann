@@ -31,6 +31,8 @@ export interface MekannSubagentConfigDefaults {
 	maxPatchBytes: number;
 	externalPiSlots: number;
 	allowNestedSubagents: boolean;
+	/** Max times a single agent result can be re-run via `agent_results action=retry` (issue #83 / C-014). */
+	maxResultRetries: number;
 	defaultReasoningEffort: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 	toolSurface: "delegate-only" | "async-tools";
 }
@@ -51,9 +53,30 @@ export const MEKANN_SUBAGENT_DEFAULTS: MekannSubagentConfigDefaults = {
 	maxPatchBytes: 50_000,
 	externalPiSlots: 1,
 	allowNestedSubagents: false,
+	maxResultRetries: 3,
 	defaultReasoningEffort: "low",
 	toolSurface: "delegate-only",
 };
+
+/**
+ * Hard ceiling on concurrent subagents (issue #83 / C-010).
+ *
+ * Enforced in controlFactory (Math.min cap) and settingsSchema (validation
+ * range), and surfaced in the `--subagent-max-agents` flag description so the
+ * documented cap matches the enforced cap. Previously the flag description
+ * reported `maxSubagents` (the *default*, 1) while the real cap was 4.
+ */
+export const HARD_MAX_SUBAGENTS = 4;
+
+/**
+ * Hard ceiling on the per-result retry budget (issue #83 / C-014).
+ *
+ * Shared by settingsSchema (validation range) and controlFactory (runtime
+ * clamp) so a configured `maxResultRetries` can never exceed this cap —
+ * mirroring how {@link HARD_MAX_SUBAGENTS} single-sources the concurrency cap
+ * to keep the schema ceiling and the enforced ceiling from drifting apart.
+ */
+export const HARD_MAX_RESULT_RETRIES = 10;
 
 export const MEKANN_SANDBOX_DEFAULTS = {
 	llmOutputMaxBytes: 50 * 1024,
