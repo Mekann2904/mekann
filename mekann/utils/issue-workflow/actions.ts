@@ -44,7 +44,13 @@ export const MUTATING_ACTIONS: ReadonlySet<IssueWorkflowAction> = new Set<IssueW
 	"ready",
 	"comment",
 	"issue_comment",
+	"promote_to_ready_for_agent",
+	"demote_to_ready_for_human",
 ]);
+
+/** Triage state-role labels these actions toggle. See docs/agents/triage-labels.md. */
+const READY_FOR_AGENT_LABEL = "ready-for-agent";
+const READY_FOR_HUMAN_LABEL = "ready-for-human";
 
 class GitCommandError extends Error {
 	constructor(
@@ -93,6 +99,8 @@ const ALLOWED_FIELDS_BY_ACTION: Record<IssueWorkflowAction, readonly (keyof Issu
 	ready: ["action", "pr"],
 	comment: ["action", "pr", "body"],
 	issue_comment: ["action", "issue", "body"],
+	promote_to_ready_for_agent: ["action", "issue"],
+	demote_to_ready_for_human: ["action", "issue"],
 };
 
 function invalidFieldError(params: Partial<IssueWorkflowParams>, action: IssueWorkflowAction): string | null {
@@ -137,6 +145,8 @@ export function validateActionArgs(params: Partial<IssueWorkflowParams>): string
 		case "diff":
 		case "view_pr":
 		case "current_branch":
+		case "promote_to_ready_for_agent":
+		case "demote_to_ready_for_human":
 			return null;
 		default:
 			return `Unknown issue_workflow action: ${String(action)}`;
@@ -384,9 +394,21 @@ async function resolveIssueNumber(runner: CommandRunner, cwd: string, params: Is
 	return parseIssueNumberFromBranch(branch);
 }
 
+/**
+ * Remote-issue-targeting actions hit the GitHub API for an arbitrary issue
+ * and never touch local worktree state, so they bypass the worktree gate when an
+ * explicit `issue` number is supplied. Without `issue` they still derive the
+ * number from the branch, so the gate applies. See ADR-0019 and issue #78.
+ */
+const REMOTE_ISSUE_ACTIONS: ReadonlySet<IssueWorkflowAction> = new Set<IssueWorkflowAction>([
+	"issue_comment",
+	"promote_to_ready_for_agent",
+	"demote_to_ready_for_human",
+]);
+
 function requiresIssueWorktreeGate(params: IssueWorkflowParams): boolean {
 	if (!MUTATING_ACTIONS.has(params.action)) return false;
-	return params.action !== "issue_comment" || typeof params.issue !== "number";
+	return !REMOTE_ISSUE_ACTIONS.has(params.action) || typeof params.issue !== "number";
 }
 
 async function doIssueComment(runner: CommandRunner, cwd: string, params: IssueWorkflowParams): Promise<ActionResult> {
@@ -414,6 +436,49 @@ async function doIssueComment(runner: CommandRunner, cwd: string, params: IssueW
 }
 
 /**
+ * Toggle the two triage state-role labels on an issue via `gh issue edit`.
+ * Used by promote_to_ready_for_agent (ready-for-human → ready-for-agent) and
+ * demote_to_ready_for_human (ready-for-agent → ready-for-human); these back the
+ * consensus phase (slice E) and F3 demotion (slice F) of the issue-autopilot
+ * label-gated-parallel design (issue #111). Issue number resolves from the
+ * `issue` param or the current issue-<n> branch.
+ */
+async function doSwitchLabel(
+	runner: CommandRunner,
+	cwd: string,
+	params: IssueWorkflowParams,
+	action: IssueWorkflowAction,
+	addLabel: string,
+	removeLabel: string,
+): Promise<ActionResult> {
+	const issue = await resolveIssueNumber(runner, cwd, params);
+	if (issue === null) {
+		return {
+			text: `action '${action}' requires an issue number: pass 'issue' or run inside an issue-<number> worktree.`,
+			details: { action },
+			isError: true,
+		};
+	}
+	const args = ["issue", "edit", String(issue), "--add-label", addLabel, "--remove-label", removeLabel];
+	const { stdout, stderr } = await run(runner, "gh", args, cwd);
+	const out = [`$ gh ${args.join(" ")}`];
+	appendOutput(out, stdout, stderr);
+	return {
+		text: out.join("\n") || `issue #${issue} labels updated`,
+		details: { action, issue, addLabel, removeLabel },
+		isError: false,
+	};
+}
+
+function doPromoteToReadyForAgent(runner: CommandRunner, cwd: string, params: IssueWorkflowParams): Promise<ActionResult> {
+	return doSwitchLabel(runner, cwd, params, "promote_to_ready_for_agent", READY_FOR_AGENT_LABEL, READY_FOR_HUMAN_LABEL);
+}
+
+function doDemoteToReadyForHuman(runner: CommandRunner, cwd: string, params: IssueWorkflowParams): Promise<ActionResult> {
+	return doSwitchLabel(runner, cwd, params, "demote_to_ready_for_human", READY_FOR_HUMAN_LABEL, READY_FOR_AGENT_LABEL);
+}
+
+/**
  * Dispatch a validated issue_workflow action.
  * Enforces the issue-worktree gate for mutating actions and centralises
  * exec-error handling into a structured error result.
@@ -425,9 +490,11 @@ export async function executeAction(
 ): Promise<ActionResult> {
 	const action = params.action;
 
-	// Gate mutating actions to issue worktrees (branch issue-<n>). Explicit
-	// `issue_comment` targets a remote issue directly, so it does not need local
-	// worktree context; implicit `issue_comment` still derives from the branch.
+	// Gate mutating actions to issue worktrees (branch issue-<n>). Remote-issue
+	// actions (issue_comment, promote_to_ready_for_agent, demote_to_ready_for_human)
+	// target a remote issue directly via the GitHub API, so they do not need local
+	// worktree context when an explicit `issue` is supplied; the implicit forms
+	// still derive the number from the branch. See issue #78.
 	if (requiresIssueWorktreeGate(params)) {
 		let branch: string;
 		try {
@@ -473,6 +540,10 @@ export async function executeAction(
 				return await doComment(runner, cwd, params);
 			case "issue_comment":
 				return await doIssueComment(runner, cwd, params);
+			case "promote_to_ready_for_agent":
+				return await doPromoteToReadyForAgent(runner, cwd, params);
+			case "demote_to_ready_for_human":
+				return await doDemoteToReadyForHuman(runner, cwd, params);
 			default:
 				return { text: `Unknown issue_workflow action: ${String(action)}`, details: { action }, isError: true };
 		}

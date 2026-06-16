@@ -34,14 +34,23 @@ so git-safety never sees it) and passes messages/bodies via temp files
 | `ready` | `gh pr ready` | yes | yes |
 | `comment` | `gh pr comment --body-file <tmpfile>` | yes | yes |
 | `issue_comment` | `gh issue comment <n> --body-file <tmpfile>` | yes | conditional |
+| `promote_to_ready_for_agent` | `gh issue edit <n> --add-label ready-for-agent --remove-label ready-for-human` | yes | conditional |
+| `demote_to_ready_for_human` | `gh issue edit <n> --add-label ready-for-human --remove-label ready-for-agent` | yes | conditional |
 
 Mutating actions are only permitted inside an issue worktree (branch
 `issue-<number>`); otherwise they return a clear error so `main` etc. can never
-be touched by accident. `issue_comment` is the exception: because it targets an
-arbitrary remote issue through the GitHub API and never touches local worktree
-state, it bypasses the gate when an explicit `issue` number is supplied. With
-no `issue` it still requires a worktree so the number can be derived from the
-branch.
+be touched by accident. The remote-issue actions (`issue_comment`,
+`promote_to_ready_for_agent`, `demote_to_ready_for_human`) are the exception:
+they target an arbitrary remote issue through the GitHub API and never touch
+local worktree state, so they bypass the gate when an explicit `issue` number
+is supplied. With no `issue` they still require a worktree so the number can be
+derived from the branch.
+
+`promote_to_ready_for_agent` / `demote_to_ready_for_human` toggle the triage
+state-role labels (`ready-for-human` ↔ `ready-for-agent`; see
+`docs/agents/triage-labels.md`) for the consensus phase and F3 demotion in the
+issue-autopilot label-gated-parallel design (issue #111). The issue number
+resolves from `issue` or the current `issue-<n>` branch.
 
 ## Message safety
 
