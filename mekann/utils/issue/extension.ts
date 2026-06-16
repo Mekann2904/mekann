@@ -1,9 +1,10 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { execFileSync } from "node:child_process";
 import { detectTerminalEmulatorAdapters, launchExternalUi } from "../terminal/index.js";
 import { decideTuiPlacement, type SupportedTuiPlacements } from "../tui/index.js";
 import { getRepoInfo, listExistingWorktrees, parseIssueNumberFromBranch, removeWorktree } from "./worktree.js";
+import { checkIssuePrerequisites } from "./prerequisites.js";
 import { createIssue, getIssueStatus, searchOpenIssues } from "./github.js";
+import { registerAutopilot } from "./orchestration/autopilot/extension.js";
 
 /** The issue list is an External UI feature: External split UI only, never pass-through. */
 const ISSUE_LIST_PLACEMENT: SupportedTuiPlacements = {
@@ -12,17 +13,14 @@ const ISSUE_LIST_PLACEMENT: SupportedTuiPlacements = {
 };
 
 function checkPrerequisites(ctx: ExtensionContext): string | null {
-	if (!process.env.KITTY_WINDOW_ID) return "Kitty terminal is required for /issue.";
-	try {
-		execFileSync("gh", ["--version"], { encoding: "utf-8", timeout: 3000 });
-	} catch {
-		return "`gh` CLI is required. Install with: brew install gh";
-	}
-	if (!getRepoInfo(ctx.cwd)) return "Not inside a git repository.";
-	return null;
+	return checkIssuePrerequisites(ctx.cwd);
 }
 
 export default function issueWorktree(pi: ExtensionAPI): void {
+	// Autopilot command + Work Pi auto-close (issue #112). Registered alongside
+	// /issue so the prerequisites (Kitty / gh / git repo) stay shared.
+	registerAutopilot(pi);
+
 	pi.registerCommand("issue", {
 		description: "Open a GitHub issue worktree in a new Pi split.",
 		handler: async (args, ctx) => {

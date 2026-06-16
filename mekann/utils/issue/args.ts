@@ -1,5 +1,5 @@
 export interface IssueArgs {
-	mode: "interactive" | "direct" | "cleanup" | "orchestrate";
+	mode: "interactive" | "direct" | "cleanup" | "orchestrate" | "autopilot";
 	issueNumber?: number;
 	resultPath?: string;
 }
@@ -28,6 +28,12 @@ export function parseIssueArgs(argv: string[]): { ok: true; value: IssueArgs } |
 		return { ok: true, value: { mode: "cleanup", resultPath } };
 	}
 
+	if (filtered[0] === "autopilot") {
+		// `autopilot` subcommand: run the sequential autopilot supervisor to
+		// completion (issue #112).
+		return { ok: true, value: { mode: "autopilot", resultPath } };
+	}
+
 	if (filtered[0] === "--issue") {
 		if (filtered.length < 2) {
 			return { ok: false, error: "Usage: mekann-issue --issue <number>" };
@@ -46,5 +52,5 @@ export function parseIssueArgs(argv: string[]): { ok: true; value: IssueArgs } |
 		return { ok: true, value: { mode: "orchestrate", issueNumber: maybeParent, resultPath } };
 	}
 
-	return { ok: false, error: "Usage: mekann-issue [<parent-number> | --issue <number> | cleanup]" };
+	return { ok: false, error: "Usage: mekann-issue [autopilot | <parent-number> | --issue <number> | cleanup]" };
 }

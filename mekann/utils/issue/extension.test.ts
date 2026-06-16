@@ -28,6 +28,9 @@ function createMockPi() {
 	const commands: Record<string, { handler: Function }> = {};
 	return {
 		registerCommand: vi.fn((name: string, config: { handler: Function }) => { commands[name] = config; }),
+		// The extension subscribes to lifecycle events (autopilot session_shutdown /
+		// agent_end); the real ExtensionAPI provides `on`.
+		on: vi.fn(),
 		commands,
 	};
 }

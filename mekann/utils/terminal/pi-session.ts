@@ -1,6 +1,7 @@
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
 import { KittyControl, type KittySplitLocation } from "./kitty/control.js";
+import { AUTOPILOT_CHILD_ENV, AUTOPILOT_SUPERVISOR_ENV } from "../issue/orchestration/autopilot/markers.js";
 
 const execFile = promisify(execFileCb);
 
@@ -30,6 +31,8 @@ export interface PiSessionLaunchRequest {
 	orchestrationParent?: number;
 	/** Child issue number the Work Pi was started for (issue #71). */
 	orchestrationChild?: number;
+	/** Issue number when this Work Pi is managed by the autopilot supervisor (#112). */
+	autopilotChild?: number;
 }
 
 function quoteShell(value: string): string {
@@ -93,6 +96,13 @@ export async function launchPiSessionInKittySplit(request: PiSessionLaunchReques
 	}
 	if (typeof request.orchestrationChild === "number") {
 		args.push("--env", `MEKANN_ORCHESTRATION_CHILD=${request.orchestrationChild}`);
+	}
+	// Issue #112 autopilot markers: mark this Work Pi as supervisor-managed so its
+	// auto-close hook activates once a PR exists. Distinct from the orchestration
+	// markers so the two supervision styles never interfere.
+	if (typeof request.autopilotChild === "number") {
+		args.push("--env", `${AUTOPILOT_SUPERVISOR_ENV}=1`);
+		args.push("--env", `${AUTOPILOT_CHILD_ENV}=${request.autopilotChild}`);
 	}
 
 	if (anchor) {
