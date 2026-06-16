@@ -56,6 +56,7 @@ const DEFAULT_MAX_DEPTH = MEKANN_SUBAGENT_DEFAULTS.maxDepth;
 const DEFAULT_MAX_QUEUED_SUBAGENTS = MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents;
 const DEFAULT_WAIT_TIMEOUT_MS = MEKANN_SUBAGENT_DEFAULTS.defaultWaitTimeoutMs;
 const MIN_WAIT_TIMEOUT_MS = MEKANN_SUBAGENT_DEFAULTS.minWaitTimeoutMs;
+const DEFAULT_HELLO_TIMEOUT_MS = MEKANN_SUBAGENT_DEFAULTS.helloTimeoutMs;
 const DEFAULT_MAX_RESULT_RETRIES = MEKANN_SUBAGENT_DEFAULTS.maxResultRetries;
 
 export const DEFAULT_AUTHORITY: SubagentAuthority = { mode: "propose_patch", require_base_hash: true, max_patch_bytes: MEKANN_SUBAGENT_DEFAULTS.maxPatchBytes };
@@ -141,7 +142,7 @@ export class AgentControl {
     this.hubFactory = options.hubFactory ?? ((socketPath, expectedAgentId, expectedNonce) => new SubagentHub(socketPath, expectedAgentId, expectedNonce));
     this.piCommand = options.piCommand ?? "pi";
     this.extensionPath = options.extensionPath;
-    this.helloTimeoutMs = options.helloTimeoutMs ?? 10_000;
+    this.helloTimeoutMs = options.helloTimeoutMs ?? DEFAULT_HELLO_TIMEOUT_MS;
     this.allowUnsafeExternalPi = options.allowUnsafeExternalPi ?? false;
     this.maxQueuedSubagents = options.maxQueuedSubagents ?? DEFAULT_MAX_QUEUED_SUBAGENTS;
     this.maxExternalPiSubagents = options.externalPiSlots ?? (this.allowUnsafeExternalPi && this.displayMode !== "none" ? 1 : MEKANN_SUBAGENT_DEFAULTS.externalPiSlots);

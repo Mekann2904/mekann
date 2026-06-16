@@ -45,10 +45,16 @@ export class KittyController {
     const logPath = params.logPath;
     const logFn = logPath ? `log(){ printf '%s\\n' "$*" >> ${shellQuote(logPath)}; }` : `log(){ :; }`;
     const command = `${piCommand}${extensionArgs}${subModeArgs}${modelArgs}${thinkingArgs}${initialPromptArg}`;
-    // Keep the child Pi attached directly to the kitty TTY. Piping through tee
-    // makes stdout non-TTY, which breaks Pi's interactive TUI rendering/input.
-    // Log structured lifecycle lines via log()/IPC instead of capturing raw TUI.
-    const runCommand = `${command}; rc=$?`;
+    // Keep the child Pi attached directly to the kitty TTY. Piping stdout
+    // through tee makes stdout non-TTY, which breaks Pi's interactive TUI
+    // rendering/input. stdout therefore stays on the TTY. stderr, however, is
+    // redirected to the log when available so boot/IPC errors (e.g.
+    // "subagent child IPC error: connect ENOENT") are recoverable post-mortem —
+    // they otherwise only hit the kitty TTY and vanish when the window closes,
+    // which is exactly why the review_fixer 3x-failure was un-diagnosable from
+    // the log alone. stderr is not used for TUI rendering, so this does not
+    // affect the child Pi's interactive display.
+    const runCommand = logPath ? `${command} 2>> ${shellQuote(logPath)}; rc=$?` : `${command}; rc=$?`;
     return [
       logFn,
       `log ${shellQuote(`[launch] ${new Date().toISOString()} agent=${params.agentId} path=${params.agentPath}`)}`,

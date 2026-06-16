@@ -5,7 +5,8 @@ import { readOutputGateEvents, summarizeOutputGateSavings } from "./outputGateSa
 import type { OutputGateLedgerEvent } from "./outputGateSavings.js";
 
 import type { ActualUsageLog } from "./actualUsage.js";
-import type { ParsedLog, ParsedActualUsageLog, ProviderSummary, ActualProviderSummary, PercentileSummary, CacheFriendlySummary } from "./reportTypes.js";
+import type { ParsedLog, ParsedActualUsageLog, ProviderSummary, ActualProviderSummary, PercentileSummary, CacheFriendlySummary, WarningBreakdownEntry, WarningCategoryBreakdown, RecentWindowSummary } from "./reportTypes.js";
+import { computeWarningBreakdown, computeWarningCategories, WARNING_BREAKDOWN_TOP_N } from "./reportWarningAnalytics.js";
 
 const MAX_POINTS = 500;
 const SVG_WIDTH = 960;
@@ -14,6 +15,28 @@ const PAD_L = 56;
 const PAD_R = 16;
 const PAD_T = 24;
 const PAD_B = 42;
+
+/** Recent window = most recent N requests. Deterministic across clock changes and code versions. */
+const RECENT_WINDOW_REQUESTS = 1000;
+
+/** Compute the recent-window metrics (most recent N requests) for proxy rows and actual rows. */
+function summarizeRecentWindow(rows: ParsedLog[], actualRows: ParsedActualUsageLog[]): RecentWindowSummary {
+  const recentRows = rows.slice(-RECENT_WINDOW_REQUESTS);
+  const recentActualRows = actualRows.slice(-RECENT_WINDOW_REQUESTS);
+  const first = recentRows[0];
+  const last = recentRows[recentRows.length - 1];
+  return {
+    windowCapacity: RECENT_WINDOW_REQUESTS,
+    windowRequestCount: recentRows.length,
+    windowStartTimestamp: first?.timestamp ?? null,
+    windowEndTimestamp: last?.timestamp ?? null,
+    warningCount: recentRows.reduce((n, r) => n + (r.warnings?.length ?? 0), 0),
+    uniqueScopedReuseKeys: countUniqueScopedReuseKeys(recentRows),
+    adjacentPrefixReuseRate: computeAdjacentPrefixReuseRate(recentRows),
+    actualRequestCount: recentActualRows.length,
+    actualTokenHitRateWeighted: summarizeActualGroup(recentActualRows).weightedTokenHitRate,
+  };
+}
 
 function providerKey(row: ParsedLog): string {
   return `${row.provider ?? "unknown"}/${row.model ?? "unknown"}`;
@@ -128,6 +151,11 @@ function scopedReuseKey(row: ParsedLog): string {
   const key = reuseKey(row);
   if (!key) return `uncacheable:${row.line}`;
   return `${row.provider ?? "unknown"}:${row.model ?? "unknown"}:${key}`;
+}
+
+/** Count distinct `provider/model/reuse key` prefixes — the cacheable-prefix churn metric. */
+function countUniqueScopedReuseKeys(rows: ParsedLog[]): number {
+  return rows.length > 0 ? new Set(rows.map(scopedReuseKey)).size : 0;
 }
 
 function rate(num: number, den: number): number | null {
@@ -280,7 +308,8 @@ function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], genera
       latestTotalPromptChars: row.totalPromptChars ?? 0,
     };
   }
-  const uniqueScopedReuseKeyRatio = rate(new Set(rows.map(scopedReuseKey)).size, rows.length);
+  const uniqueScopedReuseKeyCount = countUniqueScopedReuseKeys(rows);
+  const uniqueScopedReuseKeyRatio = rate(uniqueScopedReuseKeyCount, rows.length);
   const dynamicTruncatedRows = rows.filter((row) => row.dynamicContextTruncated === true);
   const dynamicTruncationOriginalChars = dynamicTruncatedRows.reduce((sum, row) => sum + (row.dynamicContextOriginalChars ?? 0), 0);
   const dynamicTruncationRenderedChars = dynamicTruncatedRows.reduce((sum, row) => sum + (row.dynamicContextRenderedChars ?? 0), 0);
@@ -299,6 +328,7 @@ function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], genera
     recentSameReuseKeyStreak: streak,
     adjacentPrefixReuseRate: computeAdjacentPrefixReuseRate(rows),
     windowPrefixReuseRate: computeWindowPrefixReuseRate(rows),
+    uniqueScopedReuseKeyCount,
     uniqueScopedReuseKeyRatio,
     uniqueReuseKeyRatio: uniqueScopedReuseKeyRatio,
     recentSameHashStreak: stableHashStreak,
@@ -316,6 +346,11 @@ function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], genera
     dynamicTruncationRenderedChars,
     dynamicTruncationOmittedChars: Math.max(0, dynamicTruncationOriginalChars - dynamicTruncationRenderedChars),
     warningCount: rows.reduce((n, r) => n + (r.warnings?.length ?? 0), 0),
+    warningBreakdownRecent: computeWarningBreakdown(rows.slice(-RECENT_WINDOW_REQUESTS)),
+    warningBreakdownAll: computeWarningBreakdown(rows),
+    warningCategoriesRecent: computeWarningCategories(rows.slice(-RECENT_WINDOW_REQUESTS)),
+    warningCategoriesAll: computeWarningCategories(rows),
+    recentWindow: summarizeRecentWindow(rows, actualRows),
     providers,
     ...actual,
     outputGateSavings: summarizeOutputGateSavings(outputGateEvents),
@@ -553,6 +588,46 @@ function renderMetricRows(rows: Array<[string, string | number]>): string {
   return rows.map(([name, value]) => `| ${escapeHtml(name)} | ${value} |`).join("\n");
 }
 
+function formatTimestamp(ts: string | null): string {
+  return ts ? ts.slice(0, 16) : "n/a";
+}
+
+function renderRecentWindowComparison(summary: CacheFriendlySummary, rows: ParsedLog[]): string {
+  const recent = summary.recentWindow;
+  const allTimeStart = rows[0]?.timestamp ?? null;
+  const allTimeEnd = summary.latest?.timestamp ?? rows.at(-1)?.timestamp ?? null;
+  const allTimeUniqueKeys = summary.uniqueScopedReuseKeyCount;
+  const recentSpan = recent.windowStartTimestamp && recent.windowEndTimestamp ? `${formatTimestamp(recent.windowStartTimestamp)} → ${formatTimestamp(recent.windowEndTimestamp)}` : "n/a";
+  const allSpan = allTimeStart && allTimeEnd ? `${formatTimestamp(allTimeStart)} → ${formatTimestamp(allTimeEnd)}` : "n/a";
+  const recentLabel = `最新 ${recent.windowCapacity} リクエスト`;
+  return `### 1.1 Recent window vs all-time
+
+直近窓（${recentLabel}）と全期間を分離集計します。actual usage 側は別系統で同 ${recent.windowCapacity} リクエスト上限を独立に適用します。複数コード版跨ぎの累積ノイズを避けるため、直近窓を現行コード実態の判断軸にしてください。
+
+| metric | recent window (${recentLabel}) | all-time |
+|---|---|---|
+| requests | ${recent.windowRequestCount} | ${summary.totalRequests} |
+| time span | ${recentSpan} | ${allSpan} |
+| warnings | ${recent.warningCount} | ${summary.warningCount} |
+| unique scoped reuse keys | ${recent.uniqueScopedReuseKeys} | ${allTimeUniqueKeys} |
+| adjacent prefix reuse rate (proxy) | ${formatPct(recent.adjacentPrefixReuseRate)} | ${formatPct(summary.adjacentPrefixReuseRate)} |
+| actual weighted tokenHitRate | ${formatPct(recent.actualTokenHitRateWeighted)} | ${formatPct(summary.actualTokenHitRateWeighted)} |`;
+}
+
+function renderWarningCategoryRows(recent: WarningCategoryBreakdown, allTime: WarningCategoryBreakdown): string {
+  const rows: Array<[string, number, number]> = [
+    ["base system 起因 (BASE_SYSTEM_*)", recent.baseSystem, allTime.baseSystem],
+    ["fragment 起因 (VOLATILE_VALUE_IN_*_FRAGMENT 等)", recent.fragment, allTime.fragment],
+    ["other", recent.other, allTime.other],
+    ["total", recent.total, allTime.total],
+  ];
+  return rows.map(([name, r, a]) => `| ${name} | ${r} | ${a} |`).join("\n");
+}
+
+function renderWarningBreakdownRows(entries: WarningBreakdownEntry[]): string {
+  return entries.map((e) => `| \`${escapeHtml(e.code)}\` | ${escapeHtml(e.severity)} | ${e.count} |`).join("\n") || "| _なし_ |  | 0 |";
+}
+
 function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[], actualRows: ParsedActualUsageLog[]): string {
   const latest = summary.latest;
   const latestProviderModel = latest ? `${latest.provider ?? "unknown"}/${latest.model ?? "unknown"}` : "なし";
@@ -649,6 +724,8 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[], actualRo
 | metric | value |
 |---|---:|
 ${overviewRows}
+
+${renderRecentWindowComparison(summary, rows)}
 
 ## 2. Actual provider cache hit rate
 
@@ -814,7 +891,29 @@ ${baseSystemRows}
 |---|---|---|---|---:|---:|---:|---:|---:|
 ${changeRows}
 
-## 11. Output-gate savings
+## 11. Warning distribution
+
+警告コード別分布と起因別集計です。直近窓（最新 ${summary.recentWindow.windowCapacity} リクエスト）を判断軸に、全期間を参考値として併記します。base system 起因（base system prompt 内の volatile signal / absolute path / available skills block）と fragment 起因（stable / semi-stable fragment 内の volatile value）を分離します。
+
+### 11.1 By origin
+
+| origin | recent window | all-time |
+|---|---:|---:|
+${renderWarningCategoryRows(summary.warningCategoriesRecent, summary.warningCategoriesAll)}
+
+### 11.2 Top ${WARNING_BREAKDOWN_TOP_N} warning codes (recent window)
+
+| code | severity | count |
+|---|---|---:|
+${renderWarningBreakdownRows(summary.warningBreakdownRecent)}
+
+### 11.3 Top ${WARNING_BREAKDOWN_TOP_N} warning codes (all-time)
+
+| code | severity | count |
+|---|---|---:|
+${renderWarningBreakdownRows(summary.warningBreakdownAll)}
+
+## 12. Output-gate savings
 
 output-gate は閾値（既定 48 KiB）を超える raw tool output を検索可能な artifact として外部化し、会話には小さな stub だけを残します。このセクションは context-ledger（\`.pi/mekann-context/events.v2.jsonl\`）の \`tool_result\` イベントから集計した削減量です。集計対象が 0 件の場合は output-gate が該当期間に稼働しなかったことを示します。
 
@@ -830,13 +929,13 @@ output-gate は閾値（既定 48 KiB）を超える raw tool output を検索�
 
 stub化率は、外部化された bytes のうち閾値（\`${formatBytes(outputGate.thresholdBytes)}\`）を超えて削減された割合 \`(totalBytes - threshold×件数) / totalBytes\` です。閾値は「このサイズを超えたら外部化する」gate の起点であり、stub 自体のインラインサイズ（previewBytes）ではありません。
 
-### 11.1 By tool
+### 12.1 By tool
 
 | tool | externalized count | externalized bytes | share |
 |---|---:|---:|---:|
 ${outputGateByToolRows}
 
-## 12. Glossary
+## 13. Glossary
 
 | term | meaning |
 |---|---|

@@ -66,6 +66,15 @@ describe("KittyController", () => {
       expect(result.windowId).toContain("pi");
     });
 
+    it("redirects child Pi stderr to the log when logPath is provided", async () => {
+      // stdout must stay on the TTY (TUI rendering), but stderr should land in
+      // the log so boot/IPC errors (e.g. "connect ENOENT") are recoverable.
+      const result = await controller.launchPiWindow({ ...baseParams, logPath: "/tmp/subagent.log" });
+      expect(result.windowId).toContain("2>>");
+      // stdout must NOT be piped through tee — that breaks the interactive TUI.
+      expect(result.windowId).not.toContain("tee");
+    });
+
     it("passes the initial prompt as a pi CLI @file argument instead of delayed child injection", async () => {
       const { mkdtempSync, readFileSync, rmSync } = await import("node:fs");
       const { tmpdir } = await import("node:os");

@@ -24,16 +24,22 @@ async function readScripts(cwd: string): Promise<Record<string, string>> {
 	return (JSON.parse(raw) as PackageJson).scripts ?? {};
 }
 
+const FULL_SCRIPTS = ["typecheck:prod", "typecheck", "test"];
+
+function partition(requested: string[], scripts: Record<string, string>): VerifySelection {
+	return {
+		selected: requested.filter((name) => scripts[name]),
+		missing: requested.filter((name) => !scripts[name]),
+	};
+}
+
 export function selectVerifyScripts(scripts: Record<string, string>, mode: string): VerifySelection {
-	if (mode === "full") {
-		const requested = ["typecheck:prod", "typecheck", "test"];
-		return { selected: requested.filter((name) => scripts[name]), missing: [] };
-	}
-	if (mode && mode !== "quick") {
-		const requested = mode.split(/\s+/).filter(Boolean);
-		return { selected: requested.filter((name) => scripts[name]), missing: requested.filter((name) => !scripts[name]) };
-	}
-	const quick = ["typecheck:prod", "typecheck", "test"].find((name) => scripts[name]);
+	// full mode runs every standard script; explicit mode runs the named scripts.
+	// Both report present scripts as `selected` and absent ones as `missing`.
+	if (mode === "full") return partition(FULL_SCRIPTS, scripts);
+	if (mode && mode !== "quick") return partition(mode.split(/\s+/).filter(Boolean), scripts);
+	// quick mode: run the cheapest available standard script; nothing is reported missing.
+	const quick = FULL_SCRIPTS.find((name) => scripts[name]);
 	return { selected: quick ? [quick] : [], missing: [] };
 }
 

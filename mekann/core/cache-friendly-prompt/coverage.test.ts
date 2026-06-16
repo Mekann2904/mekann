@@ -49,6 +49,27 @@ function makeFragmentHash(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function makeActualLog(overrides: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    timestamp: "2025-01-01T00:00:00.000Z",
+    provider: "test-provider",
+    model: "test-model",
+    requestRole: "main",
+    inputTotalTokens: 1000,
+    outputTokens: 100,
+    cacheReadTokens: 500,
+    tokenHitRate: 0.5,
+    cacheableReadRate: null,
+    usageSource: "provider_raw_usage",
+    correlationConfidence: "runKey_latest",
+    ...overrides,
+  });
+}
+
+function warning(code: string, severity = "warning") {
+  return { severity, code, message: `warn ${code}` };
+}
+
 describe("report.ts coverage", () => {
   let dir: string;
 
@@ -582,12 +603,12 @@ describe("report.ts coverage", () => {
     expect(savings.latestTimestamp).toBe(new Date(1_700_000_005_000).toISOString());
 
     const report = writtenFiles.get(path.join(dir, "report.md"))!;
-    expect(report).toContain("## 11. Output-gate savings");
+    expect(report).toContain("## 12. Output-gate savings");
     expect(report).toContain("外部化件数 (count) | 2");
     expect(report).toContain("| bash | 1 |");
-    expect(report).toContain("### 11.1 By tool");
+    expect(report).toContain("### 12.1 By tool");
     // glossary shifted to 12 and gained output-gate terms
-    expect(report).toContain("## 12. Glossary");
+    expect(report).toContain("## 13. Glossary");
     expect(report).toContain("| stub化率 |");
   });
 
@@ -601,5 +622,120 @@ describe("report.ts coverage", () => {
     // existing sections are intact
     expect(report).toContain("## 1. Overview");
     expect(report).toContain("## 2. Actual provider cache hit rate");
+  });
+
+  // ---- Warning distribution & recent window (issue #88) ----
+
+  it("splits warnings into base system / fragment / other categories", async () => {
+    const rows = [
+      makeLog({ warnings: [warning("BASE_SYSTEM_VOLATILE_SIGNAL"), warning("BASE_SYSTEM_ABSOLUTE_PATH", "info")] }),
+      makeLog({ warnings: [warning("VOLATILE_VALUE_IN_STABLE_FRAGMENT", "error"), warning("VOLATILE_VALUE_IN_SEMI_STABLE_FRAGMENT")] }),
+      makeLog({ warnings: [warning("FINAL_PAYLOAD_VOLATILE_BEFORE_STABLE_END"), warning("CACHEABLE_FRAGMENT_ORDER_TIE")] }),
+    ].join("\n");
+    await runWithLog(rows);
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    // 3 rows < 1000 so recent window == all-time.
+    // FINAL_PAYLOAD_VOLATILE_BEFORE_STABLE_END is a fragment-placement warning, so it
+    // counts as fragment (not "other") — it is the single largest warning source in
+    // production logs and must not be hidden in an undifferentiated bucket.
+    expect(summary.warningCategoriesRecent).toEqual({ baseSystem: 2, fragment: 4, other: 0, total: 6 });
+    expect(summary.warningCategoriesAll).toEqual(summary.warningCategoriesRecent);
+    expect(summary.warningCount).toBe(6);
+  });
+
+  it("aggregates warnings by code+severity and sorts by count desc", async () => {
+    const rows = [
+      makeLog({ warnings: [warning("A"), warning("A")] }),
+      makeLog({ warnings: [warning("A")] }),
+      makeLog({ warnings: [warning("B", "info"), warning("C")] }),
+    ].join("\n");
+    await runWithLog(rows);
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.warningBreakdownRecent[0]).toEqual({ code: "A", severity: "warning", count: 3 });
+    const codes = summary.warningBreakdownRecent.map((e: any) => `${e.code}/${e.severity}`);
+    expect(codes).toContain("B/info");
+    expect(codes).toContain("C/warning");
+    // sorted by count desc → A (3) first
+    expect(summary.warningBreakdownRecent[0].count).toBeGreaterThanOrEqual(summary.warningBreakdownRecent[1].count);
+  });
+
+  it("computes recent window metrics separately from all-time", async () => {
+    const rows = [
+      makeLog({ timestamp: "2025-01-01T00:00:00.000Z", warnings: [warning("BASE_SYSTEM_VOLATILE_SIGNAL")], stablePrefixHash: "k".repeat(64) }),
+      makeLog({ timestamp: "2025-01-02T00:00:00.000Z", warnings: [warning("BASE_SYSTEM_VOLATILE_SIGNAL"), warning("X")], stablePrefixHash: "k".repeat(64) }),
+    ].join("\n");
+    const actual = [
+      makeActualLog({ inputTotalTokens: 1000, cacheReadTokens: 200 }),
+      makeActualLog({ inputTotalTokens: 1000, cacheReadTokens: 800 }),
+    ].join("\n");
+    await runWithLog(rows, actual);
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    const w = summary.recentWindow;
+    expect(w.windowCapacity).toBe(1000);
+    expect(w.windowRequestCount).toBe(2);
+    expect(w.warningCount).toBe(3);
+    expect(w.uniqueScopedReuseKeys).toBe(1); // same provider/model + same reuse hash
+    expect(w.adjacentPrefixReuseRate).toBe(1); // both reuse keys equal
+    expect(w.actualRequestCount).toBe(2);
+    // weighted = (200+800) / (1000+1000)
+    expect(w.actualTokenHitRateWeighted).toBeCloseTo(0.5, 5);
+    expect(w.windowStartTimestamp).toBe("2025-01-01T00:00:00.000Z");
+    expect(w.windowEndTimestamp).toBe("2025-01-02T00:00:00.000Z");
+  });
+
+  it("limits the recent window to the most recent 1000 requests", async () => {
+    // 1002 rows: first 2 carry an extra base-system warning that must NOT appear in the recent window.
+    const rows: string[] = [];
+    for (let i = 0; i < 1002; i++) {
+      const warnings = i < 2 ? [warning("BASE_SYSTEM_VOLATILE_SIGNAL")] : [];
+      rows.push(makeLog({ timestamp: new Date(Date.UTC(2025, 0, 1 + Math.floor(i / 500))).toISOString(), warnings, stablePrefixHash: `h${i}` + "x".repeat(60) }));
+    }
+    await runWithLog(rows.join("\n"));
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.recentWindow.windowRequestCount).toBe(1000);
+    expect(summary.recentWindow.windowCapacity).toBe(1000);
+    // recent window excludes the first 2 rows (the only ones with warnings)
+    expect(summary.recentWindow.warningCount).toBe(0);
+    expect(summary.warningCategoriesRecent.total).toBe(0);
+    // all-time still sees them
+    expect(summary.warningCount).toBe(2);
+    expect(summary.warningCategoriesAll.baseSystem).toBe(2);
+  });
+
+  it("handles empty logs for recent window and warning distribution without throwing", async () => {
+    await runWithLog("");
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.recentWindow).toEqual({
+      windowCapacity: 1000,
+      windowRequestCount: 0,
+      windowStartTimestamp: null,
+      windowEndTimestamp: null,
+      warningCount: 0,
+      uniqueScopedReuseKeys: 0,
+      adjacentPrefixReuseRate: null,
+      actualRequestCount: 0,
+      actualTokenHitRateWeighted: null,
+    });
+    expect(summary.warningBreakdownRecent).toEqual([]);
+    expect(summary.warningCategoriesRecent).toEqual({ baseSystem: 0, fragment: 0, other: 0, total: 0 });
+  });
+
+  it("renders recent window comparison and warning distribution sections in report.md", async () => {
+    const rows = [
+      makeLog({ warnings: [warning("BASE_SYSTEM_VOLATILE_SIGNAL"), warning("VOLATILE_VALUE_IN_STABLE_FRAGMENT", "error")] }),
+    ].join("\n");
+    await runWithLog(rows);
+    const report = writtenFiles.get(path.join(dir, "report.md"))!;
+    expect(report).toContain("### 1.1 Recent window vs all-time");
+    expect(report).toContain("## 11. Warning distribution");
+    expect(report).toContain("### 11.1 By origin");
+    expect(report).toContain("base system 起因");
+    expect(report).toContain("fragment 起因");
+    expect(report).toContain("### 11.2 Top 15 warning codes (recent window)");
+    expect(report).toContain("`BASE_SYSTEM_VOLATILE_SIGNAL`");
+    expect(report).toContain("`VOLATILE_VALUE_IN_STABLE_FRAGMENT`");
+    // Glossary shifted from 11 to 12
+    expect(report).toContain("## 13. Glossary");
+    expect(report).not.toContain("## 11. Glossary");
   });
 });
