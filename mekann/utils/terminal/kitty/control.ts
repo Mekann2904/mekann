@@ -54,14 +54,114 @@ export function collectKittyWindows(value: unknown, windows: KittyWindowLike[] =
 export const ISSUE_PANE_TITLE_PATTERN = /^Issue #\d+/;
 
 /**
+ * Post-split floors and aspect ratio used to choose an Issue Pi pane's split
+ * direction (issue #102 / ADR-0024). A direction is only taken when each
+ * resulting half still meets its minimum, so consecutive expansions never
+ * collapse panes into thin slivers. `RATIO` is how many times wider than tall a
+ * pane must be to prefer a left/right (`vsplit`) split.
+ */
+export const ISSUE_PANE_SPLIT_MIN_WIDTH = 40;
+export const ISSUE_PANE_SPLIT_MIN_HEIGHT = 15;
+export const ISSUE_PANE_SPLIT_RATIO = 1.3;
+
+export interface IssuePaneSplitOptions {
+	minWidth?: number;
+	minHeight?: number;
+	ratio?: number;
+}
+
+export interface IssuePaneSplit {
+	windowId: number;
+	location: KittySplitLocation;
+}
+
+function isIssuePiPane(window: KittyWindowLike): boolean {
+	return typeof window.title === "string" && ISSUE_PANE_TITLE_PATTERN.test(window.title);
+}
+
+function issuePaneArea(pane: KittyWindowLike): number {
+	return (pane.columns ?? 0) * (pane.lines ?? 0);
+}
+
+/** Longer-side split direction for a pane of the given size (`vsplit` when at least as wide as tall, else `hsplit`). */
+function longerSideLocation(width: number, height: number): KittySplitLocation {
+	return width >= height ? "vsplit" : "hsplit";
+}
+
+/**
  * Pick the widest Issue Pi pane by `columns` (maximin) to use as the split
  * anchor. Returns `undefined` when no Issue Pi pane exists — callers should
  * then fall back to splitting the focused window (Main Pi).
  */
 export function pickWidestIssuePiPane(windows: KittyWindowLike[]): KittyWindowLike | undefined {
-	const issuePanes = windows.filter((window) => typeof window.title === "string" && ISSUE_PANE_TITLE_PATTERN.test(window.title));
+	const issuePanes = windows.filter(isIssuePiPane);
 	if (issuePanes.length === 0) return undefined;
 	return issuePanes.reduce((widest, pane) => ((pane.columns ?? 0) > (widest.columns ?? 0) ? pane : widest));
+}
+
+/**
+ * Pick the largest-area Issue Pi pane (`columns × lines`) to use as the split
+ * anchor (issue #102 / ADR-0024). Area generalizes the columns-only "widest"
+ * rule: the pane with the most room is the best candidate to halve. Panes
+ * missing size info contribute area 0. Returns `undefined` when no Issue Pi
+ * pane exists — callers then fall back to splitting the focused window.
+ */
+export function pickLargestIssuePiPane(windows: KittyWindowLike[]): KittyWindowLike | undefined {
+	const issuePanes = windows.filter(isIssuePiPane);
+	if (issuePanes.length === 0) return undefined;
+	return issuePanes.reduce((largest, pane) => (issuePaneArea(pane) > issuePaneArea(largest) ? pane : largest));
+}
+
+/**
+ * Choose which way to split a pane of the given size (issue #102 / ADR-0024).
+ *
+ * Kitty's `vsplit` splits a pane left/right (each half keeps the full height
+ * but half the width); `hsplit` splits top/bottom. We prefer `vsplit` only when
+ * the pane is meaningfully wider than tall AND halving the width still leaves
+ * each half at least `minWidth` columns. Otherwise we prefer `hsplit` when
+ * height allows it, then fall back to left/right only when width still fits.
+ * Returns `undefined` when neither direction can satisfy its post-split floor;
+ * `chooseIssuePaneSplit` then degrades to the longer side so it still anchors to
+ * an existing pane (see its doc for why).
+ */
+export function decideSplitLocation(width: number, height: number, options: IssuePaneSplitOptions = {}): KittySplitLocation | undefined {
+	const minWidth = options.minWidth ?? ISSUE_PANE_SPLIT_MIN_WIDTH;
+	const minHeight = options.minHeight ?? ISSUE_PANE_SPLIT_MIN_HEIGHT;
+	const ratio = options.ratio ?? ISSUE_PANE_SPLIT_RATIO;
+
+	const canVsplit = width / 2 >= minWidth;
+	const canHsplit = height / 2 >= minHeight;
+	const widerThanTall = width > height * ratio;
+
+	if (canVsplit && widerThanTall) return "vsplit";
+	if (canHsplit) return "hsplit";
+	if (canVsplit) return "vsplit";
+	return undefined;
+}
+
+/**
+ * Pick the largest-area Issue Pi pane and decide which way to split it
+ * (issue #102 / ADR-0024). Returns the anchor window id and kitty split
+ * location, or `undefined` only when no Issue Pi pane exists (first /issue
+ * call), in which case the caller splits the focused window instead.
+ *
+ * When the largest pane cannot be split within `MIN_WIDTH`/`MIN_HEIGHT` in
+ * either direction (a terminal already crowded with small panes after several
+ * expansions), we still anchor to that pane and split it along its longer side.
+ * Reporting "no anchor" instead would make the caller split the focused window,
+ * which on the Nth /issue call is the Main Pi and would re-shrink it — breaking
+ * ADR-0021. Protecting Main Pi outranks the post-split floors in this
+ * inherently unsatisfiable case.
+ */
+export function chooseIssuePaneSplit(windows: KittyWindowLike[], options: IssuePaneSplitOptions = {}): IssuePaneSplit | undefined {
+	const pane = pickLargestIssuePiPane(windows);
+	if (!pane || typeof pane.id !== "number") return undefined;
+	const width = typeof pane.columns === "number" ? pane.columns : 0;
+	const height = typeof pane.lines === "number" ? pane.lines : 0;
+	// Degrade to the longer side when no direction keeps both halves above their
+	// floor — see the function doc for why we still anchor instead of giving up.
+	const location = decideSplitLocation(width, height, options) ?? longerSideLocation(width, height);
+	return { windowId: pane.id, location };
 }
 
 export class KittyControl {
@@ -100,6 +200,17 @@ export class KittyControl {
 		const windows = await this.listAllWindows();
 		const pane = pickWidestIssuePiPane(windows);
 		return typeof pane?.id === "number" ? pane.id : undefined;
+	}
+
+	/**
+	 * Resolve the Issue Pi pane to split next and which direction to split it
+	 * (issue #102 / ADR-0024). Returns `undefined` on the first /issue call (no
+	 * Issue Pi pane yet) or when the `kitten @ ls` lookup fails, so the caller
+	 * falls back to splitting the focused window.
+	 */
+	async findIssuePaneSplitAnchor(options?: IssuePaneSplitOptions): Promise<IssuePaneSplit | undefined> {
+		const windows = await this.listAllWindows();
+		return chooseIssuePaneSplit(windows, options);
 	}
 
 	/**

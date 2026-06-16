@@ -1,6 +1,6 @@
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
-import { KittyControl } from "./kitty/control.js";
+import { KittyControl, type KittySplitLocation } from "./kitty/control.js";
 
 const execFile = promisify(execFileCb);
 
@@ -60,10 +60,21 @@ export async function launchPiSessionInKittySplit(request: PiSessionLaunchReques
 	}
 	const command = `exec ${quoteShell(nodeBin)} ${piArgs.join(" ")}`;
 
+	// ADR-0021 / issue #102: protect the Main Pi region and avoid thin slivers.
+	// When an Issue Pi pane already exists, split from the largest-area one
+	// (instead of the focused Main Pi window) and choose left/right vs top/bottom
+	// from that pane's size, so consecutive expansions approximate a 2×2 grid
+	// rather than stacking into narrow columns. On the first /issue call (or when
+	// the lookup fails) there is no anchor: kitty splits the focused window and we
+	// keep the original left/right (vsplit) first-split behaviour.
+	const kitty = new KittyControl();
+	const anchor = await kitty.findIssuePaneSplitAnchor();
+	const location: KittySplitLocation = anchor?.location ?? "vsplit";
+
 	const args = [
 		"@", "launch",
 		"--type=window",
-		"--location", "vsplit",
+		"--location", location,
 		"--cwd", request.cwd,
 		"--title", request.title,
 		"--copy-env",
@@ -84,14 +95,8 @@ export async function launchPiSessionInKittySplit(request: PiSessionLaunchReques
 		args.push("--env", `MEKANN_ORCHESTRATION_CHILD=${request.orchestrationChild}`);
 	}
 
-	// ADR-0021: protect the Main Pi region. When an Issue Pi pane already exists,
-	// split from the widest one instead of the focused window (Main Pi). On the
-	// first /issue call (or when the lookup fails) this is a no-op and kitty
-	// splits the focused window, preserving the original 1st-call behaviour.
-	const kitty = new KittyControl();
-	const anchorWindowId = await kitty.findIssuePiAnchorWindowId();
-	if (typeof anchorWindowId === "number") {
-		args.push("--source-window", `id:${anchorWindowId}`);
+	if (anchor) {
+		args.push("--source-window", `id:${anchor.windowId}`);
 	}
 
 	args.push(shell, "-lc", command);

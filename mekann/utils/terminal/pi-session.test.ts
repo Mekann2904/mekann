@@ -6,15 +6,21 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockExecFileCb } = vi.hoisted(() => ({ mockExecFileCb: vi.fn() }));
+const { mockExecFileCb, mockAnchor } = vi.hoisted(() => ({
+	mockExecFileCb: vi.fn(),
+	// Mutable so individual tests can simulate an existing Issue Pi pane without
+	// re-declaring the module mock. `undefined` models the first /issue call.
+	mockAnchor: { value: undefined as { windowId: number; location: "vsplit" | "hsplit" } | undefined },
+}));
 
 vi.mock("node:child_process", () => ({ execFile: mockExecFileCb }));
 
 vi.mock("./kitty/control.js", () => ({
-	// No existing Issue Pi pane → no --source-window anchor (first-launch path).
+	// No existing Issue Pi pane → no --source-window anchor (first-launch path),
+	// unless a test sets mockAnchor.value to simulate a later /issue call.
 	KittyControl: class MockKittyControl {
-		findIssuePiAnchorWindowId() {
-			return Promise.resolve(undefined);
+		findIssuePaneSplitAnchor() {
+			return Promise.resolve(mockAnchor.value);
 		}
 	},
 }));
@@ -36,6 +42,7 @@ function defaultExecFile(cmd: string, args: string[], _opts: unknown, cb: (err: 
 
 beforeEach(() => {
 	kittenLaunchArgs = null;
+	mockAnchor.value = undefined;
 	mockExecFileCb.mockImplementation(defaultExecFile as never);
 });
 
@@ -67,5 +74,41 @@ describe("launchPiSessionInKittySplit issue-work Pi marker", () => {
 		expect(kittenLaunchArgs).toContain("MEKANN_ISSUE_PI=1");
 		expect(kittenLaunchArgs).toContain("MEKANN_ORCHESTRATION_PARENT=1");
 		expect(kittenLaunchArgs).toContain("MEKANN_ORCHESTRATION_CHILD=7");
+	});
+});
+
+describe("launchPiSessionInKittySplit split-anchor direction (issue #102)", () => {
+	it("uses vsplit and no source-window on the first call (no anchor)", async () => {
+		const { launchPiSessionInKittySplit } = await import("./pi-session.js");
+		await launchPiSessionInKittySplit({ cwd: "/repo", title: "Issue #42" });
+		expect(kittenLaunchArgs).not.toBeNull();
+		const locIdx = kittenLaunchArgs!.indexOf("--location");
+		expect(locIdx).toBeGreaterThanOrEqual(0);
+		expect(kittenLaunchArgs![locIdx + 1]).toBe("vsplit");
+		expect(kittenLaunchArgs).not.toContain("--source-window");
+	});
+
+	it("splits the largest pane top/bottom (hsplit) when it is too narrow", async () => {
+		mockAnchor.value = { windowId: 12, location: "hsplit" };
+		const { launchPiSessionInKittySplit } = await import("./pi-session.js");
+		await launchPiSessionInKittySplit({ cwd: "/repo", title: "Issue #43" });
+		expect(kittenLaunchArgs).not.toBeNull();
+		const locIdx = kittenLaunchArgs!.indexOf("--location");
+		expect(kittenLaunchArgs![locIdx + 1]).toBe("hsplit");
+		const srcIdx = kittenLaunchArgs!.indexOf("--source-window");
+		expect(srcIdx).toBeGreaterThanOrEqual(0);
+		expect(kittenLaunchArgs![srcIdx + 1]).toBe("id:12");
+	});
+
+	it("splits the largest pane left/right (vsplit) when it is wide", async () => {
+		mockAnchor.value = { windowId: 11, location: "vsplit" };
+		const { launchPiSessionInKittySplit } = await import("./pi-session.js");
+		await launchPiSessionInKittySplit({ cwd: "/repo", title: "Issue #44" });
+		expect(kittenLaunchArgs).not.toBeNull();
+		const locIdx = kittenLaunchArgs!.indexOf("--location");
+		expect(kittenLaunchArgs![locIdx + 1]).toBe("vsplit");
+		const srcIdx = kittenLaunchArgs!.indexOf("--source-window");
+		expect(srcIdx).toBeGreaterThanOrEqual(0);
+		expect(kittenLaunchArgs![srcIdx + 1]).toBe("id:11");
 	});
 });
