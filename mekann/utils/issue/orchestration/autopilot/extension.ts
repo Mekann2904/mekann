@@ -3,11 +3,12 @@
  *
  * Two responsibilities, both part of the `issue` feature:
  *
- * 1. `/issue-autopilot` command (Main Pi): starts the sequential autopilot
+ * 1. `/issue-autopilot` command (Main Pi): starts the parallel autopilot
  *    supervisor as a fire-and-forget background loop. It scans GitHub truth for
- *    `ready-for-agent` issues, label-gates + dependency-gates them, launches the
- *    lowest-numbered startable Work Pi, waits for it to auto-close, then moves
- *    to the next — until every candidate has a PR or is `ready-for-human`.
+ *    `ready-for-agent` issues, label-gates + dependency-gates them, launches up
+ *    to `issue.autopilot.maxParallel` Work Pi panes, refills freed slots as Work
+ *    Pi panes auto-close, and stops once every candidate has a PR or is
+ *    `ready-for-human`.
  *
  * 2. Work Pi auto-close: when this Pi was started with the autopilot markers
  *    (`MEKANN_AUTOPILOT_*`), watch `agent_end` and, once a PR exists for the
@@ -32,16 +33,14 @@ import type { AutopilotChildState } from "./state.js";
 
 const execFile = promisify(execFileCb);
 
-/** Read and clamp `issue.autopilot.maxParallel`. Parallel pool is a separate issue; this slice runs 1. */
+/** Read and clamp `issue.autopilot.maxParallel`. */
 function resolveMaxParallel(): number {
 	const raw = featureConfig("issue")?.autopilot;
 	const configured = Number((raw as { maxParallel?: unknown } | undefined)?.maxParallel);
-	const value = Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : DEFAULT_AUTOPILOT_CONFIG.maxParallel;
-	// Slice C: sequential only. Cap at 1 until the parallel worker pool lands.
-	return Math.min(value, 1);
+	return Number.isFinite(configured) && configured >= 1 ? Math.floor(configured) : DEFAULT_AUTOPILOT_CONFIG.maxParallel;
 }
 
-/** Build the production supervisor config (sequential in this slice). */
+/** Build the production supervisor config. */
 export function buildAutopilotConfig(): AutopilotSupervisorConfig {
 	return { ...DEFAULT_AUTOPILOT_CONFIG, maxParallel: resolveMaxParallel() };
 }
@@ -135,7 +134,7 @@ async function startSupervisor(ctx: ExtensionContext): Promise<void> {
  */
 export function registerAutopilot(pi: ExtensionAPI): void {
 	pi.registerCommand("issue-autopilot", {
-		description: "Autopilot: drive every ready-for-agent issue to a PR, one at a time.",
+		description: "Autopilot: drive ready-for-agent issues to PRs with a parallel worker pool.",
 		handler: async (_args, ctx) => {
 			const prerequisiteError = checkIssuePrerequisites(ctx.cwd);
 			if (prerequisiteError) {

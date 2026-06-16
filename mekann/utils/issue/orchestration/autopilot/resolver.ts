@@ -27,6 +27,8 @@ export interface AutopilotSummary {
 export interface AutopilotResolution {
 	/** The candidate to start next, or undefined when none is startable. */
 	next?: AutopilotJudgement;
+	/** Startable candidates in stable lowest-issue-number order. */
+	startable: AutopilotJudgement[];
 	/** Per-candidate judgements, in input order. */
 	judgements: AutopilotJudgement[];
 	summary: AutopilotSummary;
@@ -46,6 +48,7 @@ export function pickNextAutopilot(children: AutopilotChildState[]): AutopilotRes
 		.sort((a, b) => a.state.number - b.state.number);
 	return {
 		next: startable[0],
+		startable,
 		judgements,
 		summary,
 	};

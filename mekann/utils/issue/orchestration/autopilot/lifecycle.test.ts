@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { decideAutopilotStep, runAutopilotSupervisor, DEFAULT_AUTOPILOT_CONFIG, type AutopilotLoopHooks, type AutopilotSupervisorConfig } from "./lifecycle.js";
+import { decideAutopilotPoolStep, decideAutopilotStep, runAutopilotSupervisor, DEFAULT_AUTOPILOT_CONFIG, type AutopilotLoopHooks, type AutopilotSupervisorConfig } from "./lifecycle.js";
 import type { AutopilotDeps, AutopilotChildBrief } from "./collector.js";
 import type { AutopilotChildState } from "./state.js";
 
@@ -144,6 +144,25 @@ describe("decideAutopilotStep (pure)", () => {
 	});
 });
 
+describe("decideAutopilotPoolStep (pure)", () => {
+	it("launches up to available slots in lowest-numbered order", () => {
+		const decision = decideAutopilotPoolStep([cand(3), cand(1), cand(2, { hasActiveWorkPi: true })], 3);
+		expect(decision.kind).toBe("launch");
+		if (decision.kind !== "launch") return;
+		expect(decision.activeSlots).toBe(1);
+		expect(decision.availableSlots).toBe(2);
+		expect(decision.children.map((child) => child.number)).toEqual([1, 3]);
+	});
+
+	it("waits when the pool is full and does not double-launch active work", () => {
+		const decision = decideAutopilotPoolStep([cand(1, { hasActiveWorkPi: true }), cand(2)], 1);
+		expect(decision.kind).toBe("waiting");
+		if (decision.kind !== "waiting") return;
+		expect(decision.activeSlots).toBe(1);
+		expect(decision.availableSlots).toBe(0);
+	});
+});
+
 /* --------------------------- supervisor loop ---------------------------- */
 
 describe("runAutopilotSupervisor", () => {
@@ -157,7 +176,23 @@ describe("runAutopilotSupervisor", () => {
 		expect(launchWorkPi).toHaveBeenCalledWith(expect.objectContaining({ number: 1 }));
 	});
 
-	it("processes multiple candidates sequentially until all have a PR", async () => {
+	it("launches independent candidates in parallel up to maxParallel", async () => {
+		const world = makeWorld([1, 2, 3]);
+		const sim = new AutopilotSim(world);
+		const launchWorkPi = launchVia(sim);
+		const launched: number[] = [];
+		launchWorkPi.mockImplementation(async (child) => {
+			launched.push(child.number);
+			sim.launch(child.number);
+		});
+		const result = await runAutopilotSupervisor(fakeDeps(world), launchWorkPi, simHooks(sim, () => {}), { ...DEFAULT_AUTOPILOT_CONFIG, maxParallel: 2 });
+		expect(result.kind).toBe("completed");
+		expect(launched).toEqual([1, 2, 3]);
+		expect(launchWorkPi.mock.calls[0]?.[0].number).toBe(1);
+		expect(launchWorkPi.mock.calls[1]?.[0].number).toBe(2);
+	});
+
+	it("can still run sequentially when maxParallel is 1", async () => {
 		const world = makeWorld([1, 2]);
 		const sim = new AutopilotSim(world);
 		const launchWorkPi = launchVia(sim);
@@ -166,7 +201,7 @@ describe("runAutopilotSupervisor", () => {
 			launched.push(child.number);
 			sim.launch(child.number);
 		});
-		const result = await runAutopilotSupervisor(fakeDeps(world), launchWorkPi, simHooks(sim, () => {}), DEFAULT_AUTOPILOT_CONFIG);
+		const result = await runAutopilotSupervisor(fakeDeps(world), launchWorkPi, simHooks(sim, () => {}), { ...DEFAULT_AUTOPILOT_CONFIG, maxParallel: 1 });
 		expect(result.kind).toBe("completed");
 		expect(launched).toEqual([1, 2]);
 	});
