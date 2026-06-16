@@ -84,6 +84,30 @@ describe("splitVolatileRuntimeBlock", () => {
 		expect(stableBaseSystemText).toBe("JUST STABLE");
 		expect(volatileRuntimeText).toBe("");
 	});
+
+	it("extracts the expanded volatile header set (current file / open files / git status / continuation), not just the old 4", () => {
+		// Regression for issue #95: extraction must catch up to inspection so a
+		// line inspection warns about is actually removed from the stable prefix.
+		const { stableBaseSystemText, volatileRuntimeText } =
+			splitVolatileRuntimeBlock(
+				"POLICY\nCurrent file: render.ts\nOpen files: a.ts\nGit status: clean\nContinuation: turn 2\nMORE POLICY",
+			);
+		expect(stableBaseSystemText).toBe("POLICY\nMORE POLICY");
+		expect(volatileRuntimeText).toContain("Current file:");
+		expect(volatileRuntimeText).toContain("Open files:");
+		expect(volatileRuntimeText).toContain("Git status:");
+		expect(volatileRuntimeText).toContain("Continuation:");
+	});
+
+	it("does not extract stable prose that merely mentions a volatile term", () => {
+		const { stableBaseSystemText, volatileRuntimeText } =
+			splitVolatileRuntimeBlock(
+				"When asked for the current date, run a command.\nSee git status output below.",
+			);
+		expect(volatileRuntimeText).toBe("");
+		expect(stableBaseSystemText).toContain("current date");
+		expect(stableBaseSystemText).toContain("git status");
+	});
 });
 
 // ---------------------------------------------------------------------------

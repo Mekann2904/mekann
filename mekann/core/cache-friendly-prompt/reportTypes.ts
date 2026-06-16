@@ -88,6 +88,10 @@ export type CacheFriendlySummary = {
   providerSwitches: number;
   modelSwitchesWithinProvider: number;
   dynamicTruncationCount: number;
+  /** Rows whose dynamic tail was truncated at snapshot/injection time (DYNAMIC_TAIL_MAX_CHARS). */
+  dynamicTailTruncationCount: number;
+  /** Rows whose dynamic fragments were trimmed at render time (DYNAMIC_FRAGMENT_BUDGET_CHARS). */
+  dynamicFragmentTruncationCount: number;
   dynamicTruncationOriginalChars: number;
   dynamicTruncationRenderedChars: number;
   dynamicTruncationOmittedChars: number;

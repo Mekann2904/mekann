@@ -15,6 +15,8 @@ import {
 	inspectBaseSystemPrompt,
 	inspectFinalPayloadText,
 	inspectStablePrefix,
+	DYNAMIC_TAIL_MAX_CHARS,
+	splitVolatileLines,
 	type CacheFriendlyRequestLog,
 	type CacheFriendlyRequestRole,
 	type PromptFragmentHash,
@@ -71,8 +73,6 @@ export type PromptRequestSnapshotState = {
 // Dynamic context truncation
 // ---------------------------------------------------------------------------
 
-const DYNAMIC_CONTEXT_MAX_CHARS = 12_000;
-
 export function truncateDynamicContext(text: string): {
 	text: string;
 	truncated: boolean;
@@ -80,23 +80,23 @@ export function truncateDynamicContext(text: string): {
 	renderedChars: number;
 	limitChars: number;
 } {
-	if (text.length <= DYNAMIC_CONTEXT_MAX_CHARS) {
+	if (text.length <= DYNAMIC_TAIL_MAX_CHARS) {
 		return {
 			text,
 			truncated: false,
 			originalChars: text.length,
 			renderedChars: text.length,
-			limitChars: DYNAMIC_CONTEXT_MAX_CHARS,
+			limitChars: DYNAMIC_TAIL_MAX_CHARS,
 		};
 	}
-	const omitted = text.length - DYNAMIC_CONTEXT_MAX_CHARS;
-	const rendered = `${text.slice(0, DYNAMIC_CONTEXT_MAX_CHARS)}\n\n[cache-friendly-prompt: omitted ${omitted} trailing chars from dynamic context]`;
+	const omitted = text.length - DYNAMIC_TAIL_MAX_CHARS;
+	const rendered = `${text.slice(0, DYNAMIC_TAIL_MAX_CHARS)}\n\n[cache-friendly-prompt: omitted ${omitted} trailing chars from dynamic context]`;
 	return {
 		text: rendered,
 		truncated: true,
 		originalChars: text.length,
 		renderedChars: rendered.length,
-		limitChars: DYNAMIC_CONTEXT_MAX_CHARS,
+		limitChars: DYNAMIC_TAIL_MAX_CHARS,
 	};
 }
 
@@ -125,14 +125,9 @@ export function splitVolatileRuntimeBlock(systemPrompt: string): {
 	stableBaseSystemText: string;
 	volatileRuntimeText: string;
 } {
-	const volatileLine =
-		/^\s*(Current date|Current working directory|Current cwd|Working directory)\s*:/i;
-	const stableLines: string[] = [];
-	const volatileLines: string[] = [];
-	for (const line of systemPrompt.split(/\n/)) {
-		if (volatileLine.test(line)) volatileLines.push(line);
-		else stableLines.push(line);
-	}
+	// Delegates to the shared volatile line source in prompt-core so extraction
+	// and inspection stay in lockstep (see volatile.ts).
+	const { stableLines, volatileLines } = splitVolatileLines(systemPrompt);
 	return {
 		stableBaseSystemText: stableLines.join("\n").trimEnd(),
 		volatileRuntimeText: volatileLines.join("\n").trim(),

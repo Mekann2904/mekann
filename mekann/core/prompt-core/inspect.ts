@@ -1,5 +1,6 @@
 import type { PromptFragment, PromptInspectionWarning } from "./types.js";
 import { estimateTokens } from "./canonicalize.js";
+import { isVolatileRuntimeLine } from "./volatile.js";
 
 const volatileWarningTerms = [
   /current time/i,
@@ -78,6 +79,17 @@ export function inspectStablePrefix(stablePrefixText: string): PromptInspectionW
 export function inspectBaseSystemPrompt(baseSystemText: string): PromptInspectionWarning[] {
   const warnings: PromptInspectionWarning[] = [];
   if (!baseSystemText.trim()) return warnings;
+  // Per-line volatile runtime detection shares the SAME source as the extraction
+  // layer (splitVolatileRuntimeBlock), so any line warned here is also removed
+  // from the cacheable base prefix. Broad prose detection stays below.
+  const seenVolatileLines = new Set<string>();
+  for (const line of baseSystemText.split(/\n/)) {
+    if (!isVolatileRuntimeLine(line)) continue;
+    const compact = line.trim();
+    if (seenVolatileLines.has(compact)) continue;
+    seenVolatileLines.add(compact);
+    warnings.push({ severity: "warning", code: "BASE_SYSTEM_VOLATILE_RUNTIME_LINE", message: `Base system prompt contains a volatile runtime line that should be moved to the dynamic tail: ${JSON.stringify(compact.slice(0, 120))}` });
+  }
   if (containsVolatileSignal(baseSystemText)) warnings.push({ severity: hasVolatileValuePattern(baseSystemText) ? "warning" : "info", code: "BASE_SYSTEM_VOLATILE_SIGNAL", message: "Base system prompt contains volatile runtime-like state before cache-friendly fragments." });
   if (/\/Users\/[^\s)<>]+|\/tmp\/[^\s)<>]+/.test(baseSystemText)) warnings.push({ severity: "info", code: "BASE_SYSTEM_ABSOLUTE_PATH", message: "Base system prompt contains absolute paths; consider moving path-heavy runtime context behind cacheable fragments." });
   if (/<available_skills>[\s\S]*?<\/available_skills>/.test(baseSystemText)) warnings.push({ severity: "info", code: "BASE_SYSTEM_AVAILABLE_SKILLS_BLOCK", message: "Base system prompt contains available skills metadata before cache-friendly fragments." });

@@ -47,14 +47,21 @@ actual usage rows also include prefix snapshot metadata when available:
 
 ## dynamic tail size and truncation
 
-Dynamic context is placed in the volatile tail, but it still contributes to total input tokens and can reduce request-level `tokenHitRate` by increasing the denominator. The report tracks dynamic truncation telemetry:
+Dynamic context is placed in the volatile tail, but it still contributes to total input tokens and can reduce request-level `tokenHitRate` by increasing the denominator. Dynamic context is bounded in **two stages** with distinct limits, both defined in one place (`prompt-core/config.ts`) so which limit wins is never implicit:
 
-- `dynamicTruncationCount`
+- `DYNAMIC_FRAGMENT_BUDGET_CHARS` (render-side, 個別フラグメント上限) — shared budget across all dynamic fragments rendered into the "Dynamic turn context" section. Render emits a `DYNAMIC_CONTEXT_TRUNCATED` warning (with a `fragmentId`) when a fragment is trimmed.
+- `DYNAMIC_TAIL_MAX_CHARS` (snapshot-side, 動的末尾全体上限) — hard cap on the whole dynamic tail just before injection. Recorded via the `dynamicContextTruncated` flag (and a fragmentId-less `DYNAMIC_CONTEXT_TRUNCATED` warning).
+
+The report tracks truncation telemetry for both stages:
+
+- `dynamicTruncationCount` — rows truncated at either stage (union, not sum)
+- `dynamicTailTruncationCount` — rows truncated at snapshot/injection time
+- `dynamicFragmentTruncationCount` — rows whose fragments were trimmed at render time
 - `dynamicTruncationOriginalChars`
 - `dynamicTruncationRenderedChars`
 - `dynamicTruncationOmittedChars`
 
-The “Dynamic tail size / truncation” table lists recent truncations and the dynamic fragment ids involved. Use this to replace huge tool/log/file context with summaries, artifact ids, or targeted snippets.
+The "Dynamic tail size / truncation" table lists recent truncations with a **trim stage** column (`render`, `tail`, or `render + tail`) and the dynamic fragment ids involved. Use this to replace huge tool/log/file context with summaries, artifact ids, or targeted snippets.
 
 ## cacheable fragment ordering audit
 
@@ -70,7 +77,8 @@ If this warning appears, give the fragments distinct ids, sources, kinds, or pri
 
 The base system prompt is inspected for volatile/runtime-like content before cache-friendly fragments. Warnings include:
 
-- `BASE_SYSTEM_VOLATILE_SIGNAL`
+- `BASE_SYSTEM_VOLATILE_RUNTIME_LINE` — a precise per-line warning that shares the SAME pattern source as extraction (`splitVolatileRuntimeBlock`), so any line flagged here is also moved to the volatile tail
+- `BASE_SYSTEM_VOLATILE_SIGNAL` — broader volatile-signal heuristic (substring)
 - `BASE_SYSTEM_ABSOLUTE_PATH`
 - `BASE_SYSTEM_AVAILABLE_SKILLS_BLOCK`
 
@@ -130,14 +138,16 @@ Generated artifacts include:
 
 ## volatile runtime context placement
 
-`before_agent_start` moves simple volatile runtime lines from the base system prompt to after stable/semi-stable fragments:
+`before_agent_start` moves volatile runtime lines from the base system prompt to after stable/semi-stable fragments. Extraction and inspection share ONE pattern source (`prompt-core/volatile.ts` `volatileRuntimeLinePatterns`), so any line inspection flags as volatile runtime is also removed from the cacheable base prefix. Covered headers include:
 
-- `Current date:`
-- `Current working directory:`
-- `Current cwd:`
-- `Working directory:`
+- `Current date:`, `Current time:`
+- `Current working directory:`, `Current cwd:`, `cwd:`, `Working directory:`
+- `Current file:`, `Open files:`
+- `Recent tool|command|search|context|files:`
+- `Git status:`, `Continuation:`
+- `Tokens used:`, `Time used:`, `Remaining tokens:`, `Token budget:`
 
-This keeps date/cwd changes from invalidating the earlier cacheable prefix while preserving the information later in the system prompt under `cache-friendly-prompt:Volatile runtime context`.
+Patterns are anchored to the start of a line with a `:` separator, so stable policy prose that merely mentions a volatile term (e.g. "When asked for the current date, run a command") is NOT over-extracted. This keeps date/cwd/file changes from invalidating the earlier cacheable prefix while preserving the information later in the system prompt under `cache-friendly-prompt:Volatile runtime context`.
 
 ## cacheable-prefix volatility guard
 
