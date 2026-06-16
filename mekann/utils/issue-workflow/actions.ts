@@ -9,6 +9,7 @@
  */
 
 import { parseIssueNumberFromBranch } from "../issue/worktree.js";
+import { classifyStatus, type PrStatus, type Verdict } from "../pr-workflow/index.js";
 import { ISSUE_WORKFLOW_ACTIONS, type IssueWorkflowAction, type IssueWorkflowParams } from "./schemas.js";
 
 /** Output of a git/gh command. */
@@ -200,34 +201,45 @@ async function doDiff(runner: CommandRunner, cwd: string, params: IssueWorkflowP
 	};
 }
 
-const PR_BLOCK_STATES = new Set(["BLOCKED", "BEHIND", "CONFLICTING", "DIRTY", "UNKNOWN", "UNSTABLE"]);
-
-function isPrBlocked(status: Record<string, unknown>): boolean {
-	const state = String(status.mergeStateStatus ?? "").toUpperCase();
-	return PR_BLOCK_STATES.has(state);
+/**
+ * ADR-0022: classify PR snapshots via the shared pure `classifyStatus` instead
+ * of treating transient `UNKNOWN`/`UNSTABLE` merge states as blocked.
+ *   `UNKNOWN` / checks-in-flight => pending (wait, do not notify as blocked)
+ *   `mergeable && UNSTABLE`       => mergeableUnstable (still mergeable)
+ *   `BLOCKED`/`BEHIND`/`DIRTY`/`CONFLICTING` => blocked (true block)
+ * Keep in sync with `mekann/utils/pr-workflow`.
+ */
+function verdictAnnotation(verdict: Verdict): string {
+	switch (verdict) {
+		case "blocked":
+			return " — BLOCKED/needs attention";
+		case "pending":
+			return " — checks still running";
+		case "mergeableUnstable":
+			return " — mergeable (non-required checks unstable)";
+		default:
+			return ""; // clean
+	}
 }
 
-function formatPrStatus(status: Record<string, unknown>): string {
-	const state = String(status.mergeStateStatus ?? "UNKNOWN");
-	const mergeable = String(status.mergeable ?? "UNKNOWN");
-	const refs =
-		status.baseRefName && status.headRefName
-			? ` (${status.headRefName} → ${status.baseRefName})`
-			: "";
-	const blocked = isPrBlocked(status) ? " — BLOCKED/needs attention" : "";
-	return `${status.url ?? "(unknown PR)"}${refs}: mergeStateStatus=${state}, mergeable=${mergeable}${blocked}`;
+function formatPrStatus(status: PrStatus, verdict: Verdict): string {
+	const state = status.mergeStateStatus ?? "UNKNOWN";
+	const mergeable = status.mergeable ?? "UNKNOWN";
+	const refs = status.baseRefName && status.headRefName ? ` (${status.headRefName} → ${status.baseRefName})` : "";
+	return `${status.url}${refs}: mergeStateStatus=${state}, mergeable=${mergeable}${verdictAnnotation(verdict)}`;
 }
 
 async function doViewPr(runner: CommandRunner, cwd: string, params: IssueWorkflowParams): Promise<ActionResult> {
 	const args = ["pr", "view"];
 	const target = trim(params.pr);
 	if (target) args.push(target);
-	args.push("--json", "mergeStateStatus,mergeable,url,baseRefName,headRefName");
+	args.push("--json", "mergeStateStatus,mergeable,url,baseRefName,headRefName,statusCheckRollup");
 	const { stdout } = await run(runner, "gh", args, cwd);
-	const status = JSON.parse(stdout) as Record<string, unknown>;
+	const status = JSON.parse(stdout) as PrStatus;
+	const verdict = classifyStatus(status);
 	return {
-		text: `$ gh ${args.join(" ")}\n${formatPrStatus(status)}`,
-		details: { action: "view_pr", pr: target || null, ...status },
+		text: `$ gh ${args.join(" ")}\n${formatPrStatus(status, verdict)}`,
+		details: { action: "view_pr", pr: target || null, verdict, ...status },
 		isError: false,
 	};
 }

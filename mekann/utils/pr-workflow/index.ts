@@ -46,7 +46,7 @@ type RollupEntry = {
 	state?: string | null;
 };
 
-type PrStatus = {
+export type PrStatus = {
 	url: string;
 	mergeStateStatus?: string | null;
 	mergeable?: string | boolean | null;

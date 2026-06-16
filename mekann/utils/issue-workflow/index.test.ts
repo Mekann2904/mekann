@@ -335,6 +335,84 @@ describe("executeAction view_pr and errors", () => {
 		expect(result.isError).toBe(false);
 		expect(result.text).toContain("mergeStateStatus=BLOCKED");
 		expect(result.text).toContain("BLOCKED/needs attention");
+		expect(result.details).toMatchObject({ verdict: "blocked" });
+	});
+
+	it("classifies UNKNOWN as pending (not blocked) per ADR-0022", async () => {
+		const gh = vi.fn((args: string[]): ExecOut => {
+			if (args[0] === "pr" && args[1] === "view") {
+				return {
+					stdout: JSON.stringify({
+						url: "https://github.com/o/r/pull/5",
+						mergeStateStatus: "UNKNOWN",
+						mergeable: "UNKNOWN",
+						baseRefName: "main",
+						headRefName: "issue-5",
+						statusCheckRollup: [],
+					}),
+					stderr: "",
+				};
+			}
+			return { stdout: "", stderr: "" };
+		});
+		const { runner } = createMockRunner({ gh });
+		const result = await executeAction({ action: "view_pr", pr: "5" }, "/repo", runner);
+		expect(result.isError).toBe(false);
+		expect(result.text).toContain("mergeStateStatus=UNKNOWN");
+		expect(result.text).toContain("checks still running");
+		expect(result.text).not.toContain("BLOCKED/needs attention");
+		expect(result.details).toMatchObject({ verdict: "pending" });
+	});
+
+	it("classifies mergeable UNSTABLE as mergeableUnstable (not blocked) per ADR-0022", async () => {
+		const gh = vi.fn((args: string[]): ExecOut => {
+			if (args[0] === "pr" && args[1] === "view") {
+				return {
+					stdout: JSON.stringify({
+						url: "https://github.com/o/r/pull/5",
+						mergeStateStatus: "UNSTABLE",
+						mergeable: "MERGEABLE",
+						baseRefName: "main",
+						headRefName: "issue-5",
+						statusCheckRollup: [],
+					}),
+					stderr: "",
+				};
+			}
+			return { stdout: "", stderr: "" };
+		});
+		const { runner } = createMockRunner({ gh });
+		const result = await executeAction({ action: "view_pr", pr: "5" }, "/repo", runner);
+		expect(result.isError).toBe(false);
+		expect(result.text).toContain("mergeStateStatus=UNSTABLE");
+		expect(result.text).toContain("mergeable (non-required checks unstable)");
+		expect(result.text).not.toContain("BLOCKED/needs attention");
+		expect(result.details).toMatchObject({ verdict: "mergeableUnstable" });
+	});
+
+	it("classifies UNSTABLE with in-flight checks as pending (not blocked)", async () => {
+		const gh = vi.fn((args: string[]): ExecOut => {
+			if (args[0] === "pr" && args[1] === "view") {
+				return {
+					stdout: JSON.stringify({
+						url: "https://github.com/o/r/pull/5",
+						mergeStateStatus: "UNSTABLE",
+						mergeable: "MERGEABLE",
+						baseRefName: "main",
+						headRefName: "issue-5",
+						statusCheckRollup: [{ __typename: "CheckRun", status: "IN_PROGRESS", conclusion: null }],
+					}),
+					stderr: "",
+				};
+			}
+			return { stdout: "", stderr: "" };
+		});
+		const { runner } = createMockRunner({ gh });
+		const result = await executeAction({ action: "view_pr", pr: "5" }, "/repo", runner);
+		expect(result.isError).toBe(false);
+		expect(result.text).toContain("checks still running");
+		expect(result.text).not.toContain("BLOCKED/needs attention");
+		expect(result.details).toMatchObject({ verdict: "pending" });
 	});
 
 	it("turns command failure into a structured error result", async () => {
