@@ -23,6 +23,7 @@ export interface ResolutionSummary {
 	done: number[];
 	blocked: number[];
 	active: number[];
+	notReady: number[];
 	startable: number[];
 }
 
@@ -55,7 +56,7 @@ export function pickNextChild(children: ChildState[]): ResolutionResult {
 }
 
 function summarize(judgements: ChildJudgement[]): ResolutionSummary {
-	const summary: ResolutionSummary = { total: judgements.length, done: [], blocked: [], active: [], startable: [] };
+	const summary: ResolutionSummary = { total: judgements.length, done: [], blocked: [], active: [], notReady: [], startable: [] };
 	for (const judgement of judgements) {
 		switch (judgement.verdict.kind) {
 			case "done":
@@ -67,13 +68,16 @@ function summarize(judgements: ChildJudgement[]): ResolutionSummary {
 			case "active":
 				summary.active.push(judgement.state.number);
 				break;
+			case "not-ready":
+				summary.notReady.push(judgement.state.number);
+				break;
 			case "startable":
 				summary.startable.push(judgement.state.number);
 				break;
 		}
 	}
 	// Sorted by issue number for stable, human-readable progress display.
-	for (const key of ["done", "blocked", "active", "startable"] as const) {
+	for (const key of ["done", "blocked", "active", "notReady", "startable"] as const) {
 		summary[key].sort((a, b) => a - b);
 	}
 	return summary;

@@ -9,7 +9,7 @@
  */
 
 import { parseIssueArgs } from "./args.js";
-import { addDependencyStatus, listOpenIssues, type IssueDependencyStatus, type IssueWithStatus, getIssueStatus, getIssueDependencyStatus } from "./github.js";
+import { addDependencyStatus, listOpenIssues, type IssueDependencyStatus, type IssueWithStatus, getIssueStatus, getIssueDependencyStatus, getIssueLabels } from "./github.js";
 import { getRepoInfo, createWorktree, removeWorktree, worktreeDir, listExistingWorktrees, issueBranch, parseIssueNumberFromBranch, type WorktreeInfo, type RepoInfo } from "./worktree.js";
 import { mountIssueList } from "./app.js";
 import { launchPiSessionInKittySplit } from "../terminal/pi-session.js";
@@ -84,8 +84,11 @@ async function runDirect(issueNumber: number): Promise<void> {
 	const repoInfo = getRepoInfo();
 	if (!repoInfo) { console.error("Not in git repo."); process.exitCode = 1; return; }
 
-	const dependencyStatus = await getIssueDependencyStatus(repoInfo.remote, issueNumber);
-	if (!ensureIssueCanStart(issueNumber, dependencyStatus)) return;
+	const [dependencyStatus, labels] = await Promise.all([
+		getIssueDependencyStatus(repoInfo.remote, issueNumber),
+		getIssueLabels(repoInfo.remote, issueNumber).catch(() => []),
+	]);
+	if (!ensureIssueCanStart(issueNumber, { ...dependencyStatus, labels })) return;
 
 	const branch = issueBranch(issueNumber);
 	const dir = worktreeDir(repoInfo.root, branch);
@@ -279,7 +282,7 @@ function createBulkLaunchDeps(repoInfo: RepoInfo): BulkLaunchDeps {
 	};
 }
 
-function ensureIssueCanStart(issueNumber: number, dependencyStatus: IssueDependencyStatus): boolean {
+function ensureIssueCanStart(issueNumber: number, dependencyStatus: IssueDependencyStatus & { labels?: string[] }): boolean {
 	if (dependencyStatus.error) {
 		console.error(`Issue #${issueNumber} cannot be started because dependencies could not be verified.`);
 		console.error(dependencyStatus.error);
@@ -296,6 +299,13 @@ function ensureIssueCanStart(issueNumber: number, dependencyStatus: IssueDepende
 		}
 		console.error("");
 		console.error("Resolve or close the blocking issues first.");
+		process.exitCode = 1;
+		return false;
+	}
+
+	if (!dependencyStatus.labels?.includes("ready-for-agent")) {
+		console.error(`Issue #${issueNumber} cannot be started because it is missing the ready-for-agent label.`);
+		console.error("Ask a human to triage it or add ready-for-agent before opening an implementation worktree.");
 		process.exitCode = 1;
 		return false;
 	}

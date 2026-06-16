@@ -9,6 +9,7 @@ function base(overrides: Partial<ChildState> = {}): ChildState {
 		prMerged: false,
 		prExists: false,
 		openBlockers: [],
+		readyForAgent: true,
 		hasWorktree: false,
 		hasActiveWorkPi: false,
 		...overrides,
@@ -56,6 +57,14 @@ describe("judgeChild", () => {
 		expect(blockers).toEqual([101]);
 	});
 
+	it("returns not-ready when the ready-for-agent label is missing", () => {
+		expect(judgeChild(base({ readyForAgent: false }))).toEqual({ kind: "not-ready", reason: "missing ready-for-agent label" });
+	});
+
+	it("blocked beats not-ready", () => {
+		expect(judgeChild(base({ readyForAgent: false, openBlockers: [101] })).kind).toBe("blocked");
+	});
+
 	it("returns startable (fresh) when nothing blocks and no worktree", () => {
 		expect(judgeChild(base())).toEqual({ kind: "startable", reason: "fresh start", resume: false });
 	});
@@ -70,6 +79,7 @@ describe("judgeChild precedence ordering", () => {
 		{ name: "merged + active + blocked + worktree → done", state: { prMerged: true, hasActiveWorkPi: true, openBlockers: [9], hasWorktree: true }, expectedKind: "done" },
 		{ name: "active + blocked + worktree → active", state: { hasActiveWorkPi: true, openBlockers: [9], hasWorktree: true }, expectedKind: "active" },
 		{ name: "blocked + worktree → blocked", state: { openBlockers: [9], hasWorktree: true }, expectedKind: "blocked" },
+		{ name: "missing ready-for-agent + worktree → not-ready", state: { readyForAgent: false, hasWorktree: true }, expectedKind: "not-ready" },
 		{ name: "worktree only → startable", state: { hasWorktree: true }, expectedKind: "startable" },
 		{ name: "blocked + worktree → blocked (not resume)", state: { openBlockers: [9], hasWorktree: true }, expectedKind: "blocked" },
 	];

@@ -29,6 +29,8 @@ export interface OrchestrationDeps {
 	listSubIssues(parentNumber: number): Promise<ChildBrief[]>;
 	/** Open issue numbers blocking a child (GitHub blocked_by). */
 	getDependencyStatus(childNumber: number): Promise<{ openBlockers: number[] }>;
+	/** GitHub issue labels. Failures should safely return [] in production wiring. */
+	getIssueLabels(childNumber: number): Promise<string[]>;
 	/** PR merge status for the child's branch `issue-<number>`. */
 	getPrMergeStatus(childNumber: number): Promise<{ merged: boolean; exists: boolean }>;
 	/** Local: an `issue-<number>` worktree exists on disk. */
@@ -48,8 +50,9 @@ export async function collectSnapshot(parentNumber: number, deps: OrchestrationD
 	const children = await deps.listSubIssues(parentNumber);
 	const states = await Promise.all(
 		children.map(async (child): Promise<ChildState> => {
-			const [dependency, pr, hasWorktree, hasActiveWorkPi] = await Promise.all([
+			const [dependency, labels, pr, hasWorktree, hasActiveWorkPi] = await Promise.all([
 				deps.getDependencyStatus(child.number),
+				deps.getIssueLabels(child.number),
 				deps.getPrMergeStatus(child.number),
 				Promise.resolve(deps.hasWorktree(child.number)),
 				deps.hasActiveWorkPi(child.number),
@@ -61,6 +64,7 @@ export async function collectSnapshot(parentNumber: number, deps: OrchestrationD
 				prMerged: pr.merged,
 				prExists: pr.exists,
 				openBlockers: dependency.openBlockers,
+				readyForAgent: labels.includes("ready-for-agent"),
 				hasWorktree,
 				hasActiveWorkPi,
 			};

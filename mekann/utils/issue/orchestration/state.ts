@@ -23,6 +23,8 @@ export interface ChildState {
 	prExists: boolean;
 	/** GitHub truth: open issue numbers that block this child (blocked_by). */
 	openBlockers: number[];
+	/** GitHub truth: the child is explicitly ready for coding-agent implementation. */
+	readyForAgent: boolean;
 	/** Local: an `issue-<number>` worktree exists on disk. */
 	hasWorktree: boolean;
 	/** Local: a Kitty pane titled `Issue #<number>` is currently open. */
@@ -31,10 +33,11 @@ export interface ChildState {
 
 /**
  * The orchestrator's verdict for one child. Ordered by priority:
- *   merged > active > blocked > startable
+ *   merged > active > blocked > not-ready > startable
  * - `done`: skip (completed)
  * - `active`: skip (already open; double-launch prevention)
  * - `blocked`: skip (dependencies unresolved)
+ * - `not-ready`: skip (triage label gate not satisfied)
  * - `startable`: candidate to launch now; `resume` distinguishes a fresh start
  *   from resuming an existing worktree.
  */
@@ -42,6 +45,7 @@ export type ChildVerdict =
 	| { kind: "done"; reason: string }
 	| { kind: "active"; reason: string }
 	| { kind: "blocked"; reason: string; blockers: number[] }
+	| { kind: "not-ready"; reason: string }
 	| { kind: "startable"; reason: string; resume: boolean };
 
 /**
@@ -52,6 +56,7 @@ export type ChildVerdict =
  * - `hasActiveWorkPi` beats `blocked`/`startable`: never double-launch an open
  *   Work Pi, even if GitHub has not caught up.
  * - `blocked` beats `startable`: never start a child whose dependencies are open.
+ * - `readyForAgent` gates startability: triage labels are authoritative.
  */
 export function judgeChild(state: ChildState): ChildVerdict {
 	if (state.prMerged) return { kind: "done", reason: "PR merged" };
@@ -59,6 +64,7 @@ export function judgeChild(state: ChildState): ChildVerdict {
 	if (state.openBlockers.length > 0) {
 		return { kind: "blocked", reason: "blocked by open issues", blockers: [...state.openBlockers] };
 	}
+	if (!state.readyForAgent) return { kind: "not-ready", reason: "missing ready-for-agent label" };
 	return {
 		kind: "startable",
 		reason: state.hasWorktree ? "worktree exists, resuming" : "fresh start",

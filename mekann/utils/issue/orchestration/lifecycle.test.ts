@@ -2,13 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import { continueOrchestration, startOrchestration, type LaunchWorkPi } from "./lifecycle.js";
 import type { OrchestrationDeps, ChildBrief } from "./collector.js";
 
-function fakeDeps(map: Record<number, Partial<{ openBlockers: number[]; merged: boolean; prExists: boolean; hasWorktree: boolean; hasActiveWorkPi: boolean }>>): OrchestrationDeps {
+function fakeDeps(map: Record<number, Partial<{ openBlockers: number[]; merged: boolean; prExists: boolean; hasWorktree: boolean; hasActiveWorkPi: boolean; readyForAgent: boolean }>>): OrchestrationDeps {
 	return {
 		async listSubIssues(): Promise<ChildBrief[]> {
 			return Object.keys(map).map((n) => ({ number: Number(n), title: `#${n}`, url: `https://example/${n}` }));
 		},
 		async getDependencyStatus(n: number) {
 			return { openBlockers: map[n]?.openBlockers ?? [] };
+		},
+		async getIssueLabels(n: number) {
+			return map[n]?.readyForAgent === false ? [] : ["ready-for-agent"];
 		},
 		async getPrMergeStatus(n: number) {
 			return { merged: map[n]?.merged ?? false, exists: map[n]?.prExists ?? false };
@@ -69,6 +72,16 @@ describe("startOrchestration", () => {
 		const deps = fakeDeps({ 67: { hasActiveWorkPi: true }, 68: { openBlockers: [67] } });
 		const outcome = await startOrchestration(66, "/repo", deps, launch);
 		expect(outcome.kind).toBe("waiting");
+		expect(launch).not.toHaveBeenCalled();
+	});
+
+	it("does not launch children missing ready-for-agent", async () => {
+		const launch = vi.fn(noLaunch);
+		const deps = fakeDeps({ 67: { readyForAgent: false }, 68: { readyForAgent: false } });
+		const outcome = await startOrchestration(66, "/repo", deps, launch);
+		expect(outcome.kind).toBe("waiting");
+		if (outcome.kind !== "waiting") return;
+		expect(outcome.summary.notReady).toEqual([67, 68]);
 		expect(launch).not.toHaveBeenCalled();
 	});
 });

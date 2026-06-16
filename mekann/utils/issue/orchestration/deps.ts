@@ -12,7 +12,7 @@
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
 import { KittyControl } from "../../terminal/kitty/control.js";
-import { getIssueDependencyStatus } from "../github.js";
+import { getIssueDependencyStatus, getIssueLabels } from "../github.js";
 import { issueBranch, listExistingWorktrees } from "../worktree.js";
 import type { OrchestrationDeps, ChildBrief } from "./collector.js";
 
@@ -77,6 +77,15 @@ export function createOrchestrationDeps(config: OrchestrationDepsConfig): Orches
 			const status = await getIssueDependencyStatus(remote, childNumber);
 			if (status.error) throw new Error(`Dependency check failed for #${childNumber}: ${status.error}`);
 			return { openBlockers: status.openBlockers.map((blocker) => blocker.number) };
+		},
+
+		async getIssueLabels(childNumber: number): Promise<string[]> {
+			try {
+				return await getIssueLabels(remote, childNumber);
+			} catch {
+				// Safe fallback: without GitHub label truth, do not start the issue.
+				return [];
+			}
 		},
 
 		async getPrMergeStatus(childNumber: number) {
