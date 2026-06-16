@@ -9,7 +9,7 @@ export type { SandboxMode } from "../policy-core/modes.js";
 export { parseSandboxMode, modeLabel, SANDBOX_MODES, DEFAULT_SANDBOX_MODE } from "../policy-core/modes.js";
 import type { SandboxMode } from "../policy-core/modes.js";
 import { realpath } from "node:fs/promises";
-import { relative, isAbsolute, resolve } from "node:path";
+import { relative, isAbsolute, resolve, posix } from "node:path";
 
 export interface SandboxPolicy {
 	mode: SandboxMode;
@@ -115,10 +115,47 @@ export async function resolveRealPaths(
 	return results;
 }
 
-/** 保護すべきメタデータディレクトリパターン。 */
-const PROTECTED_DIRS = [".git", ".codex", ".agents"];
+/**
+ * 保護すべきリポジトリメタデータディレクトリ（単一ソース: single source of truth）。
+ *
+ * SECURITY: 3つの enforcement 表面がすべてこのリストから派生し、整合性を自動保持する:
+ *   1. sandbox SBPL deny regex (macSeatbelt) — workspace_write での書き込み deny
+ *   2. isProtectedPath() — 絶対パスの任意階層の保護判定
+ *   3. safeRepoRelativePath() — repo-relative patch path の検証 (candidate.ts / fingerprint.ts 共有)
+ *
+ * `.pi` を含むのは、CONTEXT.md の "Context control plane" (.pi/ 配下に subagent-results /
+ * ledger / output-gate artifact を置く) を workspace_write による書き換えから守るため。
+ * 参考: GitHub issue #80 (C-004 / C-005)。
+ */
+export const PROTECTED_DIRS: readonly string[] = [".git", ".pi", ".codex", ".agents"];
 
-/** パスが .git/.codex/.agents 配下か判定。 */
+/** PROTECTED_DIRS から SBPL regex の選択肢文字列を生成する（例: "\\.git|\\.pi|\\.codex|\\.agents"）。 */
+export function protectedDirsSbplAlternation(): string {
+	return PROTECTED_DIRS.map((d) => d.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+}
+
+/**
+ * repo-relative path を安全に検証する単一ヘルパー。
+ * null byte / 絶対パス / ドライブレター / 親ディレクトリ逸脱 / 保護メタデータディレクトリ
+ * (.git/.pi/.codex/.agents のトップレベル) を拒否し、正規化された POSIX 相対パスを返す。
+ * 不安全な場合は undefined を返す。
+ *
+ * SECURITY: autoresearch (candidate.ts) と subagent (fingerprint.ts) がこの単一ヘルパーを共有。
+ * 保護対象は PROTECTED_DIRS から派生するため、sandbox SBPL regex / isProtectedPath と一致する。
+ * 参考: GitHub issue #80 (C-004 — safeRepoRelativePath の複数実装と保護度の不一致)。
+ */
+export function safeRepoRelativePath(p: string): string | undefined {
+	if (!p || p.includes("\0")) return undefined;
+	const forwardSlashed = p.replace(/\\/g, "/");
+	if (forwardSlashed.startsWith("/") || /^[A-Za-z]:[\\/]/.test(p)) return undefined;
+	const normalized = posix.normalize(forwardSlashed);
+	if (normalized === "." || normalized === ".." || normalized.startsWith("../") || normalized.startsWith("/") || normalized.includes("/../")) return undefined;
+	const firstSegment = normalized.split("/")[0];
+	if (firstSegment && PROTECTED_DIRS.includes(firstSegment)) return undefined;
+	return normalized;
+}
+
+/** パスが保護メタデータディレクトリ (.git/.pi/.codex/.agents) 配下か判定。 */
 export function isProtectedPath(path: string): boolean {
 	const normalized = resolve(path);
 	const segments = normalized.split("/").filter(Boolean);

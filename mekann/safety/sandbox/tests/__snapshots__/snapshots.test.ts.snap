@@ -60,8 +60,9 @@ exports[`SBPL policy snapshots > read_only (基本) 1`] = `
 ; ═══════════════════════════════════════════════════════════════
 
 ; protect repo metadata even when workspace is writable
+; PROTECTED_DIRS single source (see permissions.ts protectedDirsSbplAlternation)
 (deny file-write*
-  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+  (regex #"(^|.*/)(\\.git|\\.pi|\\.codex|\\.agents)(/.*)?$")
 )
 
 
@@ -138,8 +139,9 @@ exports[`SBPL policy snapshots > read_only + homebrew 1`] = `
 ; ═══════════════════════════════════════════════════════════════
 
 ; protect repo metadata even when workspace is writable
+; PROTECTED_DIRS single source (see permissions.ts protectedDirsSbplAlternation)
 (deny file-write*
-  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+  (regex #"(^|.*/)(\\.git|\\.pi|\\.codex|\\.agents)(/.*)?$")
 )
 
 
@@ -216,8 +218,9 @@ exports[`SBPL policy snapshots > read_only + isolated temp dir 1`] = `
 ; ═══════════════════════════════════════════════════════════════
 
 ; protect repo metadata even when workspace is writable
+; PROTECTED_DIRS single source (see permissions.ts protectedDirsSbplAlternation)
 (deny file-write*
-  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+  (regex #"(^|.*/)(\\.git|\\.pi|\\.codex|\\.agents)(/.*)?$")
 )
 
 
@@ -294,8 +297,9 @@ exports[`SBPL policy snapshots > read_only + resolved gitdirs 1`] = `
 ; ═══════════════════════════════════════════════════════════════
 
 ; protect repo metadata even when workspace is writable
+; PROTECTED_DIRS single source (see permissions.ts protectedDirsSbplAlternation)
 (deny file-write*
-  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+  (regex #"(^|.*/)(\\.git|\\.pi|\\.codex|\\.agents)(/.*)?$")
 )
 
 ; Resolved .git directories (pointer files / worktrees / submodules)
@@ -374,8 +378,9 @@ exports[`SBPL policy snapshots > workspace_write (基本) 1`] = `
 ; ═══════════════════════════════════════════════════════════════
 
 ; protect repo metadata even when workspace is writable
+; PROTECTED_DIRS single source (see permissions.ts protectedDirsSbplAlternation)
 (deny file-write*
-  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+  (regex #"(^|.*/)(\\.git|\\.pi|\\.codex|\\.agents)(/.*)?$")
 )
 
 
@@ -454,8 +459,9 @@ exports[`SBPL policy snapshots > workspace_write + homebrew 1`] = `
 ; ═══════════════════════════════════════════════════════════════
 
 ; protect repo metadata even when workspace is writable
+; PROTECTED_DIRS single source (see permissions.ts protectedDirsSbplAlternation)
 (deny file-write*
-  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+  (regex #"(^|.*/)(\\.git|\\.pi|\\.codex|\\.agents)(/.*)?$")
 )
 
 
@@ -534,8 +540,9 @@ exports[`SBPL policy snapshots > workspace_write + isolated temp + gitdirs 1`] =
 ; ═══════════════════════════════════════════════════════════════
 
 ; protect repo metadata even when workspace is writable
+; PROTECTED_DIRS single source (see permissions.ts protectedDirsSbplAlternation)
 (deny file-write*
-  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+  (regex #"(^|.*/)(\\.git|\\.pi|\\.codex|\\.agents)(/.*)?$")
 )
 
 ; Resolved .git directories (pointer files / worktrees / submodules)
@@ -614,8 +621,9 @@ exports[`SBPL policy snapshots > workspace_write + network 1`] = `
 ; ═══════════════════════════════════════════════════════════════
 
 ; protect repo metadata even when workspace is writable
+; PROTECTED_DIRS single source (see permissions.ts protectedDirsSbplAlternation)
 (deny file-write*
-  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+  (regex #"(^|.*/)(\\.git|\\.pi|\\.codex|\\.agents)(/.*)?$")
 )
 
 
@@ -682,8 +690,9 @@ exports[`SBPL policy snapshots > workspaceRoots 空 (cwd 使用) 1`] = `
 ; ═══════════════════════════════════════════════════════════════
 
 ; protect repo metadata even when workspace is writable
+; PROTECTED_DIRS single source (see permissions.ts protectedDirsSbplAlternation)
 (deny file-write*
-  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+  (regex #"(^|.*/)(\\.git|\\.pi|\\.codex|\\.agents)(/.*)?$")
 )
 
 
@@ -759,8 +768,9 @@ exports[`SBPL policy snapshots > writableRoots ≠ workspaceRoots 1`] = `
 ; ═══════════════════════════════════════════════════════════════
 
 ; protect repo metadata even when workspace is writable
+; PROTECTED_DIRS single source (see permissions.ts protectedDirsSbplAlternation)
 (deny file-write*
-  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+  (regex #"(^|.*/)(\\.git|\\.pi|\\.codex|\\.agents)(/.*)?$")
 )
 
 
@@ -835,8 +845,9 @@ exports[`SBPL policy snapshots > 複数 workspaceRoots 1`] = `
 ; ═══════════════════════════════════════════════════════════════
 
 ; protect repo metadata even when workspace is writable
+; PROTECTED_DIRS single source (see permissions.ts protectedDirsSbplAlternation)
 (deny file-write*
-  (regex #"(^|.*/)(\\.git|\\.codex|\\.agents)(/.*)?$")
+  (regex #"(^|.*/)(\\.git|\\.pi|\\.codex|\\.agents)(/.*)?$")
 )
 
 
