@@ -13,8 +13,9 @@ import { ISSUE_PI_ENV } from "../utils/terminal/pi-session.js";
  * (Phase 2) → issue_workflow (Phase 3). Issue-creation / planning / exploratory /
  * meta skills are context noise there and are hidden. Force-load
  * (`/skill:<name>`) still works regardless of this list, so a hidden skill can
- * be pulled in on demand (e.g. thermo-nuclear-code-quality-review as a
- * review_fixer failure fallback in autonomy/review-fixer/index.ts).
+ * be pulled in on demand (e.g. thermo-nuclear-code-quality-review, the
+ * review_fixer fallback skill defined by REVIEW_FIXER_FALLBACK_SKILL in
+ * autonomy/review-fixer/constants.ts).
  */
 const ISSUE_PI_SKILL_ALLOWLIST = new Set(["diagnose", "tdd", "zoom-out"]);
 

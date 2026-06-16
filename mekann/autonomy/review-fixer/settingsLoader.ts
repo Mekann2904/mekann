@@ -8,7 +8,6 @@ import { featureRawConfig } from "../../settings/enabled.js";
 import type { ReviewFixerSettings } from "./types.js";
 
 const DEFAULT_SETTINGS: ReviewFixerSettings = {
-  enabled: false,
   model: undefined,
   reasoningEffort: "high",
   maxFixRetries: 3,
@@ -20,7 +19,6 @@ export function loadReviewFixerSettings(): ReviewFixerSettings {
   const effort = isValidEffort(raw.reasoningEffort) ? raw.reasoningEffort as ReviewFixerSettings["reasoningEffort"] : DEFAULT_SETTINGS.reasoningEffort;
 
   return {
-    enabled: raw.enabled === true,
     model: isValidModel(raw.model) ? raw.model as { provider: string; modelId: string } : undefined,
     reasoningEffort: effort,
     maxFixRetries: typeof raw.maxFixRetries === "number" && Number.isInteger(raw.maxFixRetries) && raw.maxFixRetries >= 1 && raw.maxFixRetries <= 10
