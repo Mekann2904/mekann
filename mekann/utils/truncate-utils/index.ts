@@ -115,41 +115,20 @@ export function truncateHead(content: string, options: TruncateOptions): Truncat
     };
   }
 
-  // Scan forward for line boundaries
-  let endPos = content.length;
-  let nlCount = 0;
-  let pos = 0;
-  while (nlCount < maxLines) {
-    const nlPos = content.indexOf("\n", pos);
-    if (nlPos === -1) break;
-    nlCount++;
-    endPos = nlPos; // include up to but not including the \n
-    pos = nlPos + 1;
-  }
-
-  // If we found fewer newlines than maxLines, keep everything
-  // (the last segment after the final \n counts as one more line)
-  if (nlCount < maxLines) {
-    // endPos stays at content.length — but we already checked totalLines > maxLines
-  }
-
-  // Actually, for maxLines lines, we need maxLines-1 newlines
-  // Re-approach: find the start of the (maxLines+1)-th line
+  // Keep the first `maxLines` lines by cutting at the newline that ends line maxLines.
   let lineStart = 0;
-  let foundNl = 0;
   let searchPos = 0;
   for (let i = 0; i < maxLines; i++) {
     const nlPos = content.indexOf("\n", searchPos);
     if (nlPos === -1) {
-      // No more newlines; rest is the last line
+      // No more newlines; the rest is the last line, keep it all
       lineStart = content.length;
       break;
     }
-    foundNl++;
     searchPos = nlPos + 1;
     if (i === maxLines - 1) {
-      // We've counted maxLines lines; cut here
-      lineStart = nlPos; // cut at the \n (don't include it)
+      // Cut at the \n that ends line maxLines (don't include it)
+      lineStart = nlPos;
     }
   }
 

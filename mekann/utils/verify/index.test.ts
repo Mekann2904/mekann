@@ -42,6 +42,11 @@ describe("verify", () => {
 		expect(selectVerifyScripts({ test: "vitest" }, "quick")).toEqual({ selected: ["test"], missing: [] });
 	});
 
+	it("reports missing standard scripts in full mode, symmetric with explicit mode", () => {
+		expect(selectVerifyScripts({ test: "vitest" }, "full")).toEqual({ selected: ["test"], missing: ["typecheck:prod", "typecheck"] });
+		expect(selectVerifyScripts({ test: "vitest", typecheck: "tsc", "typecheck:prod": "tsc -p tsconfig.prod.json" }, "full")).toEqual({ selected: ["typecheck:prod", "typecheck", "test"], missing: [] });
+	});
+
 	it("reports missing explicitly requested scripts", async () => {
 		const dir = createProject({ test: "vitest" });
 		try {
@@ -52,6 +57,22 @@ describe("verify", () => {
 			await pi.commands.verify.handler("test lint", ctx);
 
 			expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("MISSING: lint"), "error");
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("reports missing standard scripts during full mode partial runs", async () => {
+		const dir = createProject({ test: "vitest" });
+		try {
+			const pi = createMockPi();
+			verifyExtension(pi as any);
+			const ctx = { cwd: dir, ui: { notify: vi.fn() } };
+
+			await pi.commands.verify.handler("full", ctx);
+
+			expect(execFile).toHaveBeenCalledWith("npm", ["run", "test"], expect.objectContaining({ cwd: dir }), expect.any(Function));
+			expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("MISSING: typecheck:prod"), "error");
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}
