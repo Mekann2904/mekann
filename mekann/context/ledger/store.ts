@@ -13,8 +13,19 @@ export function eventsPath(cwd: string): string {
 	return path.join(contextDir(cwd), "events.v2.jsonl");
 }
 
-export function rotatedEventsPath(cwd: string): string {
-	return path.join(contextDir(cwd), "events.v2.jsonl.1");
+/**
+ * Maximum number of rotated generations kept on disk (issue #76 / C-009).
+ *
+ * Rotation shifts generations up (`.k` -> `.(k+1)`) before writing the newly
+ * rotated tail into `.1`. Older generations are only unlinked once the cap is
+ * reached, so prior rotation content is never discarded on the 2nd rotation
+ * (the original silent-overwrite bug). Bounded to
+ * `MAX_ROTATED_GENERATIONS * DEFAULT_MAX_FILE_SIZE_BYTES` (~50 MB) worst case.
+ */
+const MAX_ROTATED_GENERATIONS = 5;
+
+export function rotatedEventsPath(cwd: string, generation = 1): string {
+	return path.join(contextDir(cwd), `events.v2.jsonl.${generation}`);
 }
 
 const DEFAULT_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -220,8 +231,30 @@ async function readJsonlFile(file: string): Promise<MekannContextEvent[]> {
 	return out;
 }
 
+async function listRotatedGenerations(cwd: string): Promise<number[]> {
+	let entries: string[];
+	try {
+		entries = await fsp.readdir(contextDir(cwd));
+	} catch (error: any) {
+		if (error?.code === "ENOENT") return [];
+		throw error;
+	}
+	const gens: number[] = [];
+	for (const name of entries) {
+		const m = /^events\.v2\.jsonl\.([1-9]\d*)$/.exec(name);
+		if (m) gens.push(Number.parseInt(m[1], 10));
+	}
+	return gens.sort((a, b) => a - b);
+}
+
 export async function readEvents(cwd: string): Promise<MekannContextEvent[]> {
-	const rotated = await readJsonlFile(rotatedEventsPath(cwd));
+	// Read oldest generation first so the merged stream stays chronological:
+	// `.N` (oldest) -> `.1` (newest rotated) -> current.
+	const gens = await listRotatedGenerations(cwd);
+	const rotated: MekannContextEvent[] = [];
+	for (const generation of [...gens].sort((a, b) => b - a)) {
+		rotated.push(...await readJsonlFile(rotatedEventsPath(cwd, generation)));
+	}
 	const current = await readJsonlFile(eventsPath(cwd));
 	return [...rotated, ...current];
 }
@@ -240,7 +273,22 @@ async function rotateIfNeeded(cwd: string, filePath: string, maxBytes?: number):
 		const raw = await fsp.readFile(filePath, "utf8");
 		const lines = raw.split(/\r?\n/).filter((line) => line.trim().length > 0);
 		if (lines.length <= 1) return;
-		const rp = rotatedEventsPath(cwd);
+		const gens = await listRotatedGenerations(cwd);
+		// Drop generations that are already at/over the cap. Older generations are
+		// only lost after MAX_ROTATED_GENERATIONS full rotations — never on the
+		// 2nd (the original silent-overwrite bug, issue #76 / C-009).
+		for (const generation of gens) {
+			if (generation >= MAX_ROTATED_GENERATIONS) {
+				await fsp.rm(rotatedEventsPath(cwd, generation), { force: true });
+			}
+		}
+		// Shift remaining generations up by one, highest first so renames never
+		// clobber an existing file: `.k` -> `.(k+1)`.
+		const shiftable = gens.filter((g) => g < MAX_ROTATED_GENERATIONS).sort((a, b) => b - a);
+		for (const generation of shiftable) {
+			await fsp.rename(rotatedEventsPath(cwd, generation), rotatedEventsPath(cwd, generation + 1));
+		}
+		const rp = rotatedEventsPath(cwd, 1);
 		// Keep the newest event in the current file so readers never observe a
 		// missing current log immediately after rotation.
 		await fsp.writeFile(rp, `${lines.slice(0, -1).join("\n")}\n`, "utf8");

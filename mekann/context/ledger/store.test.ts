@@ -384,35 +384,54 @@ describe("context ledger store", () => {
 			expect(events.map((e) => e.id)).toEqual(["ctx_rot_old_1", "ctx_rot_old_2", "ctx_rot_new_1"]);
 		});
 
-		it("rotation replaces existing rotated file", async () => {
+		it("rotation preserves prior rotated generation instead of overwriting", async () => {
 			const cwd = await tmp();
 			await fsp.mkdir(contextDir(cwd), { recursive: true });
-			const rp = rotatedEventsPath(cwd);
-			// Pre-existing rotated file
-			await fsp.writeFile(rp, JSON.stringify({ schemaVersion: "mekann-context/v2", id: "ctx_rot_prev_1", kind: "task", status: "active", priority: 2, title: "Prev", summary: "p", evidenceLevel: "observed", createdAt: 50, cwd }) + "\n", "utf8");
-			// Write enough events to trigger rotation
-			for (let i = 0; i < 10; i++) {
+			// Seed `.1` with a prior rotated event (issue #76 / C-009: must NOT be lost).
+			await fsp.writeFile(rotatedEventsPath(cwd), JSON.stringify({ schemaVersion: "mekann-context/v2", id: "ctx_rot_prev_1", kind: "task", status: "active", priority: 2, title: "Prev", summary: "p", evidenceLevel: "observed", createdAt: 50, cwd }) + "\n", "utf8");
+
+			// Append until the first rotation shifts prev_1 out of `.1`.
+			let i = 0;
+			while (!fs.existsSync(rotatedEventsPath(cwd, 2)) && i < 50) {
+				await appendContextEvent({ cwd, kind: "task", priority: 2, title: `T${i}`, summary: "padding to force rotation", evidenceLevel: "observed", idGenerator: () => `ctx_rot_a_${i}`, now: () => 1000 + i, maxFileSizeBytes: 512 });
+				i++;
+			}
+			expect(fs.existsSync(rotatedEventsPath(cwd, 2))).toBe(true);
+			expect(await readEvents(cwd)).toEqual(expect.arrayContaining([expect.objectContaining({ id: "ctx_rot_prev_1" })]));
+
+			// Trigger at least one further rotation (the original bug overwrote `.1` here).
+			let j = 0;
+			while (j < 30 && !fs.existsSync(rotatedEventsPath(cwd, 3))) {
+				await appendContextEvent({ cwd, kind: "task", priority: 2, title: `U${j}`, summary: "more padding for a later rotation", evidenceLevel: "observed", idGenerator: () => `ctx_rot_b_${j}`, now: () => 2000 + j, maxFileSizeBytes: 512 });
+				j++;
+			}
+			// The prior rotated event must STILL be readable — no silent overwrite.
+			expect(await readEvents(cwd)).toEqual(expect.arrayContaining([expect.objectContaining({ id: "ctx_rot_prev_1" })]));
+		});
+
+		it("many rotations stay bounded to the generation cap on disk", async () => {
+			const cwd = await tmp();
+			const dir = contextDir(cwd);
+			// Many appends with a tiny limit => many rotations.
+			for (let i = 0; i < 60; i++) {
 				await appendContextEvent({
 					cwd,
 					kind: "task",
 					priority: 2,
 					title: `T${i}`,
-					summary: "summary text that adds bytes to push past limit",
+					summary: "padding to force many rotations",
 					evidenceLevel: "observed",
-					idGenerator: () => `ctx_rot_rep_${i}`,
+					idGenerator: () => `ctx_bnd_${i}`,
 					now: () => 1000 + i,
-					maxFileSizeBytes: 1024,
+					maxFileSizeBytes: 256,
 				});
 			}
-			// Old rotated content should be gone
-			if (fs.existsSync(rp)) {
-				const raw = await fsp.readFile(rp, "utf8");
-				expect(raw).not.toContain("ctx_rot_prev_1");
-			}
-			// All events readable (current + rotated) — only ctx_rot_rep_* events, prev_1 is lost
+			// Disk is bounded: never more than MAX_ROTATED_GENERATIONS (5) files.
+			const genFiles = fs.readdirSync(dir).filter((n) => /^events\.v2\.jsonl\.\d+$/.test(n));
+			expect(genFiles.length).toBeLessThanOrEqual(5);
+			// Newest generation + current always survive and stay readable.
 			const events = await readEvents(cwd);
-			expect(events.length).toBeGreaterThanOrEqual(1);
-			expect(events.every((e) => e.id.startsWith("ctx_rot_rep_"))).toBe(true);
+			expect(events.length).toBeGreaterThan(0);
 		});
 	});
 });
