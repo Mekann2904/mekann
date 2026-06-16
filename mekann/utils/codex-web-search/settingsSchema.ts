@@ -4,6 +4,7 @@ import type { FeatureSettingsSchema, SettingSchema } from "../../settings/types.
 
 const searchContextValues: SearchContextSize[] = ["low", "medium", "high"];
 const effortValues: CodexReasoningEffort[] = ["none", "minimal", "low", "medium", "high", "xhigh"];
+const effortList = effortValues.join(" | ");
 
 function bool(key: string, category: string, defaultValue: boolean, description: string): SettingSchema<boolean> {
 	return { key, type: "boolean", defaultValue, description, category, scopes: ["global", "workspace"], restartRequired: false, validate(value) { return typeof value === "boolean" ? [] : ["boolean である必要があります"]; } };
@@ -25,8 +26,8 @@ export const codexWebSearchSettingsSchema: FeatureSettingsSchema = {
 		bool("externalWebAccess", "Access", MEKANN_CODEX_WEB_SEARCH_DEFAULTS.externalWebAccess, "Codex web search request の external_web_access を有効にします。"),
 		{ key: "defaultSearchContextSize", type: "enum", defaultValue: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.defaultSearchContextSize, description: "searchContextSize 未指定時のデフォルト。", category: "Search", scopes: ["global", "workspace"], restartRequired: false, enumValues: searchContextValues, validate(value) { return searchContextValues.includes(value as SearchContextSize) ? [] : ["low | medium | high のいずれかです"]; } },
 		optionalStr("model", "Model", MEKANN_CODEX_WEB_SEARCH_DEFAULTS.model, "Codex web search に使う明示 model id。unset の場合は自動解決します。"),
-		{ key: "effort", type: "enum", defaultValue: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.effort, description: "明示 model / Codex current model で使う reasoning effort。unset の場合は送信しません。", category: "Model", scopes: ["global", "workspace"], restartRequired: false, enumValues: effortValues, validate(value) { return value === undefined || effortValues.includes(value as CodexReasoningEffort) ? [] : ["minimal | low | medium | high のいずれか、または unset です"]; } },
+		{ key: "effort", type: "enum", defaultValue: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.effort, description: "明示 model / Codex current model で使う reasoning effort。unset の場合は送信しません。", category: "Model", scopes: ["global", "workspace"], restartRequired: false, enumValues: effortValues, validate(value) { return value === undefined || effortValues.includes(value as CodexReasoningEffort) ? [] : [`${effortList} のいずれか、または unset です`]; } },
 		str("nonCodexDefaultModel", "Model", MEKANN_CODEX_WEB_SEARCH_DEFAULTS.nonCodexDefaultModel, "現在 provider が openai-codex 以外のときに優先する Codex model id。"),
-		{ key: "nonCodexDefaultEffort", type: "enum", defaultValue: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.nonCodexDefaultEffort, description: "nonCodexDefaultModel で使う reasoning effort。", category: "Model", scopes: ["global", "workspace"], restartRequired: false, enumValues: effortValues, validate(value) { return effortValues.includes(value as CodexReasoningEffort) ? [] : ["minimal | low | medium | high のいずれかです"]; } },
+		{ key: "nonCodexDefaultEffort", type: "enum", defaultValue: MEKANN_CODEX_WEB_SEARCH_DEFAULTS.nonCodexDefaultEffort, description: "nonCodexDefaultModel で使う reasoning effort。", category: "Model", scopes: ["global", "workspace"], restartRequired: false, enumValues: effortValues, validate(value) { return effortValues.includes(value as CodexReasoningEffort) ? [] : [`${effortList} のいずれかです`]; } },
 	],
 };
