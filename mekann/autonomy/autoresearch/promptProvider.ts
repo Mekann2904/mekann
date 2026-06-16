@@ -20,16 +20,13 @@ const SYSTEM_PROMPT_EXTRA = [
 	"- " + COMPLETE_MARKER + " は、十分な探索証拠があり未探索候補がない場合のみ返す。",
 ].join("\n");
 
-const SYSTEM_PROMPT_INACTIVE = [
-	"",
-	"## autoresearch モード(OFF)",
-	"",
-	"- autoresearch は現在 OFF。",
-	"- ユーザーが明示的に `/autoresearch on` を実行するまで、autoresearch の実験ループ・候補評価・継続タスクを開始/再開しない。",
-	"- 現在のユーザー依頼を通常の依頼として扱う。修正・調査・質問・レビューなど、依頼内容に従って対応する。",
-	"- autoresearch_run / autoresearch_log / autoresearch_init / autoresearch_plan / autoresearch_run_contract は使わない。",
-	"- autoresearch.md / .autoresearch/ は、ユーザーが明示した場合、または現在の依頼を理解するために必要な場合だけ参照する。",
-].join("\n");
+// Inactive guard, compressed to a one-liner (issue #96). The previous
+// ~600-char block was injected on every turn of every non-autoresearch
+// session (~9.7k injections). This preserves the safety guard — no
+// autonomous experiment loop / candidate eval / continuation, no
+// autoresearch_* tools, treat the request as a normal request — at a fraction
+// of the size, and still advertises the `/autoresearch on` opt-in.
+const SYSTEM_PROMPT_INACTIVE = "## autoresearch モード(OFF)。`/autoresearch on` するまで実験ループ・候補評価・継続タスクを開始/再開せず、autoresearch_run 系ツール（log/init/plan/run_contract 含む）を使わない。現在の依頼は通常の依頼として扱う。autoresearch.md / .autoresearch/ は明示時・理解に必要な場合のみ参照する。";
 
 export function registerAutoresearchPromptProvider(
 	store: SessionStore,

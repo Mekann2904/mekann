@@ -14,6 +14,17 @@ export function eventsPath(cwd: string): string {
 }
 
 /**
+ * Legacy v1 ledger filename (`events.jsonl`), superseded by ADR-0006. The v2
+ * runtime never reads or writes this path; it is archived away on first
+ * contact so it cannot masquerade as a live log (issue #96).
+ */
+const LEGACY_V1_EVENTS_FILENAME = "events.jsonl";
+
+export function legacyV1EventsPath(cwd: string): string {
+	return path.join(contextDir(cwd), LEGACY_V1_EVENTS_FILENAME);
+}
+
+/**
  * Maximum number of rotated generations kept on disk (issue #76 / C-009).
  *
  * Rotation shifts generations up (`.k` -> `.(k+1)`) before writing the newly
@@ -337,6 +348,38 @@ async function pruneEventLog(cwd: string, filePath: string): Promise<void> {
 
 export async function clearContext(cwd: string): Promise<void> {
 	await fsp.rm(contextDir(cwd), { recursive: true, force: true });
+}
+
+async function statOptional(file: string) {
+	try {
+		return await fsp.stat(file);
+	} catch (error: any) {
+		if (error?.code === "ENOENT") return undefined;
+		throw error;
+	}
+}
+
+/**
+ * Archive the legacy v1 context ledger (`events.jsonl`) introduced before
+ * ADR-0006. v2 is the only runtime path (`events.v2.jsonl`); a lingering v1
+ * file is dead weight that can mislead readers into thinking v1 is still live.
+ *
+ * Renames the v1 file to `events.jsonl.bak` (best-effort, idempotent). The
+ * data is preserved for forensic inspection but is clearly marked as a legacy
+ * backup and is never read by the runtime. If a previous `.bak` already
+ * exists, the new orphan is stashed as `events.jsonl.bak.<timestamp>` so no v1
+ * data is silently lost. Safe to call repeatedly: a no-op once the v1 file is
+ * gone. Unexpected FS errors propagate; best-effort callers wrap in try/catch.
+ */
+export async function archiveLegacyV1Log(cwd: string): Promise<void> {
+	const v1Path = legacyV1EventsPath(cwd);
+	const v1Stat = await statOptional(v1Path);
+	if (!v1Stat?.isFile()) return;
+	let backupPath = `${v1Path}.bak`;
+	if ((await statOptional(backupPath))?.isFile()) {
+		backupPath = `${v1Path}.bak.${Date.now()}`;
+	}
+	await fsp.rename(v1Path, backupPath);
 }
 
 export type { MekannContextEvent, MekannContextEventKind, MekannContextRef, ProjectedContextEvent, MekannContextEventStatus, MekannContextEvidenceLevel, MekannContextScope } from "./schema.js";
