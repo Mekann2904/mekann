@@ -162,6 +162,7 @@ export async function executeLog(
 				baselineMetric: null, // plan-scoped init→log フローは baseline ledger を持たないため null
 				direction: state.direction,
 				policy: contract.acceptance,
+				aggregate: contract.evaluation.benchmark.aggregate,
 			};
 			const acceptanceResult = evaluateAcceptance(acceptanceInput);
 
