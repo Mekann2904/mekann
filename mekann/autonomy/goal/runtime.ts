@@ -6,7 +6,7 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { GoalStore, type Goal, type GoalStateEntry, CONTINUATION_COOLDOWN_MS, DEFAULT_MAX_CONTINUATIONS } from "./state.js";
+import { GoalStore, type Goal, type GoalStateEntry, CONTINUATION_COOLDOWN_MS } from "./state.js";
 import { continuationPrompt, budgetLimitPrompt, objectiveUpdatedPrompt } from "./prompts.js";
 
 // ---------------------------------------------------------------------------
@@ -284,7 +284,6 @@ export class GoalRuntime {
     const now = Date.now();
     this.store.updateGoal(
       {
-        continuation_count: goal.continuation_count + 1,
         last_continued_at_ms: now,
       },
       goal.goal_id,

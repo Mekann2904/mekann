@@ -27,8 +27,6 @@ function createMockGoal(overrides?: Partial<Goal>): Goal {
     tokens_used: 100,
     token_budget: null,
     time_used_seconds: 45,
-    continuation_count: 2,
-    max_continuations: 5,
     last_continued_at_ms: null,
     source: "tool",
     created_at: "2026-01-01T00:00:00Z",

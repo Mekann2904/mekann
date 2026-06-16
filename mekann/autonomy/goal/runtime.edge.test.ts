@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { GoalStore, GoalError, type GoalStateEntry, DEFAULT_MAX_CONTINUATIONS } from "./state.js";
+import { GoalStore, GoalError, type GoalStateEntry } from "./state.js";
 import { GoalRuntime } from "./runtime.js";
 
 // ---------------------------------------------------------------------------
@@ -51,15 +51,10 @@ function createMockCtx(overrides: Record<string, any> = {}) {
 function createStoreWithGoal(
 	objective = "Test objective",
 	budget: number | null = null,
-	continuationCount = 0,
 ): { store: GoalStore; entries: GoalStateEntry[] } {
 	const entries: GoalStateEntry[] = [];
 	const store = new GoalStore((e) => entries.push(e));
 	store.createGoal("test-session", objective, budget, "tool");
-	// Set continuation count if needed
-	if (continuationCount > 0) {
-		store.updateGoal({ continuation_count: continuationCount }, undefined, "runtime");
-	}
 	return { store, entries };
 }
 
@@ -157,8 +152,8 @@ describe("GL-02-T2: budget exhaustion and user budget increase", () => {
 // ---------------------------------------------------------------------------
 
 describe("GL-02-T3: Codex-compatible continuation", () => {
-	it("continues when continuation_count >= max_continuations", () => {
-		const { store } = createStoreWithGoal("obj", null, DEFAULT_MAX_CONTINUATIONS);
+	it("continues indefinitely regardless of prior continuation history", () => {
+		const { store } = createStoreWithGoal("obj", null);
 		const pi = createMockPi();
 		const runtime = new GoalRuntime(store, pi as any);
 		const ctx = createMockCtx();
@@ -168,7 +163,6 @@ describe("GL-02-T3: Codex-compatible continuation", () => {
 
 		const goal = store.getGoal();
 		expect(goal!.status).toBe("active");
-		expect(goal!.continuation_count).toBe(DEFAULT_MAX_CONTINUATIONS + 1);
 		expect(pi.sendUserMessage).toHaveBeenCalledWith(
 			expect.stringContaining("Continue working toward the active thread goal"),
 			expect.any(Object),

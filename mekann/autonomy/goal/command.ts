@@ -89,11 +89,9 @@ export function registerGoalCommand(pi: ExtensionAPI, deps: GoalCommandDeps): vo
           }
           try {
             runtime.onExternalMutationStarting();
-            const resetContinuation = goal.continuation_count >= goal.max_continuations;
             const updated = store.updateGoal(
               {
                 status: "active",
-                ...(resetContinuation ? { continuation_count: 0, last_continued_at_ms: null } : {}),
               },
               undefined,
               "user",
@@ -140,12 +138,10 @@ export function registerGoalCommand(pi: ExtensionAPI, deps: GoalCommandDeps): vo
           try {
             runtime.onExternalMutationStarting();
             const previousGoal = store.getGoal();
-            const resetContinuation = previousGoal!.continuation_count >= previousGoal!.max_continuations;
             const updated = store.updateGoal(
               {
                 objective: edited,
                 status: "active",
-                ...(resetContinuation ? { continuation_count: 0, last_continued_at_ms: null } : {}),
               },
               undefined,
               "user",
