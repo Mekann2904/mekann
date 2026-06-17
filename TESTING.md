@@ -117,6 +117,8 @@ prepush = typecheck + CI prepare + workflow checks + module tests (parallel)
   └── ledger tests
 ```
 
+各ジョブは CPU 優先度を下げて実行されます（macOS: `taskpolicy -c utility` の QoS クランプ、Linux: `nice`）。テストはアイドル時はフル速度で走り、pi セッションやブラウザといった対話作業が CPU を必要とすると自動的に譲ります。優先度を通常に戻したい（専用ビルド機など）場合は `PREPUSH_NOPRIORITIZE=1`、同時並列数は `PREPUSH_MAX_JOBS`（既定 3）で調整できます。
+
 ```bash
 # 手動実行
 npm run prepush

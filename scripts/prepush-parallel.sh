@@ -10,6 +10,27 @@
 # at the Vitest default since they are productively used within each module.
 set -euo pipefail
 
+# Run the parallel jobs at a CPU-yielding priority so interactive work
+# (editor, browser, this pi session) stays responsive while prepush hammers
+# every core. macOS: QoS-clamp each job to "utility" — low CPU priority that
+# still uses idle CPU at full speed (unlike "background", which also throttles
+# disk I/O) and is inherited by every child process, so all Vitest workers get
+# it too — see taskpolicy(8). Linux: fall back to nice. Set PREPUSH_NOPRIORITIZE=1
+# to run at normal priority (e.g. a dedicated build box). Note: load average
+# still counts these runnable threads, so judge the effect by interactive
+# responsiveness, not by load avg.
+if [ -z "${PREPUSH_NOPRIORITIZE:-}" ]; then
+  if command -v taskpolicy >/dev/null 2>&1; then
+    PRIORITIZE="taskpolicy -c utility"
+  elif command -v nice >/dev/null 2>&1; then
+    PRIORITIZE="nice"
+  else
+    PRIORITIZE=""
+  fi
+else
+  PRIORITIZE=""
+fi
+
 start_ms=$(python3 -c 'import time; print(int(time.time()*1000))')
 
 # Fail before running checks if a previous extension/test run polluted .git/config.
@@ -50,7 +71,7 @@ for name in "${!names[@]}"; do
     [ "$active" -lt "$MAX_JOBS" ] && break
     sleep 0.2
   done
-  eval "${names[$name]}" > "$tmpdir/$name.log" 2>&1 & pids[$name]=$!
+  eval "$PRIORITIZE ${names[$name]}" > "$tmpdir/$name.log" 2>&1 & pids[$name]=$!
 done
 
 fail=0
