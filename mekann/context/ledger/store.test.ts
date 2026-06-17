@@ -15,6 +15,8 @@ import {
 	eventsPath,
 	rotatedEventsPath,
 	contextDir,
+	legacyV1EventsPath,
+	archiveLegacyV1Log,
 } from "./store.js";
 
 async function tmp(): Promise<string> {
@@ -306,6 +308,80 @@ describe("context ledger store", () => {
 	});
 
 	// ─── Rotation tests ────────────────────────────────────
+
+	// ─── Legacy v1 archival (issue #96) ────────────────────────────────────────────
+
+	describe("archiveLegacyV1Log", () => {
+		it("is a no-op when no v1 file exists", async () => {
+			const cwd = await tmp();
+			await archiveLegacyV1Log(cwd);
+			expect(fs.existsSync(legacyV1EventsPath(cwd))).toBe(false);
+			expect(fs.existsSync(`${legacyV1EventsPath(cwd)}.bak`)).toBe(false);
+		});
+
+		it("archives the v1 file to events.jsonl.bak and preserves its contents", async () => {
+			const cwd = await tmp();
+			await fsp.mkdir(contextDir(cwd), { recursive: true });
+			const v1 = legacyV1EventsPath(cwd);
+			await fsp.writeFile(v1, `{"legacy":"v1 event"}\n`, "utf8");
+
+			await archiveLegacyV1Log(cwd);
+
+			expect(fs.existsSync(v1)).toBe(false);
+			const bak = `${v1}.bak`;
+			expect(fs.existsSync(bak)).toBe(true);
+			expect(await fsp.readFile(bak, "utf8")).toBe(`{"legacy":"v1 event"}\n`);
+		});
+
+		it("leaves the v2 log untouched", async () => {
+			const cwd = await tmp();
+			await fsp.mkdir(contextDir(cwd), { recursive: true });
+			await fsp.writeFile(legacyV1EventsPath(cwd), `v1\n`, "utf8");
+			await appendContextEvent({ cwd, kind: "task", priority: 2, title: "V2", summary: "v2", evidenceLevel: "observed", idGenerator: () => "ctx_arch_v2_1" });
+
+			await archiveLegacyV1Log(cwd);
+
+			const events = await readEvents(cwd);
+			expect(events).toHaveLength(1);
+			expect(events[0].id).toBe("ctx_arch_v2_1");
+		});
+
+		it("stashes a second v1 orphan with a timestamp suffix instead of clobbering an existing .bak", async () => {
+			const cwd = await tmp();
+			await fsp.mkdir(contextDir(cwd), { recursive: true });
+			const v1 = legacyV1EventsPath(cwd);
+			await fsp.writeFile(`${v1}.bak`, `prior archive\n`, "utf8");
+			await fsp.writeFile(v1, `new orphan\n`, "utf8");
+
+			await archiveLegacyV1Log(cwd);
+
+			expect(fs.existsSync(v1)).toBe(false);
+			// Prior archive is preserved verbatim.
+			expect(await fsp.readFile(`${v1}.bak`, "utf8")).toBe(`prior archive\n`);
+			// New orphan is stashed aside with a timestamp suffix; no data lost.
+			const dir = contextDir(cwd);
+			const stashed = fs.readdirSync(dir).filter((n) => /^events\.jsonl\.bak\.\d+$/.test(n));
+			expect(stashed).toHaveLength(1);
+			expect(await fsp.readFile(path.join(dir, stashed[0]), "utf8")).toBe(`new orphan\n`);
+		});
+
+		it("is idempotent across repeated calls", async () => {
+			const cwd = await tmp();
+			await fsp.mkdir(contextDir(cwd), { recursive: true });
+			const v1 = legacyV1EventsPath(cwd);
+			await fsp.writeFile(v1, `v1\n`, "utf8");
+
+			await archiveLegacyV1Log(cwd);
+			await archiveLegacyV1Log(cwd);
+			await archiveLegacyV1Log(cwd);
+
+			expect(fs.existsSync(v1)).toBe(false);
+			expect(fs.existsSync(`${v1}.bak`)).toBe(true);
+			// Only a single archive file remains.
+			const archives = fs.readdirSync(contextDir(cwd)).filter((n) => /^events\.jsonl(\.bak(\.\d+)?)?$/.test(n));
+			expect(archives).toEqual(["events.jsonl.bak"]);
+		});
+	});
 
 	describe("rotation", () => {
 		it("does not rotate when file is under size limit", async () => {
