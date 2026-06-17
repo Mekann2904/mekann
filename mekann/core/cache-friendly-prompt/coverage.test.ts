@@ -739,3 +739,105 @@ describe("report.ts coverage", () => {
     expect(report).not.toContain("## 11. Glossary");
   });
 });
+
+// ---- Dynamic tail truncation: both stages captured (issue #95) ----
+
+describe("report §7 dynamic truncation (render + tail stages)", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = os.tmpdir();
+    writtenFiles.clear();
+    vi.mocked(fs.readFile).mockReset();
+    vi.mocked(fs.writeFile).mockReset().mockImplementation((...args: unknown[]) => {
+      writtenFiles.set(args[0] as string, args[1] as string);
+      return Promise.resolve();
+    });
+  });
+
+  async function runWithLog(requestLogText: string) {
+    vi.mocked(fs.readFile).mockImplementation((filePath: any) => {
+      const p = String(filePath);
+      if (p.endsWith("requests.jsonl")) return Promise.resolve(requestLogText);
+      if (p.endsWith("actual-usage.jsonl")) return Promise.resolve("");
+      return Promise.reject(new Error("not found"));
+    });
+    await generateCacheFriendlyReport(dir);
+  }
+
+  it("counts snapshot/tail-side truncation via the dynamicContextTruncated flag", async () => {
+    const rows = [
+      makeLog({ dynamicContextTruncated: true, dynamicContextOriginalChars: 15000, dynamicContextRenderedChars: 12000, dynamicContextLimitChars: 12000 }),
+    ].join("\n");
+    await runWithLog(rows);
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.dynamicTailTruncationCount).toBe(1);
+    expect(summary.dynamicFragmentTruncationCount).toBe(0);
+    // "any stage" count = union of the two stages
+    expect(summary.dynamicTruncationCount).toBe(1);
+    expect(summary.dynamicTruncationOmittedChars).toBe(3000);
+  });
+
+  it("counts render-side truncation via the fragmentId-bearing DYNAMIC_CONTEXT_TRUNCATED warning", async () => {
+    // No snapshot flag set — render-side trimming only. The report must still
+    // capture this stage (previously only the snapshot flag was considered).
+    const rows = [
+      makeLog({
+        warnings: [
+          { severity: "warning", code: "DYNAMIC_CONTEXT_TRUNCATED", message: "Dynamic fragment truncated to reduce context: d2", fragmentId: "d2", source: "s" },
+        ],
+        latestDynamicFragmentHashes: [{ id: "d2", source: "s", kind: "coding_guidelines", stability: "dynamic", hash: "h" }],
+      }),
+    ].join("\n");
+    await runWithLog(rows);
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.dynamicFragmentTruncationCount).toBe(1);
+    expect(summary.dynamicTailTruncationCount).toBe(0);
+    expect(summary.dynamicTruncationCount).toBe(1);
+  });
+
+  it("distinguishes both stages in §7 via the trim stage column when both fire", async () => {
+    const rows = [
+      makeLog({
+        dynamicContextTruncated: true,
+        dynamicContextOriginalChars: 25000,
+        dynamicContextRenderedChars: 12000,
+        dynamicContextLimitChars: 12000,
+        warnings: [
+          { severity: "warning", code: "DYNAMIC_CONTEXT_TRUNCATED", message: "render trim", fragmentId: "d1", source: "s" },
+        ],
+        latestDynamicFragmentHashes: [{ id: "d1", source: "s", kind: "coding_guidelines", stability: "dynamic", hash: "h" }],
+      }),
+    ].join("\n");
+    await runWithLog(rows);
+    const report = writtenFiles.get(path.join(dir, "report.md"))!;
+    expect(report).toContain("## 7. Dynamic tail size / truncation");
+    // New description explains the two-stage limits
+    expect(report).toContain("DYNAMIC_FRAGMENT_BUDGET_CHARS");
+    expect(report).toContain("DYNAMIC_TAIL_MAX_CHARS");
+    // Header gained the trim stage column
+    expect(report).toContain("| trim stage |");
+    // The row is classified as truncated by both stages
+    expect(report).toContain("render + tail");
+  });
+
+  it("does not double-count a render+tail row in the any-stage total", async () => {
+    const rows = [
+      makeLog({
+        dynamicContextTruncated: true,
+        dynamicContextOriginalChars: 25000,
+        dynamicContextRenderedChars: 12000,
+        dynamicContextLimitChars: 12000,
+        warnings: [
+          { severity: "warning", code: "DYNAMIC_CONTEXT_TRUNCATED", message: "render trim", fragmentId: "d1", source: "s" },
+        ],
+      }),
+    ].join("\n");
+    await runWithLog(rows);
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.dynamicTailTruncationCount).toBe(1);
+    expect(summary.dynamicFragmentTruncationCount).toBe(1);
+    // Union, not sum: a single row truncated by both stages counts once.
+    expect(summary.dynamicTruncationCount).toBe(1);
+  });
+});

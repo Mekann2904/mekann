@@ -6,6 +6,12 @@ import type { OutputGateLedgerEvent } from "./outputGateSavings.js";
 
 import type { ActualUsageLog } from "./actualUsage.js";
 import type { ParsedLog, ParsedActualUsageLog, ProviderSummary, ActualProviderSummary, PercentileSummary, CacheFriendlySummary, WarningBreakdownEntry, WarningCategoryBreakdown, RecentWindowSummary } from "./reportTypes.js";
+import {
+  dynamicTruncationStage,
+  hasDynamicFragmentTruncation,
+  hasDynamicTailTruncation,
+  hasDynamicTruncation,
+} from "./reportDynamicTruncation.js";
 import { computeWarningBreakdown, computeWarningCategories, WARNING_BREAKDOWN_TOP_N } from "./reportWarningAnalytics.js";
 
 const MAX_POINTS = 500;
@@ -310,9 +316,11 @@ function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], genera
   }
   const uniqueScopedReuseKeyCount = countUniqueScopedReuseKeys(rows);
   const uniqueScopedReuseKeyRatio = rate(uniqueScopedReuseKeyCount, rows.length);
-  const dynamicTruncatedRows = rows.filter((row) => row.dynamicContextTruncated === true);
-  const dynamicTruncationOriginalChars = dynamicTruncatedRows.reduce((sum, row) => sum + (row.dynamicContextOriginalChars ?? 0), 0);
-  const dynamicTruncationRenderedChars = dynamicTruncatedRows.reduce((sum, row) => sum + (row.dynamicContextRenderedChars ?? 0), 0);
+  const dynamicTailTruncatedRows = rows.filter(hasDynamicTailTruncation);
+  const dynamicFragmentTruncatedRows = rows.filter(hasDynamicFragmentTruncation);
+  const dynamicTruncatedRows = rows.filter(hasDynamicTruncation);
+  const dynamicTruncationOriginalChars = dynamicTailTruncatedRows.reduce((sum, row) => sum + (row.dynamicContextOriginalChars ?? 0), 0);
+  const dynamicTruncationRenderedChars = dynamicTailTruncatedRows.reduce((sum, row) => sum + (row.dynamicContextRenderedChars ?? 0), 0);
   const actual = summarizeActual(actualRows);
   return {
     generatedAt,
@@ -342,6 +350,8 @@ function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], genera
     providerSwitches: countChanges(rows, (r) => r.provider),
     modelSwitchesWithinProvider: rows.reduce((n, row, i) => i > 0 && (row.provider ?? "") === (rows[i - 1].provider ?? "") && (row.model ?? "") !== (rows[i - 1].model ?? "") ? n + 1 : n, 0),
     dynamicTruncationCount: dynamicTruncatedRows.length,
+    dynamicTailTruncationCount: dynamicTailTruncatedRows.length,
+    dynamicFragmentTruncationCount: dynamicFragmentTruncatedRows.length,
     dynamicTruncationOriginalChars,
     dynamicTruncationRenderedChars,
     dynamicTruncationOmittedChars: Math.max(0, dynamicTruncationOriginalChars - dynamicTruncationRenderedChars),
@@ -659,7 +669,9 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[], actualRo
     ["latest stable prefix chars", latest?.stablePrefixChars ?? 0],
     ["latest total prompt chars", latest?.totalPromptChars ?? 0],
     ["warnings", summary.warningCount],
-    ["dynamic truncations", summary.dynamicTruncationCount],
+    ["dynamic truncations (any stage)", summary.dynamicTruncationCount],
+    ["dynamic tail truncations", summary.dynamicTailTruncationCount],
+    ["dynamic fragment truncations", summary.dynamicFragmentTruncationCount],
     ["dynamic truncation omitted chars", summary.dynamicTruncationOmittedChars],
     ["output-gate externalized (count)", summary.outputGateSavings.count],
     ["output-gate externalized bytes", formatBytes(summary.outputGateSavings.totalBytes)],
@@ -683,11 +695,11 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[], actualRo
     ["cacheMissTokens", summary.actualCacheMissTokens],
     ["weighted cacheableReadRate", formatPct(summary.actualCacheableReadRateWeighted)],
   ]);
-  const dynamicTruncationRows = rows.filter((row) => row.dynamicContextTruncated === true)
+  const dynamicTruncationRows = rows.filter(hasDynamicTruncation)
     .slice(-20)
     .reverse()
-    .map((row) => `| ${row.timestamp} | ${escapeHtml(providerKey(row))} | ${row.dynamicContextOriginalChars ?? 0} | ${row.dynamicContextRenderedChars ?? 0} | ${Math.max(0, (row.dynamicContextOriginalChars ?? 0) - (row.dynamicContextRenderedChars ?? 0))} | ${row.dynamicContextLimitChars ?? 0} | ${row.latestDynamicFragmentHashes?.map((f) => `${f.source}/${f.id}`).slice(0, 6).join(", ") ?? ""} |`)
-    .join("\n") || "| なし |  |  |  |  |  | |";
+    .map((row) => `| ${row.timestamp} | ${escapeHtml(providerKey(row))} | ${dynamicTruncationStage(row)} | ${row.dynamicContextOriginalChars ?? 0} | ${row.dynamicContextRenderedChars ?? 0} | ${Math.max(0, (row.dynamicContextOriginalChars ?? 0) - (row.dynamicContextRenderedChars ?? 0))} | ${row.dynamicContextLimitChars ?? 0} | ${row.latestDynamicFragmentHashes?.map((f) => `${f.source}/${f.id}`).slice(0, 6).join(", ") ?? ""} |`)
+    .join("\n") || "| なし |  |  |  |  |  |  |  |";
   const providerModelSwitchRows = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined }))
     .filter((x): x is { row: ParsedLog; prev: ParsedLog } => x.prev !== undefined && providerKey(x.row) !== providerKey(x.prev))
     .slice(-20)
@@ -863,10 +875,10 @@ ${providerRows || "| なし | 0 | 0 |  | 0 | 0 | 0 |"}
 
 ## 7. Dynamic tail size / truncation
 
-Dynamic context is intentionally placed in the volatile tail, but very large dynamic tails still increase total input tokens and can lower request-level tokenHitRate. This table shows recent dynamic truncations.
+Dynamic context is intentionally placed in the volatile tail, but very large dynamic tails still increase total input tokens and can lower request-level tokenHitRate. Dynamic context is bounded in two stages with distinct limits (see prompt-core/config.ts): a per-fragment render-side budget (DYNAMIC_FRAGMENT_BUDGET_CHARS) and a whole-tail snapshot-side cap (DYNAMIC_TAIL_MAX_CHARS). The **trim stage** column shows which stage(s) truncated each request so it is clear which limit applied.
 
-| timestamp | provider/model | original chars | rendered chars | omitted chars | limit chars | dynamic fragments |
-|---|---|---:|---:|---:|---:|---|
+| timestamp | provider/model | trim stage | original chars | rendered chars | omitted chars | limit chars | dynamic fragments |
+|---|---|---|---:|---:|---:|---:|---|
 ${dynamicTruncationRows}
 
 ## 8. Provider/model switching
