@@ -148,6 +148,7 @@ describe("mekann integrated extension", () => {
 		expect(source).toContain("Phase 1 — issue対応");
 		expect(source).toContain("Phase 2 — review_fixerによる調査と修正");
 		expect(source).toContain("Phase 3 — issue_workflow (status → diff → commit → push → create_pr)");
+		expect(source).toContain("Do not run thermo-nuclear-code-quality-review directly in the parent Issue Pi as the normal gate");
 		expect(source).toContain("Do not commit, push, or create a PR before review_fixer has completed successfully.");
 	});
 

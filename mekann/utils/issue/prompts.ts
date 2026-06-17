@@ -54,6 +54,7 @@ function buildImplementationPhasePrompt(issueNumber: number): string {
 		"create_pr should produce a ready (non-draft) PR; review_fixer has already gated implementation quality.",
 		"Do not collapse these phases. Announce the current phase briefly before acting so the user can follow progress.",
 		"Do not merely recommend review_fixer after implementation; invoke it yourself unless the issue is blocked or the user explicitly forbids it.",
+		"Do not run thermo-nuclear-code-quality-review directly in the parent Issue Pi as the normal gate; use review_fixer so the review happens in a clean child Pi context. Direct /skill force-load is only a fallback if review_fixer errors and explicitly tells you to use it.",
 		"Do not commit, push, or create a PR before review_fixer has completed successfully.",
 	].join("\n");
 }

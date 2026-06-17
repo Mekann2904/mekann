@@ -109,7 +109,7 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
       "Use review_fixer before creating a PR for an issue implementation.",
       "The tool is synchronous — it will block until the child Pi completes.",
       "The child Pi edits the current workspace directly. Review the returned result carefully.",
-      "After review_fixer completes, use /issue to create the PR.",
+      "After review_fixer completes successfully, the parent Issue Pi should continue to Phase 3 using issue_workflow (status → diff → commit → push → create_pr).",
     ],
     parameters: ReviewFixerParamsSchema,
     execute: async (

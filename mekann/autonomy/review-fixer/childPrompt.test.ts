@@ -44,9 +44,12 @@ describe("buildChildPrompt", () => {
     expect(prompt).toContain(ctx.url);
   });
 
-  it("prohibits commit, push, PR, and nested subagents", () => {
+  it("prohibits commit, push, PR, issue_workflow, and nested subagents", () => {
     const prompt = buildChildPrompt(makeIssueContext(), mockCwd, options);
+    expect(prompt).toContain("あなたは review_fixer の child Pi です");
     expect(prompt).toContain("commit / push / PR 作成は行わないでください");
+    expect(prompt).toContain("Phase 3 は親 Issue Pi が issue_workflow で実行します");
+    expect(prompt).toContain("issue_workflow tool を呼び出さないでください");
     expect(prompt).toContain("subagent を起動せず");
   });
 
