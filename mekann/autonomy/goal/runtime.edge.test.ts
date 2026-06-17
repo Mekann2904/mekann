@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { GoalStore, GoalError, type GoalStateEntry } from "./state.js";
+import { GoalStore, GoalError, DEFAULT_OBJECTIVE_LENGTH, type GoalStateEntry } from "./state.js";
 import { GoalRuntime } from "./runtime.js";
 
 // ---------------------------------------------------------------------------
@@ -216,17 +216,25 @@ describe("GoalStore: objective validation", () => {
 		expect(() => store.createGoal("t", "   ")).toThrow(GoalError);
 	});
 
-	it("rejects objective over 4000 characters", () => {
+	it("rejects objective over the default limit", () => {
 		const entries: GoalStateEntry[] = [];
 		const store = new GoalStore((e) => entries.push(e));
-		expect(() => store.createGoal("t", "x".repeat(4001))).toThrow(GoalError);
+		expect(() => store.createGoal("t", "x".repeat(DEFAULT_OBJECTIVE_LENGTH + 1))).toThrow(GoalError);
 	});
 
-	it("accepts objective at exactly 4000 characters", () => {
+	it("accepts objective at exactly the default limit", () => {
 		const entries: GoalStateEntry[] = [];
 		const store = new GoalStore((e) => entries.push(e));
-		const goal = store.createGoal("t", "x".repeat(4000));
-		expect(goal.objective).toHaveLength(4000);
+		const goal = store.createGoal("t", "x".repeat(DEFAULT_OBJECTIVE_LENGTH));
+		expect(goal.objective).toHaveLength(DEFAULT_OBJECTIVE_LENGTH);
+	});
+
+	it("honors an injected maxObjectiveLength", () => {
+		const entries: GoalStateEntry[] = [];
+		const store = new GoalStore((e) => entries.push(e), 50);
+		expect(() => store.createGoal("t", "x".repeat(51))).toThrow(GoalError);
+		const goal = store.createGoal("t", "x".repeat(50));
+		expect(goal.objective).toHaveLength(50);
 	});
 });
 

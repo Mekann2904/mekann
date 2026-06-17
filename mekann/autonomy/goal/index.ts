@@ -26,6 +26,8 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { GoalStateEntry, GoalStore } from "./state.js";
+import { DEFAULT_OBJECTIVE_LENGTH, clampObjectiveLimit } from "./state.js";
+import { featureRawConfig } from "../../settings/enabled.js";
 import type { GoalRuntime } from "./runtime.js";
 import { registerGoalCommand } from "./command.js";
 import { createGoalWidgetController } from "./goalWidget.js";
@@ -81,6 +83,22 @@ export default function goalExtension(pi: ExtensionAPI): void {
     return true;
   }
 
+  /**
+   * Resolve the configured objective-length limit for new GoalStores. Reads
+   * the merged mekann.json `goal.maxObjectiveLength` (workspace overrides
+   * global) and clamps it to the safe range. Defaults are used in tests and on
+   * any read error so a malformed setting never disables the limit.
+   */
+  function getMaxObjectiveLength(): number {
+    if (process.env.VITEST || process.env.NODE_ENV === "test") return DEFAULT_OBJECTIVE_LENGTH;
+    try {
+      const raw = featureRawConfig("goal").maxObjectiveLength;
+      return clampObjectiveLimit(typeof raw === "number" ? raw : undefined);
+    } catch {
+      return DEFAULT_OBJECTIVE_LENGTH;
+    }
+  }
+
   // ─── Wire focused modules ─────────────────────────────────────
 
   // UI widget + model-tool surface control
@@ -107,6 +125,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
     customType: CUSTOM_TYPE,
     syncToolSurface: widget.syncToolSurface,
     updateWidget: widget.updateWidget,
+    getMaxObjectiveLength,
   });
 
   // /goal command

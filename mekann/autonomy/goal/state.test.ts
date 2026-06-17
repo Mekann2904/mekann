@@ -8,6 +8,9 @@ import {
 	GoalError,
 	validateObjective,
 	validateTokenBudget,
+	DEFAULT_OBJECTIVE_LENGTH,
+	HARD_MAX_OBJECTIVE_LENGTH,
+	clampObjectiveLimit,
 	type GoalStateEntry,
 	type Goal,
 } from "./state.js";
@@ -19,6 +22,12 @@ import {
 function makeStore() {
 	const persisted: GoalStateEntry[] = [];
 	const store = new GoalStore((entry) => persisted.push(entry));
+	return { store, persisted };
+}
+
+function makeStoreWithLimit(maxObjectiveLength: number) {
+	const persisted: GoalStateEntry[] = [];
+	const store = new GoalStore((entry) => persisted.push(entry), maxObjectiveLength);
 	return { store, persisted };
 }
 
@@ -51,15 +60,45 @@ describe("validateObjective", () => {
 		expect(() => validateObjective("   ")).toThrow(GoalError);
 	});
 
-	it("rejects objective exceeding 4000 characters", () => {
-		const long = "a".repeat(4001);
+	it(`rejects objective exceeding default ${DEFAULT_OBJECTIVE_LENGTH} characters`, () => {
+		const long = "a".repeat(DEFAULT_OBJECTIVE_LENGTH + 1);
 		expect(() => validateObjective(long)).toThrow(GoalError);
 		expect(() => validateObjective(long)).toThrow("Objective too long");
 	});
 
-	it("accepts objective at exactly 4000 characters", () => {
-		const exact = "a".repeat(4000);
+	it(`accepts objective at exactly ${DEFAULT_OBJECTIVE_LENGTH} characters`, () => {
+		const exact = "a".repeat(DEFAULT_OBJECTIVE_LENGTH);
 		expect(validateObjective(exact)).toBe(exact);
+	});
+
+	it("honors an explicit maxLen argument", () => {
+		expect(() => validateObjective("a".repeat(501), 500)).toThrow("Objective too long");
+		expect(validateObjective("a".repeat(500), 500)).toHaveLength(500);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// clampObjectiveLimit
+// ---------------------------------------------------------------------------
+
+describe("clampObjectiveLimit", () => {
+	it("returns the default for undefined / non-finite values", () => {
+		expect(clampObjectiveLimit(undefined)).toBe(DEFAULT_OBJECTIVE_LENGTH);
+		expect(clampObjectiveLimit(NaN)).toBe(DEFAULT_OBJECTIVE_LENGTH);
+		expect(clampObjectiveLimit(Number.POSITIVE_INFINITY)).toBe(DEFAULT_OBJECTIVE_LENGTH);
+	});
+
+	it("clamps below 1 up to 1", () => {
+		expect(clampObjectiveLimit(0)).toBe(1);
+		expect(clampObjectiveLimit(-5)).toBe(1);
+	});
+
+	it(`clamps above ${HARD_MAX_OBJECTIVE_LENGTH} down to the hard ceiling`, () => {
+		expect(clampObjectiveLimit(HARD_MAX_OBJECTIVE_LENGTH + 1)).toBe(HARD_MAX_OBJECTIVE_LENGTH);
+	});
+
+	it("floors fractional input", () => {
+		expect(clampObjectiveLimit(123.9)).toBe(123);
 	});
 });
 
@@ -151,9 +190,9 @@ describe("createGoal", () => {
 		expect(() => store.createGoal("t1", "")).toThrow("Objective cannot be empty");
 	});
 
-	it("rejects objective too long", () => {
+	it(`rejects objective over default ${DEFAULT_OBJECTIVE_LENGTH} characters`, () => {
 		const { store } = makeStore();
-		expect(() => store.createGoal("t1", "x".repeat(4001))).toThrow("Objective too long");
+		expect(() => store.createGoal("t1", "x".repeat(DEFAULT_OBJECTIVE_LENGTH + 1))).toThrow("Objective too long");
 	});
 
 	it("rejects invalid token budget", () => {
@@ -161,6 +200,41 @@ describe("createGoal", () => {
 		expect(() => store.createGoal("t1", "Obj", -10)).toThrow(
 			"Token budget must be a positive integer or null",
 		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// GoalStore: maxObjectiveLength injection
+// ---------------------------------------------------------------------------
+
+describe("GoalStore maxObjectiveLength injection", () => {
+	it("createGoal honors the injected limit", () => {
+		const { store } = makeStoreWithLimit(50);
+		expect(() => store.createGoal("t1", "x".repeat(51))).toThrow("Objective too long");
+		expect(store.createGoal("t1", "x".repeat(50)).objective).toHaveLength(50);
+	});
+
+	it("replaceGoal honors the injected limit", () => {
+		const { store } = makeStoreWithLimit(50);
+		expect(() => store.replaceGoal("t1", "x".repeat(51))).toThrow("Objective too long");
+});
+
+	it("updateGoal honors the injected limit", () => {
+		const { store } = makeStoreWithLimit(50);
+		store.createGoal("t1", "short");
+		expect(() => store.updateGoal({ objective: "x".repeat(51) })).toThrow("Objective too long");
+	});
+
+	it("fromEntries reconstructs a store with the injected limit", () => {
+		const entries: GoalStateEntry[] = [];
+		const store = GoalStore.fromEntries([], (e) => entries.push(e), 10);
+		expect(() => store.createGoal("t1", "x".repeat(11))).toThrow("Objective too long");
+	});
+
+	it("falls back to the default limit when none is injected", () => {
+		const { store } = makeStore();
+		expect(store.createGoal("t1", "x".repeat(DEFAULT_OBJECTIVE_LENGTH)).objective)
+			.toHaveLength(DEFAULT_OBJECTIVE_LENGTH);
 	});
 });
 

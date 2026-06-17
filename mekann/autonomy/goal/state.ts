@@ -69,13 +69,35 @@ export type PersistFn = (entry: GoalStateEntry) => void;
 // Validation
 // ---------------------------------------------------------------------------
 
-const MAX_OBJECTIVE_LENGTH = 4000;
+const DEFAULT_OBJECTIVE_LENGTH = 100_000;
 
-export function validateObjective(objective: string): string {
+/**
+ * Hard sanity ceiling that caps any configured objective length. Protects
+ * against pathological inputs regardless of the `goal.maxObjectiveLength`
+ * setting so a malformed mekann.json cannot disable the limit entirely.
+ */
+export const HARD_MAX_OBJECTIVE_LENGTH = 500_000;
+
+/** Default maximum objective length (characters). Exported for schema/tools. */
+export { DEFAULT_OBJECTIVE_LENGTH };
+
+/**
+ * Resolve a raw objective-length value to a safe positive integer within
+ * `[1, HARD_MAX_OBJECTIVE_LENGTH]`. Falls back to the default for missing or
+ * non-finite input so a misconfigured setting degrades gracefully rather than
+ * disabling the limit.
+ */
+export function clampObjectiveLimit(value: number | undefined | null): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_OBJECTIVE_LENGTH;
+  return Math.min(Math.max(Math.floor(value), 1), HARD_MAX_OBJECTIVE_LENGTH);
+}
+
+export function validateObjective(objective: string, maxLen: number = DEFAULT_OBJECTIVE_LENGTH): string {
+  const limit = clampObjectiveLimit(maxLen);
   const trimmed = objective.trim();
   if (!trimmed) throw new GoalError("Objective cannot be empty");
-  if (trimmed.length > MAX_OBJECTIVE_LENGTH) {
-    throw new GoalError(`Objective too long (max ${MAX_OBJECTIVE_LENGTH} characters)`);
+  if (trimmed.length > limit) {
+    throw new GoalError(`Objective too long (max ${limit} characters)`);
   }
   return trimmed;
 }
@@ -152,17 +174,23 @@ function shouldAccountGoalStatus(
 export class GoalStore {
   private goal: Goal | null = null;
   private readonly persistFn: PersistFn;
+  private readonly maxObjectiveLength: number;
 
-  constructor(persistFn: PersistFn) {
+  constructor(persistFn: PersistFn, maxObjectiveLength: number = DEFAULT_OBJECTIVE_LENGTH) {
     this.persistFn = persistFn;
+    this.maxObjectiveLength = clampObjectiveLimit(maxObjectiveLength);
   }
 
   /**
    * Reconstruct a GoalStore from a sequence of persistence entries.
    * Entries are applied in order; the final state reflects the latest entry.
    */
-  static fromEntries(entries: GoalStateEntry[], persistFn: PersistFn): GoalStore {
-    const store = new GoalStore(persistFn);
+  static fromEntries(
+    entries: GoalStateEntry[],
+    persistFn: PersistFn,
+    maxObjectiveLength?: number,
+  ): GoalStore {
+    const store = new GoalStore(persistFn, maxObjectiveLength);
     for (const entry of entries) {
       switch (entry.kind) {
         case "set":
@@ -198,7 +226,7 @@ export class GoalStore {
       throw new GoalError("Goal already exists for this thread");
     }
 
-    const validatedObjective = validateObjective(objective);
+    const validatedObjective = validateObjective(objective, this.maxObjectiveLength);
     const validatedBudget = validateTokenBudget(tokenBudget);
 
     const now = Date.now();
@@ -231,7 +259,7 @@ export class GoalStore {
     tokenBudget?: number | null,
     source: GoalSource = "user",
   ): Goal {
-    const validatedObjective = validateObjective(objective);
+    const validatedObjective = validateObjective(objective, this.maxObjectiveLength);
     const validatedBudget = validateTokenBudget(tokenBudget);
     const previousGoalId = this.goal?.goal_id;
 
@@ -283,7 +311,7 @@ export class GoalStore {
     const goal = { ...this.goal };
 
     if (patch.objective !== undefined) {
-      goal.objective = validateObjective(patch.objective);
+      goal.objective = validateObjective(patch.objective, this.maxObjectiveLength);
     }
 
     if (patch.status !== undefined) {

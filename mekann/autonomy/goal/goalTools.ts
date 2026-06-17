@@ -10,7 +10,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { GoalError, type Goal, type GoalStore, type GoalSource, remainingTokens } from "./state.js";
+import { GoalError, type Goal, type GoalStore, type GoalSource, remainingTokens, DEFAULT_OBJECTIVE_LENGTH } from "./state.js";
 import type { GoalRuntime } from "./runtime.js";
 import type { GoalAction } from "./context-events.js";
 
@@ -107,7 +107,9 @@ export function registerGoalTools(deps: GoalToolDeps): void {
       "If a goal already exists, report the error to the user.",
     ],
     parameters: Type.Object({
-      objective: Type.String({ description: "The goal objective" }),
+      objective: Type.String({
+        description: `The goal objective. Keep it focused but complete; up to ~${DEFAULT_OBJECTIVE_LENGTH} characters by default (configurable via goal.maxObjectiveLength). Objectives beyond the limit are rejected.`,
+      }),
       token_budget: Type.Optional(
         Type.Integer({
           minimum: 1,

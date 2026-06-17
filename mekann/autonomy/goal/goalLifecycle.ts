@@ -40,6 +40,8 @@ export interface GoalLifecycleDeps {
   syncToolSurface(): void;
   /** Refresh the TUI widget for the current goal. */
   updateWidget(ctx: ExtensionContext): void;
+  /** Resolve the configured objective-length limit for the reconstructed store. */
+  getMaxObjectiveLength(): number;
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +80,7 @@ export function registerGoalLifecycle(deps: GoalLifecycleDeps): void {
       }
     }
 
-    const store = GoalStore.fromEntries(goalEntries, deps.persist);
+    const store = GoalStore.fromEntries(goalEntries, deps.persist, deps.getMaxObjectiveLength());
     const runtime = new GoalRuntime(store, pi, (action, goal) => {
       recordGoalAction({
         action: action as GoalAction,
