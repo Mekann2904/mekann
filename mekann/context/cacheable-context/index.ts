@@ -75,7 +75,12 @@ export default function cacheableContextExtension(pi: ExtensionAPI): void {
   if (featureValue("cacheable-context", "enabled") === false) return;
 
   pi.on("session_start", async (_event: any, ctx: any) => {
-    try { await ensureBuilt(ctx?.cwd ?? process.cwd()); } catch (error) { ctx?.ui?.notify?.(`Mekann cacheable context build failed: ${String(error)}`, "warn"); }
+    const cwd = ctx?.cwd ?? process.cwd();
+    try { await ensureBuilt(cwd); } catch (error) { ctx?.ui?.notify?.(`Mekann cacheable context build failed: ${String(error)}`, "warn"); }
+    const configuredSurface = featureStringValue("cacheable-context", "promptSurface", "locator", cwd);
+    if (configuredSurface === "full") {
+      ctx?.ui?.notify?.('cacheable-context: promptSurface "full" is deprecated and now behaves as "locator". The base system already injects AGENTS.md and domain docs, so "full" caused double injection. Set promptSurface to "locator" or "off".', "warn");
+    }
   });
 
   registerPromptProvider({
@@ -87,30 +92,20 @@ export default function cacheableContextExtension(pi: ExtensionAPI): void {
       if (!manifest?.fragments.length) return [];
       const promptSurface = normalizePromptSurface(featureStringValue("cacheable-context", "promptSurface", "locator", cwd));
       if (promptSurface === "off") return [];
-      if (promptSurface !== "full") {
-        return [{
-          id: "mekann-cacheable-context:locator",
-          source: ".mekann/cacheable-context/manifest.json",
-          kind: "project_instruction" as const,
-          stability: "stable" as const,
-          scope: "global" as const,
-          priority: 30,
-          version: "v1",
-          cacheIntent: "prefer_cache" as const,
-          content: locatorContent(manifest),
-        }];
-      }
-      return manifest.fragments.map((fragment, index) => ({
-        id: `mekann-cacheable-context:${fragment.id}`,
-        source: fragment.source,
+      // `full` is deprecated (it double-injected AGENTS.md/domain docs that the
+      // base system already embeds). normalizePromptSurface maps it to `locator`,
+      // so we always expose only the small retrieval locator here.
+      return [{
+        id: "mekann-cacheable-context:locator",
+        source: ".mekann/cacheable-context/manifest.json",
         kind: "project_instruction" as const,
-        stability: fragment.stability === "semi-stable" ? "semi_stable" as const : "stable" as const,
+        stability: "stable" as const,
         scope: "global" as const,
-        priority: 30 + index,
+        priority: 30,
         version: "v1",
         cacheIntent: "prefer_cache" as const,
-        content: fragment.content,
-      }));
+        content: locatorContent(manifest),
+      }];
     },
   });
 

@@ -131,6 +131,25 @@ Pi 上では `/mekann-settings` を使って設定を確認・編集できます
 
 未設定の mode は Pi の現在 model / thinking を継承します。
 
+### Cacheable Context
+
+```json
+{
+  "version": 1,
+  "features": {
+    "cacheable-context": {
+      "enabled": true,
+      "promptSurface": "locator",
+      "contextMode": "term-index"
+    }
+  }
+}
+```
+
+`promptSurface` は `locator` または `off` です。初期値は `locator` で、system prompt には保存場所と探索方針の小さな locator だけを追加し、詳細は agent が通常の read/rg で探索します。`full` は **非推奨** です。base system が既に `<project_context>` として AGENTS.md（や domain docs）を注入しているため、`full` で生成 fragment 本文を追加注入すると二重注入になります。`full` を指定した場合は `locator` へフォールバックし、`/mekann-settings` に非推奨 diagnostic が表示されます。
+
+`contextMode` は `off`、`term-index`（既定）、`distilled`、`full` で、CONTEXT.md の取り込み方式を制御します。
+
 ### Codex Web Search
 
 ```json
