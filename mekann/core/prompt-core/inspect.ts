@@ -90,7 +90,12 @@ export function inspectBaseSystemPrompt(baseSystemText: string): PromptInspectio
     seenVolatileLines.add(compact);
     warnings.push({ severity: "warning", code: "BASE_SYSTEM_VOLATILE_RUNTIME_LINE", message: `Base system prompt contains a volatile runtime line that should be moved to the dynamic tail: ${JSON.stringify(compact.slice(0, 120))}` });
   }
-  if (containsVolatileSignal(baseSystemText)) warnings.push({ severity: hasVolatileValuePattern(baseSystemText) ? "warning" : "info", code: "BASE_SYSTEM_VOLATILE_SIGNAL", message: "Base system prompt contains volatile runtime-like state before cache-friendly fragments." });
+  // For the base system prompt, broad volatile terms such as "tool result" or
+  // "git status" often appear in stable policy prose. Precise volatile runtime
+  // lines are handled above via the shared extraction source, and concrete
+  // volatile values (paths, token counts, ids) are still flagged here. Avoid an
+  // always-on info warning for mere policy references.
+  if (hasVolatileValuePattern(baseSystemText)) warnings.push({ severity: "warning", code: "BASE_SYSTEM_VOLATILE_SIGNAL", message: "Base system prompt contains volatile runtime-like state before cache-friendly fragments." });
   if (/\/Users\/[^\s)<>]+|\/tmp\/[^\s)<>]+/.test(baseSystemText)) warnings.push({ severity: "info", code: "BASE_SYSTEM_ABSOLUTE_PATH", message: "Base system prompt contains absolute paths; consider moving path-heavy runtime context behind cacheable fragments." });
   if (/<available_skills>[\s\S]*?<\/available_skills>/.test(baseSystemText)) warnings.push({ severity: "info", code: "BASE_SYSTEM_AVAILABLE_SKILLS_BLOCK", message: "Base system prompt contains available skills metadata before cache-friendly fragments." });
   return warnings;
