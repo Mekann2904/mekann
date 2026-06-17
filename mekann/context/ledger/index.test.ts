@@ -1,9 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import contextLedgerExtension from "./index.js";
 import { appendContextEvent, clearContext, contextDir } from "./store.js";
+import {
+	clearPromptProvidersForTests,
+	collectPromptFragments,
+} from "../../core/prompt-core/index.js";
+import { POST_COMPACTION_RESTORE_FRAGMENT_ID } from "./postCompactionRestore.js";
 
 async function tmp(): Promise<string> {
 	return fsp.mkdtemp(path.join(os.tmpdir(), "og-ledger-ext-"));
@@ -285,5 +290,109 @@ describe("context-ledger extension", () => {
 
 		const result = await toolDef.execute("tc_ss_4", { maxBytes: 300, rebuild: true }, undefined, undefined, { cwd });
 		expect(Buffer.byteLength(result.content[0].text, "utf8")).toBeLessThanOrEqual(350);
+	});
+});
+
+describe("context-ledger post-compaction restore wiring", () => {
+	function makePi(): any {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() };
+		contextLedgerExtension(pi as any);
+		return pi;
+	}
+
+	function handlerFor(pi: any, event: string): ((...args: any[]) => any) | undefined {
+		const call = pi.on.mock.calls.find((c: any) => c[0] === event);
+		return call?.[1];
+	}
+
+	beforeEach(() => {
+		clearPromptProvidersForTests();
+	});
+
+	afterEach(() => {
+		clearPromptProvidersForTests();
+	});
+
+	it("registers a context-ledger prompt provider", () => {
+		const pi = makePi();
+		// The provider is wired so that arming later takes effect, and the
+		// compaction/context lifecycle hooks are registered.
+		expect(pi.on).toHaveBeenCalledWith("session_compact", expect.any(Function));
+		expect(pi.on).toHaveBeenCalledWith("context", expect.any(Function));
+	});
+
+	it("injects the ledger snapshot as a dynamic fragment after session_compact", async () => {
+		const pi = makePi();
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 1, title: "Post-compaction decision", summary: "keep working on issue 93", evidenceLevel: "observed", idGenerator: () => "ctx_pcr_1" });
+
+		// Before compaction: no restore fragment.
+		let fragments = await collectPromptFragments({ cwd });
+		expect(fragments.find((f) => f.id === POST_COMPACTION_RESTORE_FRAGMENT_ID)).toBeUndefined();
+
+		// Fire session_compact (arms restore), then the next prompt render contributes it.
+		await handlerFor(pi, "session_compact")!();
+		fragments = await collectPromptFragments({ cwd });
+		const restore = fragments.find((f) => f.id === POST_COMPACTION_RESTORE_FRAGMENT_ID);
+		expect(restore).toBeDefined();
+		expect(restore!.stability).toBe("dynamic");
+		expect(restore!.cacheIntent).toBe("avoid_cache");
+		expect(restore!.kind).toBe("current_context");
+		expect(restore!.priority).toBe(720);
+		expect(restore!.content).toContain("ctx_pcr_1");
+		expect(restore!.content).toContain("Post-compaction decision");
+	});
+
+	it("coexists with model-optimizer's hint via a distinct id and priority", async () => {
+		// The restore fragment id must not collide with the model-optimizer
+		// system-prompt-hint fragment id, and its priority must differ.
+		expect(POST_COMPACTION_RESTORE_FRAGMENT_ID).not.toContain("model-optimizer");
+		expect(POST_COMPACTION_RESTORE_FRAGMENT_ID).toBe("context-ledger:post-compaction-restore");
+	});
+
+	it("does not inject when the ledger is empty", async () => {
+		const pi = makePi();
+		const cwd = await tmp();
+		await handlerFor(pi, "session_compact")!();
+		const fragments = await collectPromptFragments({ cwd });
+		expect(fragments.find((f) => f.id === POST_COMPACTION_RESTORE_FRAGMENT_ID)).toBeUndefined();
+	});
+
+	it("disarms once the snapshot lands in a freshly-built dynamic block (one-shot)", async () => {
+		const pi = makePi();
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 1, title: "T", summary: "S", evidenceLevel: "observed", idGenerator: () => "ctx_os_1" });
+		await handlerFor(pi, "session_compact")!();
+
+		expect((await collectPromptFragments({ cwd })).find((f) => f.id === POST_COMPACTION_RESTORE_FRAGMENT_ID)).toBeDefined();
+
+		// cache-friendly would append a dynamic block whose text contains our fragment marker.
+		await handlerFor(pi, "context")!({ type: "context", messages: [
+			{ role: "user", content: "hi" },
+			{ role: "user", customType: "cache-friendly-dynamic-context", content: [{ type: "text", text: `<!-- fragment:context-ledger:${POST_COMPACTION_RESTORE_FRAGMENT_ID}:current_context:dynamic:v1 -->` }] },
+		] });
+
+		expect((await collectPromptFragments({ cwd })).find((f) => f.id === POST_COMPACTION_RESTORE_FRAGMENT_ID)).toBeUndefined();
+	});
+
+	it("stays armed when cache-friendly skipped (no fresh dynamic block)", async () => {
+		const pi = makePi();
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 1, title: "T", summary: "S", evidenceLevel: "observed", idGenerator: () => "ctx_sa_1" });
+		await handlerFor(pi, "session_compact")!();
+
+		// A context event whose last message is a normal user message (cache-friendly skipped).
+		await handlerFor(pi, "context")!({ type: "context", messages: [{ role: "user", content: "hello" }] });
+
+		expect((await collectPromptFragments({ cwd })).find((f) => f.id === POST_COMPACTION_RESTORE_FRAGMENT_ID)).toBeDefined();
+	});
+
+	it("session_start resets the restore", async () => {
+		const pi = makePi();
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 1, title: "T", summary: "S", evidenceLevel: "observed", idGenerator: () => "ctx_rs_1" });
+		await handlerFor(pi, "session_compact")!();
+		await handlerFor(pi, "session_start")!({}, { cwd });
+		expect((await collectPromptFragments({ cwd })).find((f) => f.id === POST_COMPACTION_RESTORE_FRAGMENT_ID)).toBeUndefined();
 	});
 });
