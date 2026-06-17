@@ -6,6 +6,14 @@ export interface RecordToolOutputArtifactInput {
 	artifactId: string;
 	originalBytes: number;
 	originalLines: number;
+	/**
+	 * UTF-8 byte length of the inline stub left in the conversation after
+	 * externalization. Recorded so the cache-friendly-prompt report can compute
+	 * the real inline-reduction rate (`(originalBytes - stubBytes) / originalBytes`)
+	 * instead of a threshold-baseline proxy. Optional for backward compatibility;
+	 * when absent the summary omits the `, stub N bytes` segment.
+	 */
+	stubBytes?: number;
 	isError?: boolean;
 	sessionId?: string;
 	turnId?: string;
@@ -27,7 +35,10 @@ export async function recordToolOutputArtifact(input: RecordToolOutputArtifactIn
 			kind: "tool_result",
 			priority: input.isError ? 1 : 3,
 			title: `${input.toolName} output stored`,
-			summary: `Large ${input.toolName} output stored as ${input.artifactId} (${input.originalBytes} bytes, ${input.originalLines} lines)`,
+			summary:
+				typeof input.stubBytes === "number" && Number.isFinite(input.stubBytes)
+					? `Large ${input.toolName} output stored as ${input.artifactId} (${input.originalBytes} bytes, ${input.originalLines} lines, stub ${input.stubBytes} bytes)`
+					: `Large ${input.toolName} output stored as ${input.artifactId} (${input.originalBytes} bytes, ${input.originalLines} lines)`,
 			evidenceLevel: "tool_reported",
 			refs: [{ type: "artifact", value: input.artifactId, role: "output" }],
 			sessionId: input.sessionId,

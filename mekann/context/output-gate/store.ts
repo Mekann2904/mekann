@@ -93,6 +93,8 @@ export interface GatedTextResult {
 	artifactId?: string;
 	originalBytes: number;
 	originalLines: number;
+	/** UTF-8 byte length of the inline `text` stub. Set when `gated` is true. */
+	stubBytes?: number;
 	sha256?: string;
 	redacted?: boolean;
 	storageError?: string;
@@ -326,7 +328,8 @@ export async function gateTextForLlm(options: GateTextOptions): Promise<GatedTex
 			try { await retainArtifacts(options.cwd, options.retentionMaxFiles); } catch { /* retention must not break gating */ }
 		}
 		const preview = buildPreview(saved.text, options.previewBytes ?? (Number(featureConfig("output-gate").previewBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes));
-		return { text: buildStoredOutputStub(saved.entry, preview), gated: true, handled: true, artifactId: saved.entry.id, originalBytes, originalLines, sha256: saved.entry.sha256, redacted: true };
+		const stub = buildStoredOutputStub(saved.entry, preview);
+		return { text: stub, gated: true, handled: true, artifactId: saved.entry.id, originalBytes, originalLines, stubBytes: Buffer.byteLength(stub, "utf8"), sha256: saved.entry.sha256, redacted: true };
 	} catch (error: any) {
 		const message = error?.message ?? String(error);
 		const preview = buildPreview(redactSecrets(options.text).text, options.previewBytes ?? (Number(featureConfig("output-gate").previewBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes));

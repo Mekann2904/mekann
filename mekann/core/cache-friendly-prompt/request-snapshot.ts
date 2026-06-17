@@ -480,6 +480,8 @@ export function applyProviderRequest(
 	return {
 		...prev,
 		totalPromptChars: input.finalText.length,
+		// Text-only token estimate over extractTextFromProviderPayload output;
+		// excludes tool schemas / JSON structure, underreports vs inputTotalTokens.
 		totalPromptTokenEstimate: estimateTokens(input.finalText),
 	};
 }
@@ -550,6 +552,8 @@ export function buildRequestLog(input: RequestLogInput): CacheFriendlyRequestLog
 		providerPrefixChars: s?.providerPrefixChars,
 		providerPrefixTokenEstimate: s?.providerPrefixTokenEstimate,
 		totalPromptChars: input.finalText.length,
+		// Text-only token estimate over extractTextFromProviderPayload output;
+		// excludes tool schemas / JSON structure, underreports vs inputTotalTokens.
 		totalPromptTokenEstimate: estimateTokens(input.finalText),
 		promptProviderIds: input.promptProviderIds,
 		fragmentHashes: input.fragmentHashes,

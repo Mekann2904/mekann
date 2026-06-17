@@ -137,6 +137,7 @@ export class OutputGateController {
 				artifactId: gated.artifactId,
 				originalBytes: gated.originalBytes,
 				originalLines: gated.originalLines,
+				stubBytes: gated.stubBytes,
 			});
 		}
 
@@ -151,6 +152,7 @@ export class OutputGateController {
 							artifactId: gated.artifactId,
 							bytes: gated.originalBytes,
 							lines: gated.originalLines,
+							stubBytes: gated.stubBytes,
 							sha256: gated.sha256,
 							redacted: true,
 						}
@@ -167,7 +169,7 @@ export class OutputGateController {
 
 	private async recordGatedOutput(
 		input: ToolResultInput,
-		gated: { artifactId: string; originalBytes: number; originalLines: number },
+		gated: { artifactId: string; originalBytes: number; originalLines: number; stubBytes?: number },
 	): Promise<void> {
 		try {
 			await this.recorder!.recordToolOutputArtifact({
@@ -176,6 +178,7 @@ export class OutputGateController {
 				artifactId: gated.artifactId,
 				originalBytes: gated.originalBytes,
 				originalLines: gated.originalLines,
+				stubBytes: gated.stubBytes,
 				isError: input.isError,
 				sessionId: input.sessionId,
 				turnId: input.turnId,

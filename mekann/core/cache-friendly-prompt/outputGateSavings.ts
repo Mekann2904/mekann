@@ -12,6 +12,11 @@
  *
  * Event summary format (from `mekann/context/recording.ts`):
  *   "Large <toolName> output stored as og_<id> (<bytes> bytes, <lines> lines)"
+ *   "Large <toolName> output stored as og_<id> (<bytes> bytes, <lines> lines, stub <stubBytes> bytes)"
+ *
+ * The `, stub <stubBytes> bytes` segment was added so the report can compute the
+ * real inline-reduction rate instead of a threshold-baseline proxy. Legacy
+ * events without it fall back to the preview-bytes default.
  */
 
 export interface OutputGateLedgerEvent {
@@ -26,6 +31,8 @@ export interface ParsedOutputGateEvent {
 	artifactId: string;
 	bytes: number;
 	lines: number;
+	/** Inline stub bytes when recorded in the summary; null for legacy events. */
+	stubBytes: number | null;
 }
 
 export interface OutputGateToolBreakdown {
@@ -45,13 +52,31 @@ export interface OutputGateSavings {
 	/** Bytes beyond the threshold baseline (totalBytes - thresholdBytes * count). */
 	savingsBeyondThresholdBytes: number;
 	/**
-	 * stub化率: share of externalized bytes beyond the threshold baseline,
-	 * i.e. (totalBytes - thresholdBytes * count) / totalBytes. In [0, 1].
-	 * Null when there are no externalized bytes. Since output-gate only stores
-	 * outputs strictly larger than the threshold, this is always positive when
-	 * count > 0, and approaches 1 as externalized outputs grow past the gate.
+	 * stub化率（閾値超過削減率）: share of externalized bytes beyond the
+	 * threshold baseline, i.e. (totalBytes - thresholdBytes * count) / totalBytes.
+	 * In [0, 1]. Null when there are no externalized bytes. This is a
+	 * threshold-baseline proxy, NOT the true inline-reduction rate; when most
+	 * externalized outputs sit just above the threshold it collapses toward 0
+	 * and underreports savings. Kept for backward compatibility — prefer
+	 * `inlineReductionRate`.
 	 */
 	stubRate: number | null;
+	/** Preview-bytes fallback used for legacy events lacking `stub N bytes`. */
+	fallbackStubBytes: number;
+	/** Estimated total inline stub bytes (measured where available, else fallback). */
+	totalStubBytes: number;
+	/** Sum of measured stub bytes (events that recorded `stub N bytes`). */
+	measuredStubBytes: number;
+	/** Number of events whose stub bytes were measured (not fallback). */
+	measuredStubEvents: number;
+	/**
+	 * 真の inline 削減率: (totalBytes - totalStubBytes) / totalBytes. In [0, 1].
+	 * Share of conversation bytes actually removed by externalization, using
+	 * measured stub bytes when recorded and the preview-bytes fallback
+	 * otherwise. Null when there are no externalized bytes. This is the
+	 * primary savings metric; `stubRate` is a legacy proxy.
+	 */
+	inlineReductionRate: number | null;
 	/** Most recent externalization timestamp (ISO), null when count is 0. */
 	latestTimestamp: string | null;
 	/** Externalization count and bytes broken down by tool name. */
@@ -67,12 +92,22 @@ export interface OutputGateSavings {
 export const OUTPUT_GATE_DEFAULT_THRESHOLD_BYTES = 48 * 1024;
 
 /**
+ * Default output-gate inline preview size. Mirrors
+ * `MEKANN_OUTPUT_GATE_DEFAULTS.previewBytes` in `mekann/config.ts`. Used as the
+ * stub-bytes fallback for legacy events that predate `stub N bytes` recording,
+ * so the inline-reduction rate stays meaningful on historical logs.
+ */
+export const OUTPUT_GATE_DEFAULT_PREVIEW_BYTES = 8 * 1024;
+
+/**
  * Matches output-gate tool_result summaries recorded by
  * `recordToolOutputArtifact`. Anchored end-to-end so unrelated `tool_result`
- * events (if any are added later) are ignored.
+ * events (if any are added later) are ignored. The `, stub N bytes` tail is
+ * optional for backward compatibility with events recorded before stub-byte
+ * tracking landed.
  */
 const OUTPUT_GATE_SUMMARY_RE =
-	/^Large (?<tool>\S+) output stored as (?<artifact>og_[a-z0-9]+_[a-z0-9]+) \((?<bytes>\d+) bytes, (?<lines>\d+) lines\)$/;
+	/^Large (?<tool>\S+) output stored as (?<artifact>og_[a-z0-9]+_[a-z0-9]+) \((?<bytes>\d+) bytes, (?<lines>\d+) lines(?:, stub (?<stubBytes>\d+) bytes)?\)$/;
 
 export function parseOutputGateEvent(event: OutputGateLedgerEvent): ParsedOutputGateEvent | null {
 	if (event.kind !== "tool_result") return null;
@@ -81,12 +116,15 @@ export function parseOutputGateEvent(event: OutputGateLedgerEvent): ParsedOutput
 	const bytes = Number(match.groups.bytes);
 	const lines = Number(match.groups.lines);
 	if (!Number.isFinite(bytes) || !Number.isFinite(lines)) return null;
-	return { toolName: match.groups.tool, artifactId: match.groups.artifact, bytes, lines };
+	const stubBytesRaw = match.groups.stubBytes;
+	const stubBytes = stubBytesRaw !== undefined && Number.isFinite(Number(stubBytesRaw)) ? Number(stubBytesRaw) : null;
+	return { toolName: match.groups.tool, artifactId: match.groups.artifact, bytes, lines, stubBytes };
 }
 
 export function summarizeOutputGateSavings(
 	events: OutputGateLedgerEvent[],
 	thresholdBytes = OUTPUT_GATE_DEFAULT_THRESHOLD_BYTES,
+	fallbackStubBytes = OUTPUT_GATE_DEFAULT_PREVIEW_BYTES,
 ): OutputGateSavings {
 	const parsed: Array<ParsedOutputGateEvent & { createdAt?: number }> = [];
 	for (const event of events) {
@@ -100,6 +138,11 @@ export function summarizeOutputGateSavings(
 	const baselineBytes = thresholdBytes * count;
 	const savingsBeyondThresholdBytes = Math.max(0, totalBytes - baselineBytes);
 	const stubRate = totalBytes > 0 ? savingsBeyondThresholdBytes / totalBytes : null;
+
+	const measuredEvents = parsed.filter((event) => event.stubBytes !== null);
+	const measuredStubBytes = measuredEvents.reduce((sum, event) => sum + (event.stubBytes as number), 0);
+	const totalStubBytes = parsed.reduce((sum, event) => sum + (event.stubBytes ?? fallbackStubBytes), 0);
+	const inlineReductionRate = totalBytes > 0 ? Math.max(0, (totalBytes - totalStubBytes) / totalBytes) : null;
 
 	let latestCreatedAt: number | undefined;
 	for (const event of parsed) {
@@ -125,6 +168,11 @@ export function summarizeOutputGateSavings(
 		avgBytes,
 		savingsBeyondThresholdBytes,
 		stubRate,
+		fallbackStubBytes,
+		totalStubBytes,
+		measuredStubBytes,
+		measuredStubEvents: measuredEvents.length,
+		inlineReductionRate,
 		latestTimestamp,
 		byTool,
 	};

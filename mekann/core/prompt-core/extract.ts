@@ -1,5 +1,26 @@
 const preferred = new Set(["content", "text", "system", "prompt", "instructions", "messages", "input", "parts", "developer"]);
 function isBinary(value: unknown): boolean { return typeof Buffer !== "undefined" && Buffer.isBuffer(value) || value instanceof ArrayBuffer || ArrayBuffer.isView(value as any); }
+/**
+ * Extract a best-effort text approximation from a provider request payload for
+ * diagnostics (prompt-cache prefix tracking, size trend charts).
+ *
+ * Walks preferred string-bearing keys (content, text, system, prompt,
+ * instructions, messages, input, parts, developer) and concatenates their
+ * string values. Non-preferred keys are visited too, but only string values
+ * under preferred keys are emitted.
+ *
+ * IMPORTANT — this is a TEXT-ONLY estimate, not a token count:
+ * - Tool/function JSON schemas are dropped (they live under non-preferred keys
+ *   like `tools`/`functions`; nested structure is not stringified).
+ * - Numeric/boolean/structured JSON fields are not stringified.
+ * - Conversation history is only partially captured (the `content`/`text` of
+ *   each message), so large tool_result blobs may be underrepresented.
+ * The derived `totalPromptTokenEstimate` is therefore systematically smaller
+ * than the provider-reported `inputTotalTokens`. Use `inputTotalTokens`
+ * (actual usage log) for billing / cache-hit math.
+ *
+ * Output is capped at 500k chars to bound memory on pathological payloads.
+ */
 export function extractTextFromProviderPayload(payload: unknown): string {
   const max = 500_000;
   const seen = new WeakSet<object>();
