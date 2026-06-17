@@ -121,4 +121,53 @@ describe("WorkerPool", () => {
 
     await expect(pool.execute("fail-task")).rejects.toThrow("worker failed");
   });
+
+  it("does not accumulate un-fired error listeners across worker reuse", async () => {
+    // Regression: dispatch registers both `once("message")` and
+    // `once("error")`, but only one fires per task. Previously the un-fired
+    // handler stayed attached, so each reuse of a pooled worker leaked one
+    // listener. With maxSize 1 a single worker is reused for every task.
+    const errorListenerCounts: number[] = [];
+    let liveErrorHandlers = 0;
+
+    const createWorker = () => ({
+      postMessage(msg: { taskId: number; input: unknown }) {
+        setTimeout(() => {
+          // EventEmitter `once` semantics: the fired handler auto-removes.
+          if (messageHandler) {
+            const h = messageHandler;
+            messageHandler = null;
+            h({ taskId: msg.taskId, result: `processed-${String(msg.input)}` });
+          }
+        }, 5);
+      },
+      once(event: string, handler: (arg: unknown) => void) {
+        if (event === "message") messageHandler = handler;
+        if (event === "error") {
+          errorHandler = handler;
+          liveErrorHandlers += 1;
+        }
+      },
+      off(event: string, handler: (arg: unknown) => void) {
+        if (event === "error" && errorHandler === handler) {
+          errorHandler = null;
+          liveErrorHandlers -= 1;
+        }
+      },
+      terminate: vi.fn(async () => {}),
+    });
+    let messageHandler: ((msg: unknown) => void) | null = null;
+    let errorHandler: ((err: unknown) => void) | null = null;
+
+    pool = createWorkerPool({ maxSize: 1, idleTimeoutMs: 30000, createWorker });
+
+    for (let i = 0; i < 5; i++) {
+      await pool.execute(`task-${i}`);
+      errorListenerCounts.push(liveErrorHandlers);
+    }
+
+    // After each task resolves via "message", its paired "error" listener must
+    // have been removed. With the leak this would be [1, 2, 3, 4, 5].
+    expect(errorListenerCounts).toEqual([0, 0, 0, 0, 0]);
+  });
 });

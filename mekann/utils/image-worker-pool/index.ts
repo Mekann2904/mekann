@@ -8,6 +8,14 @@
 export interface PoolWorker {
   postMessage(msg: unknown): void;
   once(event: "message" | "error", handler: (arg: unknown) => void): void;
+  /**
+   * Remove a listener previously registered with `once`. Optional: when a
+   * worker implementation does not expose it, the pool degrades to the old
+   * behavior. Real Node.js worker_threads Workers expose `off`, which lets
+   * the pool remove the un-fired counterpart listener and avoid leaking one
+   * listener per dispatch across worker reuse.
+   */
+  off?(event: "message" | "error", handler: (arg: unknown) => void): void;
   terminate(): Promise<void> | void;
 }
 
@@ -58,18 +66,32 @@ export function createWorkerPool(options: WorkerPoolOptions) {
     const active: ActiveWorker = { worker };
     activeWorkers.push(active);
 
-    worker.once("message", (msg: unknown) => {
+    // Both handlers are registered with `once`, but only one of "message" or
+    // "error" fires per task. Without removing the un-fired handler, a reused
+    // worker would accumulate one stale listener per dispatch, eventually
+    // tripping MaxListenersExceededWarning and leaking memory. Remove the
+    // counterpart as soon as the task settles.
+    let settled = false;
+    const onMessage = (msg: unknown) => {
+      if (settled) return;
+      settled = true;
+      worker.off?.("error", onError);
       removeActive(active);
       task.resolve((msg as { result: unknown }).result);
       releaseWorker(worker);
       drainQueue();
-    });
-
-    worker.once("error", (err: unknown) => {
+    };
+    const onError = (err: unknown) => {
+      if (settled) return;
+      settled = true;
+      worker.off?.("message", onMessage);
       removeActive(active);
       task.reject(err instanceof Error ? err : new Error(String(err)));
       drainQueue();
-    });
+    };
+
+    worker.once("message", onMessage);
+    worker.once("error", onError);
 
     worker.postMessage({ taskId: Date.now(), input });
   }
