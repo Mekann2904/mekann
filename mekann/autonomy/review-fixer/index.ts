@@ -175,6 +175,7 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
         roi_category: "fresh_review",
         justification: "Synchronous issue-scoped thermo-nuclear code quality review before PR creation.",
         cost_intent: "expensive",
+        anchorPolicy: { kind: "issue", issueNumber: issueContext.number },
       }, ctx);
       const result = extractReviewFixerResult(delegate.final_result);
 

@@ -20,9 +20,21 @@ export interface KittyLaunchOptions {
 	argv: string[];
 	title?: string;
 	vars?: Record<string, string>;
+	/** Per-window environment variables set via `--env NAME=VALUE`.
+	 *
+	 * Unlike `vars` (kitty variables), `--env` variables are reported in the
+	 * window's `env` field by `kitty @ ls`, so they are the reliable signal for
+	 * pane identification (e.g. `PI_SUBAGENT_ID` for subagent panes). */
+	env?: Record<string, string>;
 	copyEnv?: boolean;
 	hold?: boolean;
 	allowRemoteControl?: boolean;
+	/** Explicit kitty window id to split from (`--source-window id:<id>`).
+	 *
+	 * Takes precedence over `matchCurrentWindow`. Used by subagent/review-fixer
+	 * split anchoring (ADR-0021 extension) so a child pane opens next to a
+	 * chosen parent pane rather than the focused window. */
+	sourceWindowId?: number;
 	matchCurrentWindow?: boolean;
 	timeoutMs?: number;
 }
@@ -80,9 +92,22 @@ export const ISSUE_PI_ENV_MARKER = "MEKANN_ISSUE_PI";
 export const AUTOPILOT_CHILD_ENV_MARKER = "MEKANN_AUTOPILOT_CHILD";
 export const ORCHESTRATION_CHILD_ENV_MARKER = "MEKANN_ORCHESTRATION_CHILD";
 
+/** Env marker identifying a subagent pane. `KittyController.launchPiSplit` /
+ * `launchPiWindow` set `PI_SUBAGENT_ID` via `--env` on every subagent launch so
+ * `kitty @ ls` reliably reports it in the window `env` field (kitty variables
+ * set via `--var` are the match signal; `--env` is the identification signal).
+ * Used to group subagent splits onto existing non-Main panes (ADR-0021
+ * extension) instead of re-splitting the Main Pi. */
+export const SUBAGENT_PANE_ENV_MARKER = "PI_SUBAGENT_ID";
+
 /** True when the pane carries the Issue Pi env marker (`MEKANN_ISSUE_PI=1`). */
 export function isIssuePiEnvWindow(window: KittyWindowLike): boolean {
 	return window.env?.[ISSUE_PI_ENV_MARKER] === "1";
+}
+
+/** True when the pane carries a subagent env marker (`PI_SUBAGENT_ID`). */
+export function isSubagentPane(window: KittyWindowLike): boolean {
+	return window.env?.[SUBAGENT_PANE_ENV_MARKER] !== undefined;
 }
 
 /**
@@ -124,6 +149,14 @@ function isIssuePiPane(window: KittyWindowLike): boolean {
 	// backstop once pi rewrites the title to `π - Issue #N - <cwd>`).
 	if (isIssuePiEnvWindow(window)) return true;
 	return typeof window.title === "string" && ISSUE_PANE_TITLE_PATTERN.test(window.title);
+}
+
+/** True when the pane is anything other than the Main Pi: an Issue Work Pi
+ * pane or a subagent pane. These are eligible split anchors so child panes
+ * (subagents, review-fixer children) open next to an existing non-Main pane
+ * instead of re-splitting (and shrinking) the Main Pi (ADR-0021 extension). */
+export function isNonMainPane(window: KittyWindowLike): boolean {
+	return isIssuePiPane(window) || isSubagentPane(window);
 }
 
 /**
@@ -223,6 +256,47 @@ export function chooseIssuePaneSplit(windows: KittyWindowLike[], options: IssueP
 	return { windowId: pane.id, location };
 }
 
+/** Pick the largest-area non-Main pane (`columns × lines`) to use as the split
+ * anchor for a generic subagent (ADR-0021 extension). Subagent panes and Issue
+ * Pi panes are both eligible so consecutive subagents stack next to each other
+ * (or next to an Issue Pi) rather than re-splitting the Main Pi. Panes missing
+ * size info contribute area 0. Returns `undefined` when no non-Main pane exists
+ * (first subagent call), in which case the caller splits the focused window. */
+export function pickLargestNonMainPane(windows: KittyWindowLike[]): KittyWindowLike | undefined {
+	const panes = windows.filter(isNonMainPane);
+	if (panes.length === 0) return undefined;
+	return panes.reduce((largest, pane) => (issuePaneArea(pane) > issuePaneArea(largest) ? pane : largest));
+}
+
+/** Choose the largest non-Main pane and which way to split it (ADR-0021
+ * extension). Mirrors {@link chooseIssuePaneSplit}: post-split floors from
+ * ADR-0024 are honoured, degrading to the longer side when neither direction
+ * keeps both halves above its floor. Returns `undefined` only when no non-Main
+ * pane exists (first subagent call), so the caller falls back to the focused
+ * window (Main Pi) — exactly the ADR-0021 "first split only" rule. */
+export function chooseNonMainPaneSplit(windows: KittyWindowLike[], options: IssuePaneSplitOptions = {}): IssuePaneSplit | undefined {
+	const pane = pickLargestNonMainPane(windows);
+	if (!pane || typeof pane.id !== "number") return undefined;
+	const width = typeof pane.columns === "number" ? pane.columns : 0;
+	const height = typeof pane.lines === "number" ? pane.lines : 0;
+	const location = decideSplitLocation(width, height, options) ?? longerSideLocation(width, height);
+	return { windowId: pane.id, location };
+}
+
+/** Choose the Work Pi pane for a specific issue number and which way to split
+ * it (ADR-0021 extension, review-fixer). Used by `review_fixer` so its child
+ * pane opens next to the parent Issue Pi rather than the focused window.
+ * Per-issue identification reuses {@link isWorkPiForIssue} (env child marker,
+ * title fallback). Returns `undefined` when no pane for that issue exists. */
+export function chooseIssuePaneSplitForIssue(windows: KittyWindowLike[], issueNumber: number, options: IssuePaneSplitOptions = {}): IssuePaneSplit | undefined {
+	const pane = windows.find((window) => isWorkPiForIssue(window, issueNumber));
+	if (!pane || typeof pane.id !== "number") return undefined;
+	const width = typeof pane.columns === "number" ? pane.columns : 0;
+	const height = typeof pane.lines === "number" ? pane.lines : 0;
+	const location = decideSplitLocation(width, height, options) ?? longerSideLocation(width, height);
+	return { windowId: pane.id, location };
+}
+
 export class KittyControl {
 	constructor(private readonly kittenBin = "kitten") {}
 
@@ -270,6 +344,24 @@ export class KittyControl {
 	async findIssuePaneSplitAnchor(options?: IssuePaneSplitOptions): Promise<IssuePaneSplit | undefined> {
 		const windows = await this.listAllWindows();
 		return chooseIssuePaneSplit(windows, options);
+	}
+
+	/** Resolve the largest non-Main pane to split next and which direction
+	 * (ADR-0021 extension for generic subagents). Returns `undefined` on the
+	 * first subagent call (no non-Main pane yet) or when `kitten @ ls` fails, so
+	 * the caller falls back to splitting the focused window (Main Pi). */
+	async findNonMainPaneSplit(options?: IssuePaneSplitOptions): Promise<IssuePaneSplit | undefined> {
+		const windows = await this.listAllWindows();
+		return chooseNonMainPaneSplit(windows, options);
+	}
+
+	/** Resolve the Work Pi pane for `issueNumber` and which direction to split it
+	 * (ADR-0021 extension for review-fixer). Returns `undefined` when no pane for
+	 * that issue exists or `kitten @ ls` fails, so the caller falls back to
+	 * splitting the focused window. */
+	async findIssuePiPaneSplitForIssue(issueNumber: number, options?: IssuePaneSplitOptions): Promise<IssuePaneSplit | undefined> {
+		const windows = await this.listAllWindows();
+		return chooseIssuePaneSplitForIssue(windows, issueNumber, options);
 	}
 
 	/**
@@ -330,7 +422,13 @@ export class KittyControl {
 		if (options.copyEnv) args.push("--copy-env");
 		if (options.hold) args.push("--hold");
 		if (options.allowRemoteControl) args.push("--allow-remote-control");
-		if (options.matchCurrentWindow && process.env.KITTY_WINDOW_ID) {
+		for (const [key, value] of Object.entries(options.env ?? {})) {
+			args.push("--env", `${key}=${value}`);
+		}
+		// --source-window (explicit anchor) takes precedence over --match (focused).
+		if (typeof options.sourceWindowId === "number") {
+			args.push("--source-window", `id:${options.sourceWindowId}`);
+		} else if (options.matchCurrentWindow && process.env.KITTY_WINDOW_ID) {
 			args.push("--match", `id:${process.env.KITTY_WINDOW_ID}`);
 		}
 		args.push(...options.argv);

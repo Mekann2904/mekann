@@ -127,6 +127,20 @@ export interface MailboxItem {
   kind: "message" | "followup" | "final_result";
 }
 
+// ─── Split anchor policy (ADR-0021 extension) ──────────────────────
+
+/** Where to anchor a subagent kitty split. Consumed by
+ * `KittyController.launchPiSplit` via `LaunchPiWindowParams.anchorPolicy`.
+ *
+ * - `nonMain` (default): anchor to the largest non-Main pane (Issue Pi or
+ *   subagent pane) so consecutive generic subagents group and the Main Pi is
+ *   never re-split.
+ * - `issue`: anchor to the Work Pi pane for a specific issue number so a
+ *   review-fixer child opens next to its parent Issue Pi. */
+export type SplitAnchorPolicy =
+  | { kind: "nonMain" }
+  | { kind: "issue"; issueNumber: number };
+
 // ─── Spawn params ────────────────────────────────────────────────
 
 export interface SpawnParams {
@@ -143,6 +157,10 @@ export interface SpawnParams {
   justification?: string;
   cost_intent?: "cheap" | "standard" | "expensive";
   type?: "scout" | "implement" | "verify" | "review" | "explore" | "patch";
+  /** Where to anchor the kitty split (ADR-0021 extension). Defaults to
+   * `nonMain` in the spawner. Internal field — NOT exposed on the tool schema;
+   * set programmatically (review-fixer passes `{ kind: "issue", issueNumber }`). */
+  anchorPolicy?: SplitAnchorPolicy;
 }
 
 export interface SendMessageParams {

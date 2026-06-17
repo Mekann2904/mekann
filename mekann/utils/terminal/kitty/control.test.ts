@@ -5,13 +5,19 @@ import {
 	KittyControl,
 	ORCHESTRATION_CHILD_ENV_MARKER,
 	ISSUE_PI_ENV_MARKER,
+	SUBAGENT_PANE_ENV_MARKER,
 	chooseIssuePaneSplit,
+	chooseIssuePaneSplitForIssue,
+	chooseNonMainPaneSplit,
 	collectKittyWindows,
 	decideSplitLocation,
 	isIssuePiEnvWindow,
+	isNonMainPane,
+	isSubagentPane,
 	isWorkPiForIssue,
 	issueChildNumberFromWindow,
 	pickLargestIssuePiPane,
+	pickLargestNonMainPane,
 	pickWidestIssuePiPane,
 	type KittyWindowLike,
 } from "./control.js";
@@ -326,6 +332,120 @@ describe("chooseIssuePaneSplit", () => {
 });
 
 // ---------------------------------------------------------------------------
+// isSubagentPane / isNonMainPane (ADR-0021 extension: non-Main pane pool)
+// ---------------------------------------------------------------------------
+
+describe("isSubagentPane", () => {
+	it("is true when the pane carries the PI_SUBAGENT_ID env marker", () => {
+		expect(isSubagentPane({ id: 5, env: { PI_SUBAGENT_ID: "abc" } })).toBe(true);
+	});
+
+	it("is false when the marker is absent", () => {
+		expect(isSubagentPane({ id: 5, env: {} })).toBe(false);
+		expect(isSubagentPane({ id: 5 })).toBe(false);
+	});
+});
+
+describe("isNonMainPane", () => {
+	it("matches an Issue Pi pane (env marker)", () => {
+		expect(isNonMainPane({ id: 1, env: { [ISSUE_PI_ENV_MARKER]: "1" } })).toBe(true);
+	});
+
+	it("matches a subagent pane", () => {
+		expect(isNonMainPane({ id: 2, env: { [SUBAGENT_PANE_ENV_MARKER]: "abc" } })).toBe(true);
+	});
+
+	it("matches an Issue Pi pane by title fallback", () => {
+		expect(isNonMainPane({ id: 3, title: "Issue #42" })).toBe(true);
+	});
+
+	it("is false for the Main Pi (no markers, plain title)", () => {
+		expect(isNonMainPane({ id: 4, title: "pi", columns: 200, lines: 50 })).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// pickLargestNonMainPane / chooseNonMainPaneSplit (ADR-0021 extension)
+// ---------------------------------------------------------------------------
+
+describe("pickLargestNonMainPane", () => {
+	it("returns undefined when only the Main Pi exists", () => {
+		const windows: KittyWindowLike[] = [
+			{ id: 1, title: "pi", columns: 200, lines: 50 },
+		];
+		expect(pickLargestNonMainPane(windows)).toBeUndefined();
+	});
+
+	it("picks the largest-area non-Main pane across subagent and Issue Pi panes", () => {
+		const sub = { id: 10, env: { [SUBAGENT_PANE_ENV_MARKER]: "a" }, columns: 40, lines: 24 };
+		const issue = { id: 11, env: { [ISSUE_PI_ENV_MARKER]: "1" }, columns: 120, lines: 24 };
+		expect(pickLargestNonMainPane([sub, issue])).toEqual(issue);
+	});
+
+	it("prefers the subagent pane when it is larger than the Issue Pi pane", () => {
+		const sub = { id: 10, env: { [SUBAGENT_PANE_ENV_MARKER]: "a" }, columns: 100, lines: 24 };
+		const issue = { id: 11, env: { [ISSUE_PI_ENV_MARKER]: "1" }, columns: 40, lines: 24 };
+		expect(pickLargestNonMainPane([sub, issue])).toEqual(sub);
+	});
+});
+
+describe("chooseNonMainPaneSplit", () => {
+	it("returns undefined when no non-Main pane exists (first subagent call)", () => {
+		expect(chooseNonMainPaneSplit([{ id: 1, title: "pi", columns: 200, lines: 50 }])).toBeUndefined();
+	});
+
+	it("anchors to the largest non-Main pane with vsplit when wide enough", () => {
+		const windows: KittyWindowLike[] = [
+			{ id: 1, title: "pi", columns: 200, lines: 50 },
+			{ id: 11, env: { [ISSUE_PI_ENV_MARKER]: "1" }, columns: 160, lines: 50 },
+		];
+		expect(chooseNonMainPaneSplit(windows)).toEqual({ windowId: 11, location: "vsplit" });
+	});
+
+	it("anchors to a subagent pane when it is the only non-Main pane", () => {
+		const windows: KittyWindowLike[] = [
+			{ id: 1, title: "pi", columns: 200, lines: 50 },
+			{ id: 20, env: { [SUBAGENT_PANE_ENV_MARKER]: "a" }, columns: 160, lines: 50 },
+		];
+		expect(chooseNonMainPaneSplit(windows)).toEqual({ windowId: 20, location: "vsplit" });
+	});
+});
+
+// ---------------------------------------------------------------------------
+// chooseIssuePaneSplitForIssue (ADR-0021 extension: review-fixer per-issue)
+// ---------------------------------------------------------------------------
+
+describe("chooseIssuePaneSplitForIssue", () => {
+	it("returns undefined when no pane matches the issue number", () => {
+		expect(chooseIssuePaneSplitForIssue([{ id: 1, title: "pi", columns: 200, lines: 50 }], 42)).toBeUndefined();
+	});
+
+	it("anchors to the Work Pi pane matched by env child marker", () => {
+		const windows: KittyWindowLike[] = [
+			{ id: 1, title: "pi", columns: 200, lines: 50 },
+			{ id: 11, env: { [ISSUE_PI_ENV_MARKER]: "1", [AUTOPILOT_CHILD_ENV_MARKER]: "42" }, columns: 160, lines: 50 },
+			{ id: 12, env: { [ISSUE_PI_ENV_MARKER]: "1", [ORCHESTRATION_CHILD_ENV_MARKER]: "7" }, columns: 160, lines: 50 },
+		];
+		expect(chooseIssuePaneSplitForIssue(windows, 42)).toEqual({ windowId: 11, location: "vsplit" });
+	});
+
+	it("anchors to the Work Pi pane matched by title fallback", () => {
+		const windows: KittyWindowLike[] = [
+			{ id: 1, title: "pi", columns: 200, lines: 50 },
+			{ id: 11, title: "π - Issue #42 - issue-42", columns: 160, lines: 50 },
+		];
+		expect(chooseIssuePaneSplitForIssue(windows, 42)).toEqual({ windowId: 11, location: "vsplit" });
+	});
+
+	it("does not match a different issue number", () => {
+		const windows: KittyWindowLike[] = [
+			{ id: 11, env: { [ISSUE_PI_ENV_MARKER]: "1", [AUTOPILOT_CHILD_ENV_MARKER]: "42" }, columns: 160, lines: 50 },
+		];
+		expect(chooseIssuePaneSplitForIssue(windows, 7)).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
 // findIssuePiAnchorWindowId (drives kitten @ ls)
 // ---------------------------------------------------------------------------
 
@@ -486,6 +606,129 @@ describe("KittyControl.findIssuePaneSplitAnchor", () => {
 		expect(await kitty.findIssuePaneSplitAnchor()).toEqual({ windowId: 11, location: "vsplit" });
 	});
 });
+
+describe("KittyControl.findNonMainPaneSplit", () => {
+	beforeEach(() => execResults.clear());
+	afterEach(() => vi.mocked(execFileCb).mockClear());
+
+	function setLsResult(stdout: string) {
+		execResults.set("kitten @ ls", { stdout });
+	}
+
+	it("anchors to the largest non-Main pane (Issue Pi vs subagent by area)", async () => {
+		setLsResult(
+			JSON.stringify([
+				{ id: 1, title: "pi", columns: 200, lines: 50, is_focused: true },
+				{ id: 20, env: { PI_SUBAGENT_ID: "a" }, columns: 40, lines: 24 },
+				{ id: 11, title: "Issue #42", columns: 120, lines: 50 },
+			]),
+		);
+		const kitty = new KittyControl();
+		// 120×50 (6000) > 40×24 (960) → Issue Pi pane wins; wide enough → vsplit
+		expect(await kitty.findNonMainPaneSplit()).toEqual({ windowId: 11, location: "vsplit" });
+	});
+
+	it("prefers the subagent pane when it is larger than the Issue Pi pane", async () => {
+		setLsResult(
+			JSON.stringify([
+				{ id: 1, title: "pi", columns: 200, lines: 50 },
+				{ id: 20, env: { PI_SUBAGENT_ID: "a" }, columns: 120, lines: 50 },
+				{ id: 11, env: { MEKANN_ISSUE_PI: "1" }, columns: 40, lines: 24 },
+			]),
+		);
+		const kitty = new KittyControl();
+		expect(await kitty.findNonMainPaneSplit()).toEqual({ windowId: 20, location: "vsplit" });
+	});
+
+	it("returns undefined when only the Main Pi exists (first subagent call)", async () => {
+		setLsResult(
+			JSON.stringify([{ id: 1, title: "pi", columns: 200, lines: 50, is_focused: true }]),
+		);
+		const kitty = new KittyControl();
+		expect(await kitty.findNonMainPaneSplit()).toBeUndefined();
+	});
+
+	it("returns undefined when kitten @ ls fails", async () => {
+		execResults.set("kitten @ ls", new Error("boom"));
+		const kitty = new KittyControl();
+		expect(await kitty.findNonMainPaneSplit()).toBeUndefined();
+	});
+});
+
+describe("KittyControl.findIssuePiPaneSplitForIssue", () => {
+	beforeEach(() => execResults.clear());
+	afterEach(() => vi.mocked(execFileCb).mockClear());
+
+	function setLsResult(stdout: string) {
+		execResults.set("kitten @ ls", { stdout });
+	}
+
+	it("anchors to the Work Pi pane matched by env child marker", async () => {
+		setLsResult(
+			JSON.stringify([
+				{ id: 1, title: "pi", columns: 200, lines: 50 },
+				{ id: 11, title: "π - Issue #42 - issue-42", columns: 160, lines: 50, env: { MEKANN_ISSUE_PI: "1", MEKANN_AUTOPILOT_CHILD: "42" } },
+				{ id: 12, title: "π - Issue #7 - issue-7", columns: 160, lines: 50, env: { MEKANN_ISSUE_PI: "1", MEKANN_ORCHESTRATION_CHILD: "7" } },
+			]),
+		);
+		const kitty = new KittyControl();
+		expect(await kitty.findIssuePiPaneSplitForIssue(42)).toEqual({ windowId: 11, location: "vsplit" });
+	});
+
+	it("returns undefined when no pane matches the issue number", async () => {
+		setLsResult(
+			JSON.stringify([
+				{ id: 1, title: "pi", columns: 200, lines: 50 },
+				{ id: 11, title: "Issue #42", columns: 160, lines: 50 },
+			]),
+		);
+		const kitty = new KittyControl();
+		expect(await kitty.findIssuePiPaneSplitForIssue(7)).toBeUndefined();
+	});
+
+	it("returns undefined when kitten @ ls fails", async () => {
+		execResults.set("kitten @ ls", new Error("boom"));
+		const kitty = new KittyControl();
+		expect(await kitty.findIssuePiPaneSplitForIssue(42)).toBeUndefined();
+	});
+});
+
+describe("KittyControl.launchWindow (source-window / env)", () => {
+	beforeEach(() => execResults.clear());
+	afterEach(() => {
+		vi.mocked(execFileCb).mockClear();
+		delete process.env.KITTY_WINDOW_ID;
+	});
+
+	it("emits --source-window id:<id> and suppresses --match when sourceWindowId is set", async () => {
+		const kitty = new KittyControl();
+		await kitty.launchWindow({ cwd: "/tmp", location: "vsplit", argv: ["sh"], sourceWindowId: 42 });
+		const args = vi.mocked(execFileCb).mock.calls.at(-1)?.[1] as string[];
+		expect(args).toContain("--source-window");
+		expect(args).toContain("id:42");
+		expect(args).not.toContain("--match");
+	});
+
+	it("emits --env NAME=VALUE for each env entry", async () => {
+		const kitty = new KittyControl();
+		await kitty.launchWindow({ cwd: "/tmp", location: "vsplit", argv: ["sh"], env: { PI_SUBAGENT_ID: "abc", PI_SUBAGENT_PATH: "/x" } });
+		const args = vi.mocked(execFileCb).mock.calls.at(-1)?.[1] as string[];
+		expect(args).toContain("--env");
+		expect(args).toContain("PI_SUBAGENT_ID=abc");
+		expect(args).toContain("PI_SUBAGENT_PATH=/x");
+	});
+
+	it("falls back to --match id:<KITTY_WINDOW_ID> when sourceWindowId is absent", async () => {
+		process.env.KITTY_WINDOW_ID = "7";
+		const kitty = new KittyControl();
+		await kitty.launchWindow({ cwd: "/tmp", location: "vsplit", argv: ["sh"], matchCurrentWindow: true });
+		const args = vi.mocked(execFileCb).mock.calls.at(-1)?.[1] as string[];
+		expect(args).toContain("--match");
+		expect(args).toContain("id:7");
+		expect(args).not.toContain("--source-window");
+	});
+});
+
 describe("KittyControl.hasIssuePiPane", () => {
 	const prevKittyWindowId = process.env.KITTY_WINDOW_ID;
 

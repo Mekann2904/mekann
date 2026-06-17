@@ -109,6 +109,15 @@ describe("KittyController", () => {
       const result = await controller.launchPiSplit(baseParams);
       expect(result.status).toBe("open");
     });
+
+    it("does not break the launch flow when anchorPolicy resolves no pane (fallback)", async () => {
+      // "echo" as kittenBin makes kitten @ ls return empty → anchor undefined →
+      // the fallback (focused window) path runs. Verifies anchorPolicy wiring
+      // (ADR-0021 extension) without breaking the existing launch flow.
+      const result = await controller.launchPiSplit({ ...baseParams, anchorPolicy: { kind: "issue", issueNumber: 42 } });
+      expect(result.kind).toBe("kitty-split");
+      expect(result.status).toBe("open");
+    });
   });
 
   describe("appendLog", () => {

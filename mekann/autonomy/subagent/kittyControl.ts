@@ -3,8 +3,8 @@ import { promisify } from "node:util";
 import { mkdir, appendFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { AgentDisplayRef } from "./types.js";
-import { KittyControl } from "../../utils/terminal/kitty/index.js";
+import type { AgentDisplayRef, SplitAnchorPolicy } from "./types.js";
+import { KittyControl, type IssuePaneSplit, type KittySplitLocation } from "../../utils/terminal/kitty/index.js";
 
 const execFile = promisify(execFileCb);
 
@@ -18,7 +18,11 @@ export interface LaunchPiWindowParams {
   title?: string;
   piCommand?: string;
   extensionPath?: string;
+  /** @deprecated retained for backward compatibility; ignored when an anchor
+   * resolves via {@link anchorPolicy}. Prefer `anchorPolicy`. */
   splitDirection?: "vertical" | "horizontal";
+  /** Where to anchor the split (ADR-0021 extension). Defaults to `nonMain`. */
+  anchorPolicy?: SplitAnchorPolicy;
   modelId?: string;
   thinkingLevel?: string;
   nonce?: string;
@@ -117,9 +121,17 @@ export class KittyController {
     const prepared = await this.prepareLaunchFiles(params);
     const logPath = params.logPath;
     const script = this.buildChildScript(prepared);
-    const location = params.splitDirection
-      ? params.splitDirection === "horizontal" ? "vsplit" : "hsplit"
-      : await this.kitty.longerSideSplitLocation();
+
+    // ADR-0021 extension: anchor the split to a chosen non-Main pane (or the
+    // parent Issue Pi for review-fixer) so the child opens next to it instead
+    // of re-splitting the focused window (Main Pi). Falls back to the focused
+    // window when no anchor resolves (first split only — see ADR-0021).
+    const anchor = await this.resolveSplitAnchor(params.anchorPolicy);
+    const location: KittySplitLocation = anchor?.location
+      ?? (params.splitDirection
+        ? (params.splitDirection === "horizontal" ? "vsplit" : "hsplit")
+        : await this.kitty.longerSideSplitLocation());
+
     const { windowId } = await this.kitty.launchWindow({
       cwd: params.cwd,
       location,
@@ -128,12 +140,32 @@ export class KittyController {
         PI_SUBAGENT_ID: params.agentId,
         PI_SUBAGENT_PATH: params.agentPath,
       },
+      // --env (not --var) is the reliable `kitty @ ls` identification signal,
+      // so other splits can recognise this pane as a non-Main anchor candidate.
+      env: {
+        PI_SUBAGENT_ID: params.agentId,
+        PI_SUBAGENT_PATH: params.agentPath,
+      },
       copyEnv: true,
       allowRemoteControl: true,
+      sourceWindowId: anchor?.windowId,
       matchCurrentWindow: true,
       argv: ["sh", "-lc", script],
     });
     return { kind: "kitty-split", status: "open", windowId, agentId: params.agentId, title, cwd: params.cwd, socketPath: params.socketPath, logPath };
+  }
+
+  /** Resolve the split anchor for {@link launchPiSplit} (ADR-0021 extension).
+   *
+   * review-fixer anchors to its own Issue Pi pane (per-issue); everything else
+   * (including the default) anchors to the largest non-Main pane so generic
+   * subagents group together. Returns `undefined` when no candidate pane exists
+   * yet, in which case `launchPiSplit` falls back to the focused window. */
+  private async resolveSplitAnchor(policy?: SplitAnchorPolicy): Promise<IssuePaneSplit | undefined> {
+    if (policy?.kind === "issue") {
+      return this.kitty.findIssuePiPaneSplitForIssue(policy.issueNumber);
+    }
+    return this.kitty.findNonMainPaneSplit();
   }
 
   async appendLog(display: AgentDisplayRef, line: string): Promise<void> {

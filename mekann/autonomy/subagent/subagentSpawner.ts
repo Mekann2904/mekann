@@ -309,7 +309,7 @@ export class SubagentSpawner {
 
       await this.registerExternalPiRuntime({
         agentId, agentPath: canonicalPath, callerPath, socketPath, display, hub, kitty: adapters.kitty,
-        launchParams: { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: launchMessage, logPath, title: display.title, piCommand: adapters.piCommand, extensionPath: adapters.extensionPath, modelId, thinkingLevel, nonce },
+        launchParams: { agentId, agentPath: canonicalPath, cwd: ctx.cwd, socketPath, initialMessage: launchMessage, logPath, title: display.title, piCommand: adapters.piCommand, extensionPath: adapters.extensionPath, modelId, thinkingLevel, nonce, anchorPolicy: params.anchorPolicy },
         displayMode: displayKind,
         helloTimeoutMs: adapters.helloTimeoutMs,
         onClosed: (id) => { adapters.externalPiSlots.delete(id); this.deps.queue.scheduleDrain(); },
