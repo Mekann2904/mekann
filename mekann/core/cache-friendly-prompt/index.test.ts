@@ -8,8 +8,11 @@ function mockPi() { const hooks = new Map<string, Function>(); return { hooks, e
 const frag = (id: string, stability: any, content: string) => ({ id, source: "test", kind: "coding_guidelines" as const, stability, scope: "global" as const, priority: 1, version: "v1", content });
 describe("cache-friendly-prompt", () => {
   let dir: string;
-  beforeEach(() => { clearPromptProvidersForTests(); dir = fs.mkdtempSync(path.join(os.tmpdir(), "cfp-")); });
-  afterEach(() => clearPromptProvidersForTests());
+  // PI_SUBAGENT_ROLE leaks when the suite itself runs inside a child Pi and
+  // would force every resolved role to "subagent" via requestRoleOf's env
+  // check. Mirror request-correlation.test.ts and drop it per case.
+  beforeEach(() => { delete process.env.PI_SUBAGENT_ROLE; clearPromptProvidersForTests(); dir = fs.mkdtempSync(path.join(os.tmpdir(), "cfp-")); });
+  afterEach(() => { delete process.env.PI_SUBAGENT_ROLE; clearPromptProvidersForTests(); });
   async function load(pi: any, config?: any) { const { default: ext } = await import("./index.js"); ext(pi, config); }
   it("registers hooks", async () => { const pi = mockPi(); await load(pi); expect([...pi.hooks.keys()]).toEqual(["before_agent_start", "context", "before_provider_request", "message_end"]); });
   it("before_agent_start appends stable then semi-stable but not dynamic", async () => { registerPromptProvider({ id: "p", getFragments: () => [frag("s", "stable", "stable text"), frag("m", "semi_stable", "semi text"), frag("d", "dynamic", "dynamic text")] }); const pi = mockPi(); await load(pi); const r = await pi.hooks.get("before_agent_start")!({ systemPrompt: "BASE" }, { cwd: dir, model: { provider: "p", id: "m" } }); expect(r.systemPrompt).toMatch(/^BASE/); expect(r.systemPrompt.indexOf("stable text")).toBeLessThan(r.systemPrompt.indexOf("semi text")); expect(r.systemPrompt).not.toContain("dynamic text"); });

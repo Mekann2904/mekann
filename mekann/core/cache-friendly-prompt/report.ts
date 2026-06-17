@@ -1,9 +1,17 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { normalizeActualCacheUsage } from "./actualUsage.js";
+import { readOutputGateEvents, summarizeOutputGateSavings } from "./outputGateSavings.js";
+import type { OutputGateLedgerEvent } from "./outputGateSavings.js";
 
 import type { ActualUsageLog } from "./actualUsage.js";
 import type { ParsedLog, ParsedActualUsageLog, ProviderSummary, ActualProviderSummary, PercentileSummary, CacheFriendlySummary, WarningBreakdownEntry, WarningCategoryBreakdown, RecentWindowSummary } from "./reportTypes.js";
+import {
+  dynamicTruncationStage,
+  hasDynamicFragmentTruncation,
+  hasDynamicTailTruncation,
+  hasDynamicTruncation,
+} from "./reportDynamicTruncation.js";
 import { computeWarningBreakdown, computeWarningCategories, WARNING_BREAKDOWN_TOP_N } from "./reportWarningAnalytics.js";
 
 const MAX_POINTS = 500;
@@ -54,6 +62,19 @@ function actualProviderModelKey(row: ParsedActualUsageLog): string {
 
 function actualRequestRoleKey(row: ParsedActualUsageLog): string {
   return row.requestRole ?? "unknown";
+}
+
+/**
+ * Render a role-correlation coverage note. Returns an empty string when there
+ * is no data. Surface the residual "unknown" share so weak role signals stay
+ * visible (see issue #90; target: < 10% unknown).
+ */
+export function formatUnknownRoleNote(unknownCount: number, total: number): string {
+  if (total <= 0) return "";
+  const pct = (unknownCount / total) * 100;
+  const trimmed = pct.toFixed(1);
+  const flag = pct >= 10 ? " ⚠️ above 10% target" : "";
+  return `> **Role correlation note**: ${unknownCount} / ${total} requests (${trimmed}%) have an uncorrelated role ("unknown").${flag}`;
 }
 
 function actualProviderPrefixHashKey(row: ParsedActualUsageLog): string {
@@ -278,7 +299,7 @@ function summarizeActual(actualRows: ParsedActualUsageLog[]) {
   };
 }
 
-function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], generatedAt: string): CacheFriendlySummary {
+function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], generatedAt: string, outputGateEvents: OutputGateLedgerEvent[] = []): CacheFriendlySummary {
   const latest = rows.at(-1);
   let streak = 0;
   const latestReuseKey = latest ? scopedReuseKey(latest) : "";
@@ -308,9 +329,11 @@ function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], genera
   }
   const uniqueScopedReuseKeyCount = countUniqueScopedReuseKeys(rows);
   const uniqueScopedReuseKeyRatio = rate(uniqueScopedReuseKeyCount, rows.length);
-  const dynamicTruncatedRows = rows.filter((row) => row.dynamicContextTruncated === true);
-  const dynamicTruncationOriginalChars = dynamicTruncatedRows.reduce((sum, row) => sum + (row.dynamicContextOriginalChars ?? 0), 0);
-  const dynamicTruncationRenderedChars = dynamicTruncatedRows.reduce((sum, row) => sum + (row.dynamicContextRenderedChars ?? 0), 0);
+  const dynamicTailTruncatedRows = rows.filter(hasDynamicTailTruncation);
+  const dynamicFragmentTruncatedRows = rows.filter(hasDynamicFragmentTruncation);
+  const dynamicTruncatedRows = rows.filter(hasDynamicTruncation);
+  const dynamicTruncationOriginalChars = dynamicTailTruncatedRows.reduce((sum, row) => sum + (row.dynamicContextOriginalChars ?? 0), 0);
+  const dynamicTruncationRenderedChars = dynamicTailTruncatedRows.reduce((sum, row) => sum + (row.dynamicContextRenderedChars ?? 0), 0);
   const actual = summarizeActual(actualRows);
   return {
     generatedAt,
@@ -340,6 +363,8 @@ function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], genera
     providerSwitches: countChanges(rows, (r) => r.provider),
     modelSwitchesWithinProvider: rows.reduce((n, row, i) => i > 0 && (row.provider ?? "") === (rows[i - 1].provider ?? "") && (row.model ?? "") !== (rows[i - 1].model ?? "") ? n + 1 : n, 0),
     dynamicTruncationCount: dynamicTruncatedRows.length,
+    dynamicTailTruncationCount: dynamicTailTruncatedRows.length,
+    dynamicFragmentTruncationCount: dynamicFragmentTruncatedRows.length,
     dynamicTruncationOriginalChars,
     dynamicTruncationRenderedChars,
     dynamicTruncationOmittedChars: Math.max(0, dynamicTruncationOriginalChars - dynamicTruncationRenderedChars),
@@ -351,6 +376,7 @@ function summarize(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], genera
     recentWindow: summarizeRecentWindow(rows, actualRows),
     providers,
     ...actual,
+    outputGateSavings: summarizeOutputGateSavings(outputGateEvents),
   };
 }
 
@@ -553,6 +579,18 @@ function formatPct(value: number | null): string {
   return value === null ? "n/a" : `${(value * 100).toFixed(1)}%`;
 }
 
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return `${value}`;
+  const units = ["B", "KiB", "MiB", "GiB"];
+  let scaled = value;
+  let unit = 0;
+  while (scaled >= 1024 && unit < units.length - 1) {
+    scaled /= 1024;
+    unit += 1;
+  }
+  return unit === 0 ? `${value} B` : `${scaled.toFixed(1)} ${units[unit]} (${value} B)`;
+}
+
 function renderLowHitRows(rows: ParsedActualUsageLog[], limit = 20): string {
   return rows
     .filter((row) => typeof row.tokenHitRate === "number" && Number.isFinite(row.tokenHitRate) && row.tokenHitRate < 0.8)
@@ -621,6 +659,7 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[], actualRo
   const actualProviderRows = renderActualSummaryRows(summary.actualByProvider);
   const actualProviderModelRows = renderActualSummaryRows(summary.actualByProviderModel);
   const actualRequestRoleRows = renderActualSummaryRows(summary.actualByRequestRole);
+  const actualUnknownRoleNote = formatUnknownRoleNote(summary.actualByRequestRole["unknown"]?.requests ?? 0, summary.actualRequestCount);
   const actualWarmStateRows = renderActualSummaryRows(summary.actualByWarmState);
   const actualProviderPrefixHashRows = renderActualSummaryRows(summary.actualByProviderPrefixHash);
   const actualBaseSystemHashRows = renderActualSummaryRows(summary.actualByBaseSystemHash);
@@ -630,8 +669,14 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[], actualRo
   const promptProviderGraphRows = [...new Set(rows.map((row) => row.provider ?? "unknown"))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-provider-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const promptProviderModelGraphRows = [...new Set(rows.map(providerKey))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
   const promptRoleGraphRows = [...new Set(rows.map(requestRoleKey))].sort().map((key) => `| ${escapeHtml(key)} | ![${escapeHtml(key)}](./trend-role-${actualGraphSlug(key)}.svg) |`).join("\n") || "| なし | n/a |";
+  const promptUnknownRoleNote = formatUnknownRoleNote(rows.filter((row) => requestRoleKey(row) === "unknown").length, rows.length);
   const changes = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined })).filter((x): x is { row: ParsedLog; prev: ParsedLog } => x.prev !== undefined && scopedReuseKey(x.row) !== scopedReuseKey(x.prev)).slice(-20).reverse();
   const changeRows = changes.map(({ row, prev }) => `| ${row.timestamp} | ${escapeHtml(providerKey(prev))} → ${escapeHtml(providerKey(row))} | \`${shortHash(reuseKey(prev))}\` → \`${shortHash(reuseKey(row))}\` | ${escapeHtml(describeFragmentDiff(prev, row))} | ${(row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0) - (prev.providerPrefixChars ?? prev.featureCacheablePrefixChars ?? prev.stablePrefixChars ?? 0)} | ${(row.totalPromptChars ?? 0) - (prev.totalPromptChars ?? 0)} | ${row.providerPrefixChars ?? row.featureCacheablePrefixChars ?? row.stablePrefixChars ?? 0} | ${row.stablePrefixChars ?? 0} | ${row.totalPromptChars ?? 0} |`).join("\n") || "| なし |  |  |  |  |  |  |  | |";
+  const outputGate = summary.outputGateSavings;
+  const outputGateByToolRows = Object.entries(outputGate.byTool)
+    .sort((a, b) => b[1].bytes - a[1].bytes || b[1].count - a[1].count)
+    .map(([tool, v]) => `| ${escapeHtml(tool)} | ${v.count} | ${formatBytes(v.bytes)} | ${formatPct(outputGate.totalBytes > 0 ? v.bytes / outputGate.totalBytes : null)} |`)
+    .join("\n") || "| なし | 0 | 0 | n/a |";
   const overviewRows = renderMetricRows([
     ["requests in proxy log", summary.totalRequests],
     ["latest provider/model", latestProviderModel],
@@ -639,8 +684,13 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[], actualRo
     ["latest stable prefix chars", latest?.stablePrefixChars ?? 0],
     ["latest total prompt chars", latest?.totalPromptChars ?? 0],
     ["warnings", summary.warningCount],
-    ["dynamic truncations", summary.dynamicTruncationCount],
+    ["dynamic truncations (any stage)", summary.dynamicTruncationCount],
+    ["dynamic tail truncations", summary.dynamicTailTruncationCount],
+    ["dynamic fragment truncations", summary.dynamicFragmentTruncationCount],
     ["dynamic truncation omitted chars", summary.dynamicTruncationOmittedChars],
+    ["output-gate externalized (count)", summary.outputGateSavings.count],
+    ["output-gate externalized bytes", formatBytes(summary.outputGateSavings.totalBytes)],
+    ["output-gate stub化率", formatPct(summary.outputGateSavings.stubRate)],
   ]);
   const actualMetricRows = renderMetricRows([
     ["actual usage requests", summary.actualRequestCount],
@@ -660,11 +710,11 @@ function renderReport(summary: CacheFriendlySummary, rows: ParsedLog[], actualRo
     ["cacheMissTokens", summary.actualCacheMissTokens],
     ["weighted cacheableReadRate", formatPct(summary.actualCacheableReadRateWeighted)],
   ]);
-  const dynamicTruncationRows = rows.filter((row) => row.dynamicContextTruncated === true)
+  const dynamicTruncationRows = rows.filter(hasDynamicTruncation)
     .slice(-20)
     .reverse()
-    .map((row) => `| ${row.timestamp} | ${escapeHtml(providerKey(row))} | ${row.dynamicContextOriginalChars ?? 0} | ${row.dynamicContextRenderedChars ?? 0} | ${Math.max(0, (row.dynamicContextOriginalChars ?? 0) - (row.dynamicContextRenderedChars ?? 0))} | ${row.dynamicContextLimitChars ?? 0} | ${row.latestDynamicFragmentHashes?.map((f) => `${f.source}/${f.id}`).slice(0, 6).join(", ") ?? ""} |`)
-    .join("\n") || "| なし |  |  |  |  |  | |";
+    .map((row) => `| ${row.timestamp} | ${escapeHtml(providerKey(row))} | ${dynamicTruncationStage(row)} | ${row.dynamicContextOriginalChars ?? 0} | ${row.dynamicContextRenderedChars ?? 0} | ${Math.max(0, (row.dynamicContextOriginalChars ?? 0) - (row.dynamicContextRenderedChars ?? 0))} | ${row.dynamicContextLimitChars ?? 0} | ${row.latestDynamicFragmentHashes?.map((f) => `${f.source}/${f.id}`).slice(0, 6).join(", ") ?? ""} |`)
+    .join("\n") || "| なし |  |  |  |  |  |  |  |";
   const providerModelSwitchRows = rows.map((row, index) => ({ row, prev: index > 0 ? rows[index - 1] : undefined }))
     .filter((x): x is { row: ParsedLog; prev: ParsedLog } => x.prev !== undefined && providerKey(x.row) !== providerKey(x.prev))
     .slice(-20)
@@ -727,6 +777,8 @@ ${actualProviderModelRows}
 ${actualProviderRows}
 
 ### 2.4 By request role
+
+${actualUnknownRoleNote}
 
 | request role | requests | input tokens | output tokens | cache read tokens | cache write tokens | cache miss tokens | weighted tokenHitRate | avg tokenHitRate | weighted cacheableReadRate |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -812,6 +864,8 @@ This section is based on proxy request logs. It can include providers/models tha
 
 ### 4.2 By request role
 
+${promptUnknownRoleNote}
+
 | request role | graph |
 |---|---|
 ${promptRoleGraphRows}
@@ -840,10 +894,10 @@ ${providerRows || "| なし | 0 | 0 |  | 0 | 0 | 0 |"}
 
 ## 7. Dynamic tail size / truncation
 
-Dynamic context is intentionally placed in the volatile tail, but very large dynamic tails still increase total input tokens and can lower request-level tokenHitRate. This table shows recent dynamic truncations.
+Dynamic context is intentionally placed in the volatile tail, but very large dynamic tails still increase total input tokens and can lower request-level tokenHitRate. Dynamic context is bounded in two stages with distinct limits (see prompt-core/config.ts): a per-fragment render-side budget (DYNAMIC_FRAGMENT_BUDGET_CHARS) and a whole-tail snapshot-side cap (DYNAMIC_TAIL_MAX_CHARS). The **trim stage** column shows which stage(s) truncated each request so it is clear which limit applied.
 
-| timestamp | provider/model | original chars | rendered chars | omitted chars | limit chars | dynamic fragments |
-|---|---|---:|---:|---:|---:|---|
+| timestamp | provider/model | trim stage | original chars | rendered chars | omitted chars | limit chars | dynamic fragments |
+|---|---|---|---:|---:|---:|---:|---|
 ${dynamicTruncationRows}
 
 ## 8. Provider/model switching
@@ -890,7 +944,29 @@ ${renderWarningBreakdownRows(summary.warningBreakdownRecent)}
 |---|---|---:|
 ${renderWarningBreakdownRows(summary.warningBreakdownAll)}
 
-## 12. Glossary
+## 12. Output-gate savings
+
+output-gate は閾値（既定 48 KiB）を超える raw tool output を検索可能な artifact として外部化し、会話には小さな stub だけを残します。このセクションは context-ledger（\`.pi/mekann-context/events.v2.jsonl\`）の \`tool_result\` イベントから集計した削減量です。集計対象が 0 件の場合は output-gate が該当期間に稼働しなかったことを示します。
+
+| metric | value |
+|---|---:|
+| 外部化件数 (count) | ${outputGate.count} |
+| 外部化 bytes (total) | ${formatBytes(outputGate.totalBytes)} |
+| 平均 bytes / 件 | ${outputGate.avgBytes === null ? "n/a" : formatBytes(outputGate.avgBytes)} |
+| gate threshold (baseline) | ${formatBytes(outputGate.thresholdBytes)} |
+| stub化率（閾値超過削減率） | ${formatPct(outputGate.stubRate)} |
+| 削減効果（閾値基準） | ${formatBytes(outputGate.savingsBeyondThresholdBytes)} |
+| latest externalization | ${outputGate.latestTimestamp ?? "n/a"} |
+
+stub化率は、外部化された bytes のうち閾値（\`${formatBytes(outputGate.thresholdBytes)}\`）を超えて削減された割合 \`(totalBytes - threshold×件数) / totalBytes\` です。閾値は「このサイズを超えたら外部化する」gate の起点であり、stub 自体のインラインサイズ（previewBytes）ではありません。
+
+### 12.1 By tool
+
+| tool | externalized count | externalized bytes | share |
+|---|---:|---:|---:|
+${outputGateByToolRows}
+
+## 13. Glossary
 
 | term | meaning |
 |---|---|
@@ -904,6 +980,8 @@ ${renderWarningBreakdownRows(summary.warningBreakdownAll)}
 | providerPrefixHash | base system prompt + stable + semi-stable から計算した raw-ish hash。provider SDK の最終 serialization そのものではありません。 |
 | hash change | reuse key が前回から変わった地点です。 |
 | fragment | 各拡張が提供するプロンプト断片。stable / semi-stable / dynamic に分類されます。 |
+| output-gate savings | context-ledger の \`tool_result\` イベントから集計した、output-gate による tool output 外部化（stub 化）の件数・bytes です。 |
+| stub化率 | 外部化された bytes のうち閾値（既定 48 KiB）を超えて削減された割合。\`(totalBytes - threshold×件数) / totalBytes\`。閾値は外部化の起点であり stub のインラインサイズではありません。 |
 `;
 }
 
@@ -913,8 +991,8 @@ async function readIfExists(filePath: string): Promise<string> {
 
 type ReportArtifact = { fileName: string; content: string };
 
-function buildCacheFriendlyReportArtifacts(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], generatedAt: string): ReportArtifact[] {
-  const summary = summarize(rows, actualRows, generatedAt);
+function buildCacheFriendlyReportArtifacts(rows: ParsedLog[], actualRows: ParsedActualUsageLog[], generatedAt: string, outputGateEvents: OutputGateLedgerEvent[] = []): ReportArtifact[] {
+  const summary = summarize(rows, actualRows, generatedAt, outputGateEvents);
   const artifacts: ReportArtifact[] = [
     { fileName: "summary.json", content: JSON.stringify(summary, null, 2) + "\n" },
     { fileName: "trend.svg", content: renderSvg(rows, MAX_POINTS) },
@@ -952,15 +1030,19 @@ function buildCacheFriendlyReportArtifacts(rows: ParsedLog[], actualRows: Parsed
   return artifacts;
 }
 
-export function buildCacheFriendlyReportArtifactsForTest(requestLogText: string, actualUsageLogText: string, generatedAt: string): ReportArtifact[] {
-  return buildCacheFriendlyReportArtifacts(readRows(requestLogText), readActualRows(actualUsageLogText), generatedAt);
+export function buildCacheFriendlyReportArtifactsForTest(requestLogText: string, actualUsageLogText: string, generatedAt: string, outputGateEventsText = ""): ReportArtifact[] {
+  return buildCacheFriendlyReportArtifacts(readRows(requestLogText), readActualRows(actualUsageLogText), generatedAt, readOutputGateEvents(outputGateEventsText));
 }
 
 export async function generateCacheFriendlyReport(dir: string): Promise<void> {
   try {
     const rows = readRows(await readIfExists(path.join(dir, "requests.jsonl")));
     const actualRows = readActualRows(await readIfExists(path.join(dir, "actual-usage.jsonl")));
-    const artifacts = buildCacheFriendlyReportArtifacts(rows, actualRows, new Date().toISOString());
+    // dir is `<cwd>/.pi-cache-friendly`; the context-ledger lives under
+    // `<cwd>/.pi/mekann-context/events.v2.jsonl`. Only the current generation is
+    // read, matching how `requests.jsonl` is handled.
+    const outputGateEvents = readOutputGateEvents(await readIfExists(path.join(path.dirname(dir), ".pi", "mekann-context", "events.v2.jsonl")));
+    const artifacts = buildCacheFriendlyReportArtifacts(rows, actualRows, new Date().toISOString(), outputGateEvents);
     await Promise.all(artifacts.map((artifact) => fs.writeFile(path.join(dir, artifact.fileName), artifact.content, "utf8")));
   } catch { /* report generation must never break agent execution */ }
 }

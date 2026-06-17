@@ -23,5 +23,12 @@ export const contextLedgerSettingsSchema: FeatureSettingsSchema = {
 	settings: [
 		boolSetting("enabled", "General", true, "context-ledger tools と command を有効にします。false の場合、LLM-visible search/snapshot tools を登録しません。", true),
 		toolSurfaceSetting,
+		boolSetting(
+			"postCompactionRestore.enabled",
+			"Features",
+			true,
+			"compaction 後の次 turn で ledger snapshot を動的フラグメントとして自動注入し、working memory を復元する。手動で summarize_session_context を呼ばなくてよい。model-optimizer の compaction hint とは別 ID/優先度で併存する。",
+			false,
+		),
 	],
 };

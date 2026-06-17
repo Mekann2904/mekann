@@ -125,6 +125,20 @@ describe("output-gate schema", () => {
     expect(schema.settings.find((s) => s.key === "maxPrefixChars")?.defaultValue).toBe(32000);
   });
 
+  it("deprecates cacheable-context promptSurface \"full\" with a fallback diagnostic", () => {
+    const schema = mekannSettingsSchemas.find((s) => s.feature === "cacheable-context")!;
+    const setting = schema.settings.find((s) => s.key === "promptSurface")!;
+    // locator / off are accepted cleanly
+    expect(setting.validate("locator")).toEqual([]);
+    expect(setting.validate("off")).toEqual([]);
+    // full is deprecated and surfaces a diagnostic (graceful fallback to locator)
+    const fullDiags = setting.validate("full");
+    expect(fullDiags.length).toBeGreaterThan(0);
+    expect(fullDiags.join("")).toContain("非推奨");
+    // any other value is rejected
+    expect(setting.validate("bogus").length).toBeGreaterThan(0);
+  });
+
   it("flattenEffective resolves all output-gate settings", () => {
     const eff = flattenEffective(mekannSettingsSchemas, loaded({ "output-gate": { maxInlineBytes: 8192 } }), loaded({}));
     const item = eff.find((e) => e.feature === "output-gate" && e.key === "maxInlineBytes");

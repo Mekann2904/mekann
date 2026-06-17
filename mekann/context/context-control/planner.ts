@@ -132,13 +132,9 @@ const pressureRule: PlannerRule = (ctx) => ctx.pressure === "critical" || ctx.pr
 const cacheableContextRule: PlannerRule = (ctx) => {
   const prefixChars = Number(ctx.latestValue("prefixChars") ?? 0);
   const maxPrefixChars = Number(ctx.latestValue("maxPrefixChars") ?? 0);
-  const promptSurface = String(ctx.latestValue("promptSurface") ?? "");
   const decisions: ContextPlannerDecision[] = [];
   if (maxPrefixChars > 0 && prefixChars / maxPrefixChars > 0.9) {
     decisions.push({ kind: "retrieve", target: "cacheable-context:overflow-fragments", priority: "medium", expectedSavingsBytes: Math.round(prefixChars * 0.2), qualityRisk: "low", reason: "Cacheable context prefix is close to maxPrefixChars; keep locator inline and retrieve optional fragments on demand." });
-  }
-  if (promptSurface === "full" && prefixChars > 16 * 1024) {
-    decisions.push({ kind: "retrieve", target: "cacheable-context:full-surface", priority: "medium", expectedSavingsBytes: Math.round(prefixChars * 0.75), qualityRisk: "medium", reason: "Full cacheable-context is large for normal tasks; prefer locator mode and targeted retrieval unless this task explicitly needs all domain docs inline." });
   }
   return decisions;
 };

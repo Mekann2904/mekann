@@ -6,9 +6,14 @@ import { CONTEXT_EVENT_KINDS } from "./schema.js";
 import { buildSnapshot } from "./snapshot.js";
 import { readLatestSnapshot } from "./snapshot-store.js";
 import { handleClear } from "../clear.js";
-import { featureStringValue } from "../../settings/enabled.js";
+import { featureBooleanValue, featureStringValue } from "../../settings/enabled.js";
 import { setToolsActive } from "../../settings/toolSurface.js";
 import { shouldExposeManualOrAlwaysSurface, shouldRestoreSessionContextSurface } from "../surface-policy.js";
+import { registerPromptProvider } from "../../core/prompt-core/index.js";
+import {
+	POST_COMPACTION_RESTORE_MAX_BYTES,
+	PostCompactionRestoreController,
+} from "./postCompactionRestore.js";
 import {
 	CONTEXT_LEDGER_COMMAND_COMPLETIONS,
 	clampInt,
@@ -27,6 +32,24 @@ const CONTEXT_LEDGER_TOOL_NAMES = ["search_context_events", "summarize_session_c
 
 export default function contextLedgerExtension(pi: ExtensionAPI): void {
 	let manualToolsActive = false;
+
+	// ── post-compaction working-memory restore ───────────────────────
+	// Re-read the toggle on session_start; arm on session_compact; disarm once
+	// the snapshot is delivered into a freshly-built dynamic block.
+	let postCompactionRestoreEnabled = featureBooleanValue(
+		"context-ledger",
+		"postCompactionRestore.enabled",
+		true,
+	);
+	const restoreController = new PostCompactionRestoreController({
+		isEnabled: () => postCompactionRestoreEnabled,
+		readSnapshotXml: (cwd) =>
+			summarizeSessionContextText({ cwd, maxBytes: POST_COMPACTION_RESTORE_MAX_BYTES }),
+	});
+	registerPromptProvider({
+		id: "context-ledger",
+		getFragments: (ctx) => restoreController.getFragments(ctx),
+	});
 
 	function shouldExposeContextLedgerTools(): boolean {
 		return shouldExposeManualOrAlwaysSurface({
@@ -133,6 +156,13 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 			hasLatestSnapshot: Boolean(await readLatestSnapshot(cwd)),
 		});
 		syncContextLedgerToolSurface();
+		// Fresh session: nothing to restore. Re-read the toggle in case settings changed.
+		restoreController.reset();
+		postCompactionRestoreEnabled = featureBooleanValue(
+			"context-ledger",
+			"postCompactionRestore.enabled",
+			true,
+		);
 		// Best-effort: archive the legacy v1 ledger on first contact so it stops
 		// masquerading as a live log (ADR-0006 / issue #96). Must never break session start.
 		try {
@@ -144,10 +174,21 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 
 	pi.on("session_compact", async () => {
 		setManualToolsActive(true);
+		// A compaction completed: offer the ledger snapshot on the next prompt
+		// render so working memory is restored without a manual summarize call.
+		restoreController.arm();
+	});
+
+	// Consume the restore once the snapshot lands in a freshly-built dynamic
+	// block. cache-friendly-prompt's context handler runs before this one
+	// (core loads before context), so the block is already appended here.
+	pi.on("context", async (event: any) => {
+		restoreController.consumeIfDelivered(event?.messages ?? []);
 	});
 
 	pi.on("session_shutdown", async () => {
 		manualToolsActive = false;
+		restoreController.reset();
 		syncContextLedgerToolSurface();
 	});
 }

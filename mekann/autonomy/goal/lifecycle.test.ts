@@ -279,9 +279,16 @@ describe("goal lifecycle and events", () => {
         ["goal_objective", "semi_stable"],
         ["goal_runtime_state", "dynamic"],
       ]);
+      // Objective fragment must contain only the objective text: status and
+      // budget are dynamic and must not leak into the semi-stable prefix.
       expect(fragments[1].content).toContain("My active goal");
+      expect(fragments[1].content).not.toContain("Status:");
+      expect(fragments[1].content).not.toContain("Token budget upper bound");
       expect(fragments[1].content).not.toContain("Tokens used");
+      // Status and budget live in the dynamic runtime-state fragment.
+      expect(fragments[2].content).toContain("Status: active");
       expect(fragments[2].content).toContain("Tokens used");
+      expect(fragments[2].content).toContain("Token budget upper bound: 5000");
     });
   });
 
