@@ -73,6 +73,8 @@ Pi 上では `/mekann-settings` を使って設定を確認・編集できます
 
 `display` は `none`、`external-pi`、`external-split` のいずれかです。Kitty 以外では表示機能が制限される場合があります。`maxSubagents` は hard-cap の `4` まで指定できます。`maxResultRetries`（1〜10、既定 3）は `agent_results action=retry` で1つの結果を再実行できる回数上限です。
 
+**既定では無効** です（ADR-0018）。汎用の `delegate_agent` / `spawn_agent` などのツールを既定で隠すためです。`review-fixer` はこの設定によらず独自の control plane で動作するため、subagent を無効のままでも issue worktree で `review_fixer` を使えます。subagent 機能を使う場合のみ `features.subagent.enabled = true` を設定してください。
+
 ### Command Normalization
 
 ```json

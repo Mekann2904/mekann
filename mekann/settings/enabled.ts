@@ -35,15 +35,35 @@ function rawFeatureValue(feature: string, key: string, cwd = process.cwd()): unk
 }
 
 /**
+ * Per-feature default returned when `enabled` is missing from BOTH global
+ * and workspace mekann.json. Most features stay enabled-by-default for
+ * backward compatibility; this table opts specific features out.
+ *
+ * ADR-0018: the generic subagent surface (delegate_agent / spawn_agent /
+ * message_agent / wait_agent / list_agents / close_agent / agent_results) is
+ * intentionally default-off. review-fixer reuses the subagent control plane
+ * via its own `createSubagentControl`, independent of this flag, so it keeps
+ * working with subagent disabled.
+ */
+const FEATURE_DEFAULT_WHEN_MISSING: Record<string, boolean> = {
+	subagent: false,
+};
+
+/**
  * Returns whether a Mekann feature should expose its LLM/user-visible surface.
- * Missing settings default to enabled so existing installations keep behavior.
+ * Missing settings default to enabled so existing installations keep behavior,
+ * except for features listed in FEATURE_DEFAULT_WHEN_MISSING.
  *
  * Keep this path independent from the settings schema registry: suite indexes call
  * it during Pi startup before deciding which feature modules to import, and pulling
  * in every feature's settings schema here defeats lazy loading.
  */
 export function isFeatureEnabled(feature: string, cwd = process.cwd()): boolean {
-	return rawFeatureValue(feature, "enabled", cwd) !== false;
+	const configured = rawFeatureValue(feature, "enabled", cwd);
+	if (configured === undefined) {
+		return FEATURE_DEFAULT_WHEN_MISSING[feature] ?? true;
+	}
+	return configured !== false;
 }
 
 export function featureStringValue(feature: string, key: string, fallback: string, cwd = process.cwd()): string {

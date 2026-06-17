@@ -27,7 +27,7 @@ export const subagentSettingsSchema: FeatureSettingsSchema = {
   feature: "subagent",
   title: "Subagent",
   settings: [
-    bool("enabled", "General", true, "subagent tool/command、child process、IPC lifecycle を有効にします。"),
+    bool("enabled", "General", false, "subagent tool/command、child process、IPC lifecycle を有効にします（ADR-0018: 既定は無効）。review-fixer はこの設定によらず独自 control plane で動作します。汎用 subagent を使う場合は features.subagent.enabled = true に設定してください。"),
     num("maxSubagents", "Capacity", MEKANN_SUBAGENT_DEFAULTS.maxSubagents, 1, HARD_MAX_SUBAGENTS, "同時実行する subagent 数。"),
     num("maxOpenAgents", "Capacity", MEKANN_SUBAGENT_DEFAULTS.maxOpenAgents, 1, 8, "root を含む open agent 数の上限。"),
     num("maxQueuedSubagents", "Capacity", MEKANN_SUBAGENT_DEFAULTS.maxQueuedSubagents, 0, 16, "待機 queue に入れられる subagent 数。"),
