@@ -6,6 +6,36 @@ function pickString(...values: unknown[]): string | undefined {
 	return undefined;
 }
 
+function pickBoolean(...values: unknown[]): boolean | undefined {
+	for (const value of values) {
+		if (typeof value === "boolean") return value;
+		if (typeof value === "string") {
+			const normalized = value.trim().toLowerCase();
+			if (normalized === "true") return true;
+			if (normalized === "false") return false;
+		}
+	}
+	return undefined;
+}
+
+/**
+ * Minimal structural view of a snapshot used for snapshot-derived role
+ * inference. Kept deliberately small so request-correlation stays decoupled
+ * from the full snapshot reducer module. Only the fields actually consumed
+ * by `inferRoleFromSnapshot` are declared — do not add speculative fields
+ * without wiring them into inference.
+ */
+export interface RoleInferenceSnapshot {
+	runKeySource?: RunKeySource;
+	requestRole?: CacheFriendlyRequestRole;
+	requestRoleSource?: string;
+}
+
+/** True when `source` is one of the weak/default sources that signal a guess. */
+function isWeakRoleSource(source: string | undefined): boolean {
+	return !source || source === "default:root-process" || source.startsWith("default:") || source === "(none)";
+}
+
 export function contextCwd(event: any, ctx: any): string {
 	return event?.systemPromptOptions?.cwd ?? ctx?.cwd ?? process.cwd();
 }
@@ -57,7 +87,17 @@ export function requestRoleOf(
 	const envRole = pickString(process.env.PI_SUBAGENT_ROLE);
 	if (envRole === "child") return { requestRole: "subagent", requestRoleSource: "env:PI_SUBAGENT_ROLE" };
 
-	const explicit = pickString(event?.requestRole, event?.role, event?.agentRole, ctx?.requestRole, ctx?.role, ctx?.agentRole);
+	// Explicit role fields emitted by Pi or host integrations.
+	const explicit = pickString(
+		event?.requestRole,
+		event?.role,
+		event?.agentRole,
+		event?.sessionRole,
+		ctx?.requestRole,
+		ctx?.role,
+		ctx?.agentRole,
+		ctx?.sessionRole,
+	);
 	if (explicit) {
 		const normalized = explicit.toLowerCase();
 		if (normalized.includes("subagent") || normalized.includes("sub-agent") || normalized === "child") return { requestRole: "subagent", requestRoleSource: `explicit:${explicit}` };
@@ -65,16 +105,120 @@ export function requestRoleOf(
 		if (normalized.includes("main") || normalized === "root") return { requestRole: "main", requestRoleSource: `explicit:${explicit}` };
 	}
 
-	const agentPath = pickString(event?.agentPath, event?.agent_path, event?.agent?.path, ctx?.agentPath, ctx?.agent_path, ctx?.agent?.path);
+	// Explicit boolean subagent flag (host integrations that know the truth).
+	const isSubagent = pickBoolean(
+		event?.isSubagent,
+		event?.subagent,
+		event?.session?.isSubagent,
+		ctx?.isSubagent,
+		ctx?.subagent,
+		ctx?.session?.isSubagent,
+	);
+	if (isSubagent === true) return { requestRole: "subagent", requestRoleSource: "explicit:isSubagent" };
+	if (isSubagent === false) return { requestRole: "main", requestRoleSource: "explicit:isSubagent" };
+
+	// A session that has a parent session/lineage is a forked or delegated run.
+	const parentSession = pickString(
+		event?.parentSession,
+		event?.parent_session,
+		event?.session?.parent,
+		event?.session?.parentSession,
+		event?.parent,
+		ctx?.parentSession,
+		ctx?.parent_session,
+		ctx?.session?.parent,
+		ctx?.session?.parentSession,
+		ctx?.parent,
+	);
+	if (parentSession) return { requestRole: "subagent", requestRoleSource: "parentSession" };
+
+	const agentPath = pickString(
+		event?.agentPath,
+		event?.agent_path,
+		event?.agent?.path,
+		event?.session?.path,
+		ctx?.agentPath,
+		ctx?.agent_path,
+		ctx?.agent?.path,
+		ctx?.session?.path,
+	);
 	if (agentPath) {
 		if (agentPath === "/root" || agentPath === "root") return { requestRole: "main", requestRoleSource: "agentPath" };
 		if (agentPath.startsWith("/root/") || agentPath.includes("subagent")) return { requestRole: "subagent", requestRoleSource: "agentPath" };
 	}
 
-	const taskName = pickString(event?.taskName, event?.task_name, ctx?.taskName, ctx?.task_name);
+	const taskName = pickString(
+		event?.taskName,
+		event?.task_name,
+		event?.task?.name,
+		event?.taskPath,
+		ctx?.taskName,
+		ctx?.task_name,
+		ctx?.task?.name,
+		ctx?.taskPath,
+	);
 	if (taskName) return { requestRole: "subagent", requestRoleSource: "taskName" };
 
 	return { requestRole: "main", requestRoleSource: "default:root-process" };
+}
+
+/**
+ * Infer a request role from snapshot-derived signals when explicit event/ctx
+ * fields are absent. Conservative by design: it only returns a role when a
+ * signal is genuinely informative and otherwise returns `null` so the caller
+ * can fall back further.
+ *
+ * Signals considered (see issue #90):
+ *  - an already-resolved, non-default role stored on the snapshot is trusted;
+ *  - `runKeySource === "cwd"` indicates a root/one-off process (no session or
+ *    conversation id was available), which strongly implies a main run.
+ *
+ * Returns `null` when no informative signal is available.
+ */
+export function inferRoleFromSnapshot(
+	state: RoleInferenceSnapshot | null | undefined,
+): { requestRole: CacheFriendlyRequestRole; requestRoleSource: string } | null {
+	if (!state) return null;
+	if (
+		state.requestRole &&
+		state.requestRole !== "unknown" &&
+		!isWeakRoleSource(state.requestRoleSource)
+	) {
+		return {
+			requestRole: state.requestRole,
+			requestRoleSource: `snapshot:${state.requestRoleSource}`,
+		};
+	}
+	if (state.runKeySource === "cwd") {
+		return { requestRole: "main", requestRoleSource: "snapshot:runKeySource:cwd" };
+	}
+	return null;
+}
+
+/**
+ * Resolve a request role for any hook (including provider/message hooks that
+ * fire outside the agent-start hook). Chains explicit event/ctx resolution →
+ * snapshot-derived inference →
+ * role-only memo hint, and only falls back to the default main guess when no
+ * signal fires. This is the single entry point used by provider/message hooks.
+ */
+export function resolveRequestRole(opts: {
+	event: any;
+	ctx: any;
+	snapshot?: RoleInferenceSnapshot | null;
+	roleHint?: { requestRole: CacheFriendlyRequestRole; requestRoleSource: string } | null;
+}): { requestRole: CacheFriendlyRequestRole; requestRoleSource: string } {
+	const explicit = requestRoleOf(opts.event, opts.ctx);
+	if (!isWeakRoleSource(explicit.requestRoleSource)) return explicit;
+	const inferred = inferRoleFromSnapshot(opts.snapshot);
+	if (inferred) return inferred;
+	if (opts.roleHint) {
+		return {
+			requestRole: opts.roleHint.requestRole,
+			requestRoleSource: `memo:${opts.roleHint.requestRoleSource}`,
+		};
+	}
+	return explicit;
 }
 
 export function messageTimestamp(message: any): string {

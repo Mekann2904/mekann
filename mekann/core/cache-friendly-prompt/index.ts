@@ -44,7 +44,7 @@ import {
 	modelProvider,
 	pickString,
 	requestIdOf,
-	requestRoleOf,
+	resolveRequestRole,
 	runKeyWithSource,
 } from "./request-correlation.js";
 
@@ -110,7 +110,17 @@ export default function cacheFriendlyPromptExtension(
 	pi.on("before_agent_start", async (event: any, ctx: any) => {
 		const incomingSystemPrompt =
 			typeof event.systemPrompt === "string" ? event.systemPrompt : "";
-		if (hasCacheFriendlyPromptFragments(incomingSystemPrompt)) return;
+		const { runKey, runKeySource } = runKeyWithSource(event, ctx);
+		if (hasCacheFriendlyPromptFragments(incomingSystemPrompt)) {
+			// Incoming prompt already carries cache-friendly fragments (e.g. an
+			// inherited subagent prompt). Skip re-injection but still resolve and
+			// memo the role so provider/message hooks can recover it.
+			registry.rememberRoleOnly(
+				runKey,
+				resolveRequestRole({ event, ctx, snapshot: { runKeySource } }),
+			);
+			return;
+		}
 
 		const fragments = await collectPromptFragments({
 			cwd: contextCwd(event, ctx),
@@ -122,9 +132,12 @@ export default function cacheFriendlyPromptExtension(
 		const { stableBaseSystemText, volatileRuntimeText } =
 			splitVolatileRuntimeBlock(baseSystemText);
 
-		const { runKey, runKeySource } = runKeyWithSource(event, ctx);
 		const requestId = requestIdOf(event, ctx);
-		const { requestRole, requestRoleSource } = requestRoleOf(event, ctx);
+		const { requestRole, requestRoleSource } = resolveRequestRole({
+			event,
+			ctx,
+			snapshot: { runKeySource },
+		});
 
 		const state = createInitialSnapshot({
 			runKey,
@@ -258,7 +271,11 @@ export default function cacheFriendlyPromptExtension(
 
 		if (cfg.logRequests) {
 			const { requestRole: fallbackRole, requestRoleSource: fallbackRoleSource } =
-				requestRoleOf(event, ctx);
+				resolveRequestRole({
+					event,
+					ctx,
+					roleHint: lookup.roleHint,
+				});
 			const log = buildRequestLog({
 				runKey,
 				runKeySource: runKeyWithSource(event, ctx).runKeySource,
@@ -320,7 +337,11 @@ export default function cacheFriendlyPromptExtension(
 		});
 
 		const { requestRole: fallbackRole, requestRoleSource: fallbackRoleSource } =
-			requestRoleOf(event, ctx);
+			resolveRequestRole({
+				event,
+				ctx,
+				roleHint: lookup.roleHint,
+			});
 
 		const log = buildActualUsageLog({
 			messageTimestamp: messageTimestamp(message),

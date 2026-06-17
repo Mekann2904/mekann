@@ -192,4 +192,58 @@ describe("PromptRequestSnapshotRegistry", () => {
 			expect(result.state).toBe(state);
 		});
 	});
+
+	// ── Role-only memo ───────────────────────────────────────────
+
+	describe("role-only memo (early-return path)", () => {
+		it("stores and retrieves a role-only memo by runKey", () => {
+			const reg = new PromptRequestSnapshotRegistry();
+			reg.rememberRoleOnly("rk-1", { requestRole: "subagent", requestRoleSource: "taskName" });
+			expect(reg.getRoleOnly("rk-1")).toEqual({ requestRole: "subagent", requestRoleSource: "taskName" });
+			expect(reg.getRoleOnly("nope")).toBeUndefined();
+		});
+
+		it("evicts oldest memo when exceeding MAX_RUN_STATES", () => {
+			const reg = new PromptRequestSnapshotRegistry();
+			for (let i = 0; i < 129; i++) {
+				reg.rememberRoleOnly(`rk-${i}`, { requestRole: "main", requestRoleSource: "agentPath" });
+			}
+			expect(reg.getRoleOnly("rk-0")).toBeUndefined();
+			expect(reg.getRoleOnly("rk-128")).toBeDefined();
+		});
+
+		it("surfaces roleHint from lookupForProviderRequest when no full state exists", () => {
+			const reg = new PromptRequestSnapshotRegistry();
+			reg.rememberRoleOnly("rk-1", { requestRole: "subagent", requestRoleSource: "taskName" });
+			const result = reg.lookupForProviderRequest({ runKey: "rk-1" });
+			expect(result.correlationConfidence).toBe("missing");
+			expect(result.state).toBeNull();
+			expect(result.roleHint).toEqual({ requestRole: "subagent", requestRoleSource: "taskName" });
+		});
+
+		it("falls back to cwd-keyed memo in lookupForProviderRequest", () => {
+			const reg = new PromptRequestSnapshotRegistry();
+			reg.rememberRoleOnly("/tmp/project", { requestRole: "main", requestRoleSource: "agentPath" });
+			const result = reg.lookupForProviderRequest({ runKey: "other", cwd: "/tmp/project" });
+			expect(result.roleHint?.requestRole).toBe("main");
+		});
+
+		it("does not surface roleHint when a full state is matched", () => {
+			const reg = new PromptRequestSnapshotRegistry();
+			const state = mkState({ runKey: "rk-1", requestId: "req-1" });
+			reg.rememberRunState("rk-1", state);
+			reg.rememberRoleOnly("rk-1", { requestRole: "subagent", requestRoleSource: "taskName" });
+			const result = reg.lookupForProviderRequest({ requestId: "req-1", runKey: "rk-1" });
+			expect(result.state).toBe(state);
+			expect(result.roleHint).toBeUndefined();
+		});
+
+		it("surfaces roleHint from lookupForActualUsage when state is missing", () => {
+			const reg = new PromptRequestSnapshotRegistry();
+			reg.rememberRoleOnly("rk-1", { requestRole: "subagent", requestRoleSource: "taskName" });
+			const result = reg.lookupForActualUsage({ runKey: "rk-1", provider: "openai", model: "gpt" });
+			expect(result.correlationConfidence).toBe("missing");
+			expect(result.roleHint?.requestRole).toBe("subagent");
+		});
+	});
 });
