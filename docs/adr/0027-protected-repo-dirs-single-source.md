@@ -1,4 +1,4 @@
-# 0025. Protect repo metadata dirs from a single source (incl. `.pi`)
+# 0027. Protect repo metadata dirs from a single source (incl. `.pi`)
 
 ## Status
 Accepted
