@@ -7,7 +7,7 @@ const toolSurfaceSetting: SettingSchema<string> = {
 	key: "toolSurface",
 	type: "enum",
 	defaultValue: "active",
-	description: "autoresearch model tools を LLM に見せる条件。active は /autoresearch on や scale 実行中のみ、always は常時。",
+	description: "autoresearch model tools を LLM に見せる条件。active は /autoresearch on の実行中のみ、always は常時。",
 	category: "Context Surface",
 	scopes: ["global", "workspace"],
 	restartRequired: false,

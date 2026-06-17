@@ -153,83 +153,15 @@ const FailurePolicySchema = Type.Object(
 	{ additionalProperties: false },
 );
 
-const ScalingSchema = Type.Object(
-	{
-		population: Type.Object(
-			{
-				initialHypotheses: Type.Number({ minimum: 1 }),
-				candidatesPerGeneration: Type.Number({ minimum: 1 }),
-				survivorsPerGeneration: Type.Number({ minimum: 0 }),
-				baselineSlots: Type.Array(Type.String()),
-				objectiveDerivedSlots: Type.Array(Type.String()),
-			},
-			{ additionalProperties: false },
-		),
-		roles: Type.Object(
-			{
-				scouts: Type.Number({ minimum: 0 }),
-				proposers: Type.Number({ minimum: 0 }),
-				critics: Type.Number({ minimum: 0 }),
-				historians: Type.Number({ minimum: 0 }),
-			},
-			{ additionalProperties: false },
-		),
-		generation: Type.Object(
-			{
-				proposalMapping: Type.Literal("one_hypothesis_one_proposal"),
-				evaluationOrder: Type.Literal("slot_diversity_round_robin"),
-				survivorKinds: Type.Array(Type.Union([Type.Literal("candidate"), Type.Literal("hypothesis"), Type.Literal("strategy")])),
-			},
-			{ additionalProperties: false },
-		),
-		scoring: Type.Object(
-			{
-				method: Type.Literal("rules_with_critic_comments"),
-				ranking: Type.Literal("hard_gate_then_primary_metric"),
-			},
-			{ additionalProperties: false },
-		),
-		resources: Type.Object(
-			{
-				respectSubagentConcurrencyLimit: Type.Boolean(),
-				maxConcurrentEvaluations: Type.Number({ minimum: 1 }),
-				maxActiveWorktrees: Type.Number({ minimum: 1 }),
-			},
-			{ additionalProperties: false },
-		),
-		evidence: Type.Object(
-			{
-				preferMechanicalEvidence: Type.Boolean(),
-				recordFailedCandidates: Type.Boolean(),
-				recordPatterns: Type.Array(Type.String()),
-			},
-			{ additionalProperties: false },
-		),
-		stopPolicy: Type.Object(
-			{
-				stopCommand: Type.Literal("/autoresearch-scale stop"),
-				gracefulStopBoundary: Type.Literal("candidate"),
-				internalState: Type.Literal("draining"),
-				uiState: Type.Literal("graceful stopping"),
-				completeMarkerBehavior: Type.Literal("record_exploration_exhaustion"),
-			},
-			{ additionalProperties: false },
-		),
-	},
-	{ additionalProperties: false },
-);
-
 export const AutoresearchContractV1Schema = Type.Object(
 	{
 		schemaVersion: Type.Literal("autoresearch/v1"),
-		mode: Type.Optional(Type.Literal("test_time_scaling")),
 		objective: ObjectiveSchema,
 		scope: ScopeSchema,
 		evaluation: EvaluationSchema,
 		acceptance: AcceptanceSchema,
 		loop: LoopSchema,
 		failurePolicy: FailurePolicySchema,
-		scaling: Type.Optional(ScalingSchema),
 	},
 	{ additionalProperties: false },
 );
@@ -271,14 +203,6 @@ export function validateContractV1(value: unknown): ContractV1ValidationResult {
 			errors.push("acceptance.mode: manual は autoresearch/v1 contract で禁止されています");
 		}
 
-		// Scaling mode requires the supervisor policy to be present, and the
-		// policy is meaningful only in scaling mode.
-		if ((contract as any).mode === "test_time_scaling" && !(contract as any).scaling) {
-			errors.push("mode=test_time_scaling requires scaling supervisor policy");
-		}
-		if ((contract as any).scaling && (contract as any).mode !== "test_time_scaling") {
-			errors.push("scaling supervisor policy requires mode=test_time_scaling");
-		}
 
 		// Warn if no checks defined
 		if (contract.evaluation.checks.length === 0) {

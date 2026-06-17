@@ -73,13 +73,6 @@ import {
 
 // Extracted orchestration helpers
 import { SessionStore, DEFAULT_MAX_LOOP_ITERATIONS, NO_PROGRESS_LIMIT, DEFAULT_TIMEOUT_SECONDS } from "./tools/sessionStore.js";
-import {
-	appendScaleEvent,
-	claimNextAction,
-	nextActionMessage,
-	readScaleState,
-	type ScaleRuntimeStore,
-} from "./scale.js";
 import { projectFeatureToolSurface } from "../../settings/toolSurfaceProjection.js";
 import { registerAutoresearchPromptProvider } from "./promptProvider.js";
 import { registerAutoresearchCommands } from "./commands.js";
@@ -106,10 +99,6 @@ const AUTORESEARCH_TOOL_NAMES = [
 	"autoresearch_apply_candidate",
 	"autoresearch_suggest_subagents",
 	"autoresearch_apply_candidate_isolated",
-	"autoresearch_scale_next",
-	"autoresearch_scale_complete_action",
-	"autoresearch_scale_ingest",
-	"autoresearch_scale_status",
 	"autoresearch_run_contract",
 ] as const;
 
@@ -183,10 +172,8 @@ export const toolDeps = {
 
 export default function autoresearchExtension(pi: ExtensionAPI): void {
 	const store = new SessionStore();
-	const scaleStore: ScaleRuntimeStore = { active: false, promptQueued: false };
-
 	function syncAutoresearchToolSurface(): void {
-		projectFeatureToolSurface(pi, "autoresearch", AUTORESEARCH_TOOL_NAMES, "active", () => store.active || scaleStore.active);
+		projectFeatureToolSurface(pi, "autoresearch", AUTORESEARCH_TOOL_NAMES, "active", () => store.active);
 	}
 
 	// ─── session_start ─────────────────────────────────────────
@@ -258,9 +245,6 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		store.runningExperiment = null;
 		store.runResultMap.clear();
 		store.resetLoopProgress();
-		const scaleState = readScaleState(ctx.cwd);
-		scaleStore.active = scaleState?.status === "running" || scaleState?.status === "draining";
-		scaleStore.promptQueued = false;
 		syncAutoresearchToolSurface();
 		store.updateWidget(ctx);
 	});
@@ -273,24 +257,10 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	pi.on("agent_start", async () => {
 		store.loopPromptQueued = false;
-		scaleStore.promptQueued = false;
 		store.agentStartRunCount = store.state.runCount;
 	});
 
 	pi.on("agent_end", async (event, ctx) => {
-		const scaleState = readScaleState(ctx.cwd);
-		if (scaleStore.active && scaleState?.status === "running" && !scaleStore.promptQueued) {
-			if (hasCompleteMarker(event)) {
-				// Scale mode treats COMPLETE as exploration exhaustion, not as research stop.
-				try { appendScaleEvent(ctx.cwd, { type: "exploration_exhausted", source: "complete_marker" }); } catch { /* best effort */ }
-			}
-			const action = claimNextAction(ctx.cwd);
-			if (action) {
-				scaleStore.promptQueued = true;
-				pi.sendUserMessage(nextActionMessage(action), { deliverAs: "followUp" });
-			}
-			return;
-		}
 		if (!store.active || !store.autoLoop) return;
 		if (store.runningExperiment || store.loopPromptQueued) return;
 
@@ -327,7 +297,7 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 
 	// ─── Commands ──────────────────────────────────────────────
 
-	registerAutoresearchCommands(pi, store, scaleStore, syncAutoresearchToolSurface, toolDeps);
+	registerAutoresearchCommands(pi, store, syncAutoresearchToolSurface, toolDeps);
 
 	// ─── Tools ─────────────────────────────────────────────────
 

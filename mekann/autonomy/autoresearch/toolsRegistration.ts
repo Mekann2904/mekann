@@ -11,7 +11,6 @@ import { executeApprove } from "./tools/approve.js";
 import { executeRunContract } from "./tools/runContract.js";
 import { executeApplyCandidate, executeApplyCandidateIsolated, executeCandidateEscrow, executeListCandidates, executeRejectCandidate, executeShowCandidate } from "./tools/candidates.js";
 import { suggestSubagents } from "./subagentPlanning.js";
-import { claimNextAction, completeScaleAction, ingestScaleAction, nextActionMessage, statusText as scaleStatusText } from "./scale.js";
 import type { SessionStore } from "./tools/sessionStore.js";
 import type { toolDeps } from "./index.js";
 
@@ -235,69 +234,6 @@ pi.registerTool({
 	description: "Apply one pending candidate in .pi/autoresearch-worktrees/<candidateId> for isolated evaluation.",
 	parameters: Type.Object({ candidate_id: Type.String() }),
 	async execute(_tc, params, _signal, _ou, ctx) { return executeApplyCandidateIsolated(store, params, ctx); },
-});
-
-// ─── Tools: autoresearch scale supervisor ───────────────────
-
-pi.registerTool({
-	name: "autoresearch_scale_next",
-	label: "autoresearch scale next",
-	description: "Get the next autoresearch scaling supervisor action.",
-	parameters: Type.Object({}),
-	async execute(_tc, _params, _signal, _ou, ctx) {
-		try {
-			const action = claimNextAction(ctx.cwd);
-			if (!action) return store.textResponse("[OK] 次 action はありません。");
-			return store.textDetails(nextActionMessage(action), { ...action } as Record<string, unknown>);
-		} catch (e) {
-			return store.textResponse(`[ERROR] ${e instanceof Error ? e.message : String(e)}`);
-		}
-	},
-});
-
-pi.registerTool({
-	name: "autoresearch_scale_complete_action",
-	label: "autoresearch scale complete action",
-	description: "Record completion of an autoresearch scaling action.",
-	parameters: Type.Object({
-		action_id: Type.String(),
-		status: Type.Optional(StringEnum(["ok", "failed"] as const) as any),
-		result: Type.Optional(Type.Object({}, { additionalProperties: true })),
-	}),
-	async execute(_tc, params, _signal, _ou, ctx) {
-		try {
-			const s = completeScaleAction(ctx.cwd, params as any);
-			return store.textDetails(`[OK] scale action を記録しました: status=${s.status} generation=${s.generation}`, s as unknown as Record<string, unknown>);
-		} catch (e) {
-			return store.textResponse(`[ERROR] ${e instanceof Error ? e.message : String(e)}`);
-		}
-	},
-});
-
-pi.registerTool({
-	name: "autoresearch_scale_ingest",
-	label: "autoresearch scale ingest",
-	description: "Ingest tool/subagent/candidate results for the active scale action.",
-	parameters: Type.Object({}),
-	async execute(_tc, _params, _signal, _ou, ctx) {
-		try {
-			const s = ingestScaleAction(ctx.cwd);
-			return store.textDetails(`[OK] scale action result を取り込みました: status=${s.status} phase=${s.phase ?? "none"} generation=${s.generation}`, s as unknown as Record<string, unknown>);
-		} catch (e) {
-			return store.textResponse(`[ERROR] ${e instanceof Error ? e.message : String(e)}`);
-		}
-	},
-});
-
-pi.registerTool({
-	name: "autoresearch_scale_status",
-	label: "autoresearch scale status",
-	description: "Show autoresearch scaling status.",
-	parameters: Type.Object({}),
-	async execute(_tc, _params, _signal, _ou, ctx) {
-		const text = scaleStatusText(ctx.cwd);
-		return store.textDetails(text, { status: text });
-	},
 });
 
 // ─── Tool: autoresearch_run_contract ───────────────────────

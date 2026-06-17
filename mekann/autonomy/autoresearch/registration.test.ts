@@ -45,7 +45,7 @@ describe("autoresearch registration", () => {
 	});
 
 	it("registers tools with correct names", () => {
-		expect(pi.registerTool).toHaveBeenCalledTimes(18);
+		expect(pi.registerTool).toHaveBeenCalledTimes(14);
 		expect(pi.tools.map((t) => t.name)).toEqual([
 			"autoresearch_evaluate_query",
 			"autoresearch_init",
@@ -60,17 +60,13 @@ describe("autoresearch registration", () => {
 			"autoresearch_apply_candidate",
 			"autoresearch_suggest_subagents",
 			"autoresearch_apply_candidate_isolated",
-			"autoresearch_scale_next",
-			"autoresearch_scale_complete_action",
-			"autoresearch_scale_ingest",
-			"autoresearch_scale_status",
 			"autoresearch_run_contract",
 		]);
 	});
 
 	it("registers commands", () => {
 		expect(pi.registerCommand).toHaveBeenCalledWith("autoresearch", expect.objectContaining({ description: expect.stringContaining("autoresearch") }));
-		expect(pi.registerCommand).toHaveBeenCalledWith("autoresearch-scale", expect.objectContaining({ description: expect.stringContaining("test-time scaling") }));
+		expect(pi.registerCommand).not.toHaveBeenCalledWith("autoresearch-scale", expect.anything());
 	});
 
 	it("keeps run/log promptGuidelines concise and tool-specific", () => {
