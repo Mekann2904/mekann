@@ -11,6 +11,7 @@ import { normalizeActualCacheUsage } from "./actualUsage.js";
 import {
 	appendActualUsageLog,
 	appendCacheFriendlyLog,
+	configureCacheFriendlyLogRetention,
 	configureCacheFriendlyReports,
 	type ReportGenerationMode,
 } from "./logs.js";
@@ -56,6 +57,9 @@ export type CacheFriendlyPromptConfig = {
 	notifyOnWarnings: boolean;
 	reportMode: ReportGenerationMode;
 	reportDebounceMs: number;
+	retentionMaxBytes: number;
+	retentionMaxRows: number;
+	retentionCheckIntervalMs: number;
 };
 
 const DEFAULT_CONFIG: CacheFriendlyPromptConfig = {
@@ -63,6 +67,9 @@ const DEFAULT_CONFIG: CacheFriendlyPromptConfig = {
 	notifyOnWarnings: false,
 	reportMode: "debounce",
 	reportDebounceMs: 1000,
+	retentionMaxBytes: 10 * 1024 * 1024,
+	retentionMaxRows: 2000,
+	retentionCheckIntervalMs: 30_000,
 };
 
 function selectedToolNames(options: any): string[] {
@@ -89,6 +96,11 @@ export default function cacheFriendlyPromptExtension(
 	configureCacheFriendlyReports({
 		mode: cfg.reportMode,
 		debounceMs: cfg.reportDebounceMs,
+	});
+	configureCacheFriendlyLogRetention({
+		retentionMaxBytes: cfg.retentionMaxBytes,
+		retentionMaxRows: cfg.retentionMaxRows,
+		retentionCheckIntervalMs: cfg.retentionCheckIntervalMs,
 	});
 
 	const registry = new PromptRequestSnapshotRegistry();
