@@ -1,8 +1,13 @@
 import type { CacheFriendlyRequestLog } from "../prompt-core/index.js";
 import type { ActualUsageLog } from "./actualUsage.js";
+import type { OutputGateSavings } from "./outputGateSavings.js";
 
 export type ParsedLog = CacheFriendlyRequestLog & { line: number };
 export type ParsedActualUsageLog = ActualUsageLog & { line: number };
+
+// Re-export so OutputGateSavings stays reachable through the reportTypes
+// surface while its canonical home remains the producing module.
+export type { OutputGateSavings };
 
 export type ProviderSummary = {
   requests: number;
@@ -126,5 +131,6 @@ export type CacheFriendlySummary = {
   actualByToolSetHash: Record<string, ActualProviderSummary>;
   actualByToolOrderHash: Record<string, ActualProviderSummary>;
   actualByBaseSystemHash: Record<string, ActualProviderSummary>;
+  outputGateSavings: OutputGateSavings;
 };
 

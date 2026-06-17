@@ -1,0 +1,154 @@
+/**
+ * Output-gate savings aggregation for the cache-friendly-prompt report.
+ *
+ * Reads context-ledger `tool_result` events emitted by output-gate
+ * (`mekann/context/output-gate`) and aggregates how much raw tool output was
+ * externalized out of the inline conversation into searchable artifacts.
+ *
+ * This module deliberately avoids importing the context-ledger or output-gate
+ * packages so cache-friendly-prompt stays self-contained. It only consumes the
+ * minimal event shape it needs (`kind`, `summary`, `createdAt`), which makes the
+ * aggregation pure and trivially unit-testable.
+ *
+ * Event summary format (from `mekann/context/recording.ts`):
+ *   "Large <toolName> output stored as og_<id> (<bytes> bytes, <lines> lines)"
+ */
+
+export interface OutputGateLedgerEvent {
+	kind: string;
+	title?: string;
+	summary?: string;
+	createdAt?: number;
+}
+
+export interface ParsedOutputGateEvent {
+	toolName: string;
+	artifactId: string;
+	bytes: number;
+	lines: number;
+}
+
+export interface OutputGateToolBreakdown {
+	count: number;
+	bytes: number;
+}
+
+export interface OutputGateSavings {
+	/** 外部化件数: number of tool outputs externalized (stubbed). */
+	count: number;
+	/** 外部化 bytes: sum of originalBytes across externalized outputs. */
+	totalBytes: number;
+	/** Gate threshold used as the relative baseline (default 48 KiB). */
+	thresholdBytes: number;
+	/** Mean originalBytes per externalization, null when count is 0. */
+	avgBytes: number | null;
+	/** Bytes beyond the threshold baseline (totalBytes - thresholdBytes * count). */
+	savingsBeyondThresholdBytes: number;
+	/**
+	 * stub化率: share of externalized bytes beyond the threshold baseline,
+	 * i.e. (totalBytes - thresholdBytes * count) / totalBytes. In [0, 1].
+	 * Null when there are no externalized bytes. Since output-gate only stores
+	 * outputs strictly larger than the threshold, this is always positive when
+	 * count > 0, and approaches 1 as externalized outputs grow past the gate.
+	 */
+	stubRate: number | null;
+	/** Most recent externalization timestamp (ISO), null when count is 0. */
+	latestTimestamp: string | null;
+	/** Externalization count and bytes broken down by tool name. */
+	byTool: Record<string, OutputGateToolBreakdown>;
+}
+
+/**
+ * Default output-gate inline threshold. Mirrors
+ * `MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes` in `mekann/config.ts`. Kept as a
+ * local constant so this report package does not cross package boundaries; if
+ * the runtime default changes, update this together with the glossary wording.
+ */
+export const OUTPUT_GATE_DEFAULT_THRESHOLD_BYTES = 48 * 1024;
+
+/**
+ * Matches output-gate tool_result summaries recorded by
+ * `recordToolOutputArtifact`. Anchored end-to-end so unrelated `tool_result`
+ * events (if any are added later) are ignored.
+ */
+const OUTPUT_GATE_SUMMARY_RE =
+	/^Large (?<tool>\S+) output stored as (?<artifact>og_[a-z0-9]+_[a-z0-9]+) \((?<bytes>\d+) bytes, (?<lines>\d+) lines\)$/;
+
+export function parseOutputGateEvent(event: OutputGateLedgerEvent): ParsedOutputGateEvent | null {
+	if (event.kind !== "tool_result") return null;
+	const match = OUTPUT_GATE_SUMMARY_RE.exec(event.summary ?? "");
+	if (!match?.groups) return null;
+	const bytes = Number(match.groups.bytes);
+	const lines = Number(match.groups.lines);
+	if (!Number.isFinite(bytes) || !Number.isFinite(lines)) return null;
+	return { toolName: match.groups.tool, artifactId: match.groups.artifact, bytes, lines };
+}
+
+export function summarizeOutputGateSavings(
+	events: OutputGateLedgerEvent[],
+	thresholdBytes = OUTPUT_GATE_DEFAULT_THRESHOLD_BYTES,
+): OutputGateSavings {
+	const parsed: Array<ParsedOutputGateEvent & { createdAt?: number }> = [];
+	for (const event of events) {
+		const parsedEvent = parseOutputGateEvent(event);
+		if (parsedEvent) parsed.push({ ...parsedEvent, createdAt: event.createdAt });
+	}
+
+	const count = parsed.length;
+	const totalBytes = parsed.reduce((sum, event) => sum + event.bytes, 0);
+	const avgBytes = count > 0 ? totalBytes / count : null;
+	const baselineBytes = thresholdBytes * count;
+	const savingsBeyondThresholdBytes = Math.max(0, totalBytes - baselineBytes);
+	const stubRate = totalBytes > 0 ? savingsBeyondThresholdBytes / totalBytes : null;
+
+	let latestCreatedAt: number | undefined;
+	for (const event of parsed) {
+		const createdAt = event.createdAt;
+		if (typeof createdAt === "number" && Number.isFinite(createdAt)) {
+			latestCreatedAt = latestCreatedAt === undefined ? createdAt : Math.max(latestCreatedAt, createdAt);
+		}
+	}
+	const latestTimestamp = latestCreatedAt === undefined ? null : new Date(latestCreatedAt).toISOString();
+
+	const byTool: Record<string, OutputGateToolBreakdown> = {};
+	for (const event of parsed) {
+		const current = byTool[event.toolName] ?? { count: 0, bytes: 0 };
+		current.count += 1;
+		current.bytes += event.bytes;
+		byTool[event.toolName] = current;
+	}
+
+	return {
+		count,
+		totalBytes,
+		thresholdBytes,
+		avgBytes,
+		savingsBeyondThresholdBytes,
+		stubRate,
+		latestTimestamp,
+		byTool,
+	};
+}
+
+/**
+ * Parses a context-ledger `events.v2.jsonl` blob into the minimal event shape
+ * consumed by `summarizeOutputGateSavings`. Broken JSONL lines are skipped.
+ */
+export function readOutputGateEvents(text: string): OutputGateLedgerEvent[] {
+	const out: OutputGateLedgerEvent[] = [];
+	for (const line of text.split(/\r?\n/)) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(trimmed);
+		} catch {
+			continue;
+		}
+		if (parsed && typeof parsed === "object" && typeof (parsed as { kind?: unknown }).kind === "string") {
+			const event = parsed as OutputGateLedgerEvent;
+			out.push({ kind: event.kind, title: event.title, summary: event.summary, createdAt: event.createdAt });
+		}
+	}
+	return out;
+}

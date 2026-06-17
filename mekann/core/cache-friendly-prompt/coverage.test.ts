@@ -83,11 +83,12 @@ describe("report.ts coverage", () => {
     });
   });
 
-  async function runWithLog(requestLogText: string, actualLogText = "") {
+  async function runWithLog(requestLogText: string, actualLogText = "", eventsLogText = "") {
     vi.mocked(fs.readFile).mockImplementation((filePath: any) => {
       const p = String(filePath);
       if (p.endsWith("requests.jsonl")) return Promise.resolve(requestLogText);
       if (p.endsWith("actual-usage.jsonl")) return Promise.resolve(actualLogText);
+      if (p.endsWith("events.v2.jsonl")) return Promise.resolve(eventsLogText);
       return Promise.reject(new Error("not found"));
     });
     await generateCacheFriendlyReport(dir);
@@ -581,6 +582,48 @@ describe("report.ts coverage", () => {
     expect(summary.providers["first/m"].uniqueStablePrefixHashes).toBe(1);
   });
 
+  it("renders output-gate savings section from context-ledger events", async () => {
+    const events = [
+      JSON.stringify({ schemaVersion: "mekann-context/v2", id: "ctx_a_1", kind: "tool_result", status: "active", priority: 3, title: "bash output stored", summary: "Large bash output stored as og_aaaaaa_1 (100000 bytes, 1200 lines)", evidenceLevel: "tool_reported", cwd: dir, createdAt: 1_700_000_000_000 }),
+      JSON.stringify({ schemaVersion: "mekann-context/v2", id: "ctx_b_2", kind: "tool_result", status: "active", priority: 3, title: "read output stored", summary: "Large read output stored as og_bb12cd_2 (60000 bytes, 800 lines)", evidenceLevel: "tool_reported", cwd: dir, createdAt: 1_700_000_005_000 }),
+      JSON.stringify({ schemaVersion: "mekann-context/v2", id: "ctx_c_3", kind: "file_change", status: "active", priority: 2, title: "edit", summary: "unrelated event", evidenceLevel: "observed", cwd: dir, createdAt: 1_700_000_010_000 }),
+    ].join("\n");
+    await runWithLog(makeLog(), "", events);
+
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    const savings = summary.outputGateSavings;
+    expect(savings.count).toBe(2);
+    expect(savings.totalBytes).toBe(160000);
+    expect(savings.avgBytes).toBe(80000);
+    expect(savings.thresholdBytes).toBe(48 * 1024);
+    expect(savings.byTool).toEqual({ bash: { count: 1, bytes: 100000 }, read: { count: 1, bytes: 60000 } });
+    // savings = 160000 - 49152*2 = 61696; rate = 61696 / 160000
+    expect(savings.savingsBeyondThresholdBytes).toBe(160000 - 48 * 1024 * 2);
+    expect(savings.stubRate).toBeCloseTo((160000 - 48 * 1024 * 2) / 160000, 10);
+    expect(savings.latestTimestamp).toBe(new Date(1_700_000_005_000).toISOString());
+
+    const report = writtenFiles.get(path.join(dir, "report.md"))!;
+    expect(report).toContain("## 12. Output-gate savings");
+    expect(report).toContain("外部化件数 (count) | 2");
+    expect(report).toContain("| bash | 1 |");
+    expect(report).toContain("### 12.1 By tool");
+    // glossary shifted to 12 and gained output-gate terms
+    expect(report).toContain("## 13. Glossary");
+    expect(report).toContain("| stub化率 |");
+  });
+
+  it("renders an empty output-gate savings section when the ledger has no events", async () => {
+    await runWithLog(makeLog());
+    const summary = JSON.parse(writtenFiles.get(path.join(dir, "summary.json"))!);
+    expect(summary.outputGateSavings.count).toBe(0);
+    expect(summary.outputGateSavings.stubRate).toBeNull();
+    const report = writtenFiles.get(path.join(dir, "report.md"))!;
+    expect(report).toContain("外部化件数 (count) | 0");
+    // existing sections are intact
+    expect(report).toContain("## 1. Overview");
+    expect(report).toContain("## 2. Actual provider cache hit rate");
+  });
+
   // ---- Warning distribution & recent window (issue #88) ----
 
   it("splits warnings into base system / fragment / other categories", async () => {
@@ -692,7 +735,7 @@ describe("report.ts coverage", () => {
     expect(report).toContain("`BASE_SYSTEM_VOLATILE_SIGNAL`");
     expect(report).toContain("`VOLATILE_VALUE_IN_STABLE_FRAGMENT`");
     // Glossary shifted from 11 to 12
-    expect(report).toContain("## 12. Glossary");
+    expect(report).toContain("## 13. Glossary");
     expect(report).not.toContain("## 11. Glossary");
   });
 });
