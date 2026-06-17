@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { appendContextEvent, readEvents, clearContext } from "./store.js";
+import { appendContextEvent, readEvents, clearContext, archiveLegacyV1Log } from "./store.js";
 import { computeStats, searchEvents, formatSearchResult, projectContextEvents } from "./query.js";
 import { CONTEXT_EVENT_KINDS } from "./schema.js";
 import { buildSnapshot } from "./snapshot.js";
@@ -22,7 +22,7 @@ import {
 	summarizeSessionContextText,
 } from "./projection.js";
 
-export { appendContextEvent, readEvents, clearContext } from "./store.js";
+export { appendContextEvent, readEvents, clearContext, archiveLegacyV1Log } from "./store.js";
 export { computeStats, searchEvents, formatSearchResult, projectContextEvents } from "./query.js";
 export type { MekannContextEvent, MekannContextEventKind, MekannContextRef, ProjectedContextEvent, MekannContextEventStatus, MekannContextEvidenceLevel, MekannContextScope } from "./schema.js";
 export type { AppendEventInput } from "./store.js";
@@ -163,6 +163,13 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 			"postCompactionRestore.enabled",
 			true,
 		);
+		// Best-effort: archive the legacy v1 ledger on first contact so it stops
+		// masquerading as a live log (ADR-0006 / issue #96). Must never break session start.
+		try {
+			await archiveLegacyV1Log(cwd);
+		} catch {
+			/* best-effort migration */
+		}
 	});
 
 	pi.on("session_compact", async () => {

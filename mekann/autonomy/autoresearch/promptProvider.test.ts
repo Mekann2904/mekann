@@ -74,6 +74,9 @@ describe("autoresearch prompt provider", () => {
 		expect(fragments[0].content).toContain("/autoresearch on");
 		expect(fragments[0].content).toContain("通常の依頼として扱う");
 		expect(fragments[0].content).toContain("autoresearch_run");
+		// Compressed inactive guard (issue #96): safety markers above preserved,
+		// but the ~600-char block is cut to a one-liner.
+		expect(fragments[0].content.length).toBeLessThan(300);
 	});
 
 	it("returns active policy and dynamic context when active", async () => {
