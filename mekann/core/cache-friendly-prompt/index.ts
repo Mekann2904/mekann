@@ -262,7 +262,6 @@ export default function cacheFriendlyPromptExtension(
 				resolveRequestRole({
 					event,
 					ctx,
-					snapshot: lastState,
 					roleHint: lookup.roleHint,
 				});
 			const log = buildRequestLog({
@@ -329,7 +328,6 @@ export default function cacheFriendlyPromptExtension(
 			resolveRequestRole({
 				event,
 				ctx,
-				snapshot: lookup.state,
 				roleHint: lookup.roleHint,
 			});
 

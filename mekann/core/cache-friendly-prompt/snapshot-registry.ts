@@ -33,7 +33,7 @@ export class PromptRequestSnapshotRegistry {
 	private readonly stateQueuesByProviderModel = new Map<string, PromptRequestSnapshotState[]>();
 	private readonly actualUsageKeys = new Set<string>();
 	/**
-	 * Role resolved at `before_agent_start` even when fragment re-injection was
+	 * Role resolved at the agent-start hook even when fragment re-injection was
 	 * skipped (inherited cache-friendly fragments). Keyed by runKey so provider /
 	 * message hooks can recover the role when no full snapshot was registered.
 	 */
@@ -74,7 +74,7 @@ export class PromptRequestSnapshotRegistry {
 
 	/**
 	 * Remember a resolved role for a run even when no full snapshot was
-	 * registered (e.g. `before_agent_start` skipped fragment injection because
+	 * registered (e.g. the agent-start hook skipped fragment injection because
 	 * the incoming prompt already carried cache-friendly fragments).
 	 */
 	rememberRoleOnly(key: string, memo: RoleOnlyMemo): void {

@@ -196,8 +196,9 @@ export function inferRoleFromSnapshot(
 }
 
 /**
- * Resolve a request role for any hook (including non-`before_agent_start`
- * hooks). Chains explicit event/ctx resolution → snapshot-derived inference →
+ * Resolve a request role for any hook (including provider/message hooks that
+ * fire outside the agent-start hook). Chains explicit event/ctx resolution →
+ * snapshot-derived inference →
  * role-only memo hint, and only falls back to the default main guess when no
  * signal fires. This is the single entry point used by provider/message hooks.
  */
