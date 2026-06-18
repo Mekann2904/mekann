@@ -250,7 +250,7 @@ describe("resultSummary", () => {
 });
 
 describe("SubagentResultStore: list filtering", () => {
-  it("filters by status", () => {
+  it("filters by status", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "srs-"));
     try {
       const store = new SubagentResultStore(dir);
@@ -258,20 +258,20 @@ describe("SubagentResultStore: list filtering", () => {
       const s2 = store.save(agent, observation());
       store.markRejected(s2.result_id, "manual_reject");
 
-      const pending = store.list({ status: "pending" });
+      const pending = await store.list({ status: "pending" });
       expect(pending).toHaveLength(1);
       expect(pending[0].result_id).toBe(s1.result_id);
 
-      const rejected = store.list({ status: "rejected" });
+      const rejected = await store.list({ status: "rejected" });
       expect(rejected).toHaveLength(1);
     } finally { rmSync(dir, { recursive: true }); }
   });
 
-  it("returns empty for directory without matching files", () => {
+  it("returns empty for directory without matching files", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "srs-"));
     try {
       const store = new SubagentResultStore(dir);
-      expect(store.list()).toEqual([]);
+      expect(await store.list()).toEqual([]);
     } finally { rmSync(dir, { recursive: true }); }
   });
 });

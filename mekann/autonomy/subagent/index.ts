@@ -293,7 +293,7 @@ export default function subagentExtension(pi: ExtensionAPI): void | Promise<void
       let result: unknown;
       switch (params.action) {
         case "list":
-          result = ctrl.listAgentResults({ status: params.status, outcome: params.outcome, agent_path: params.agent_path }, ctx);
+          result = await ctrl.listAgentResults({ status: params.status, outcome: params.outcome, agent_path: params.agent_path }, ctx);
           break;
         case "show":
           if (!params.result_id) throw new Error("result_id is required for action=show");

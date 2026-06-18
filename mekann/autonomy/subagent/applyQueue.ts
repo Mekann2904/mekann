@@ -29,7 +29,7 @@ export class ApplyQueue {
 		});
 	}
 
-	listAgentResults(filter?: Parameters<SubagentResultStore["list"]>[0]) {
+	async listAgentResults(filter?: Parameters<SubagentResultStore["list"]>[0]) {
 		return this.store.list(filter);
 	}
 
@@ -48,12 +48,12 @@ export class ApplyQueue {
 	}
 
 	async applyAgentResults(params: ApplyAgentResultsParams = {}): Promise<ApplyAgentResultsResult> {
-		this.store.recoverStaleApplying();
-		this.store.pruneOrphanedPending();
+		await this.store.recoverStaleApplying();
+		await this.store.pruneOrphanedPending();
 		const result: ApplyAgentResultsResult = { applied: [], rejected: [], needs_review: [], skipped: [] };
 		const items = (params.source === "result_ids"
 			? (params.result_ids ?? []).map((id) => this.store.load(id))
-			: this.store.list({ status: "pending" })
+			: await this.store.list({ status: "pending" })
 		).slice(0, params.max_results ?? Infinity);
 
 		for (const stored of items) {

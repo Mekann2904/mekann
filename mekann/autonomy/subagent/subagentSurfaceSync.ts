@@ -39,10 +39,14 @@ export function hasInteractiveSubagentState(agents: AgentMetadata[]): boolean {
 
 /**
  * Query whether there are pending structured results in the store.
+ *
+ * Backed by the store's in-memory pending-id index (O(1), no disk IO), so the
+ * reactive tool-surface projection stays synchronous without blocking the
+ * event loop (issue #142).
  */
 export function hasPendingResults(resultStore: SubagentResultStore): boolean {
   try {
-    return resultStore.list({ status: "pending" }).length > 0;
+    return resultStore.hasPendingResults();
   } catch {
     return false;
   }
