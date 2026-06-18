@@ -1,3 +1,5 @@
+import { randomToken } from "../id.js";
+
 /**
  * Generic worker pool for reusing workers across multiple tasks.
  *
@@ -93,7 +95,7 @@ export function createWorkerPool(options: WorkerPoolOptions) {
     worker.once("message", onMessage);
     worker.once("error", onError);
 
-    worker.postMessage({ taskId: Date.now(), input });
+    worker.postMessage({ taskId: randomToken(), input });
   }
 
   function removeActive(active: ActiveWorker) {

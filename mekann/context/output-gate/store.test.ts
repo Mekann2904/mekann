@@ -158,7 +158,7 @@ describe("output-gate store", () => {
 	it("saveArtifact uses nextArtifactId when no idGenerator provided", async () => {
 		const cwd = await tmp();
 		const { entry } = await saveArtifact({ cwd, toolName: "bash", text: "hello", now: () => 12345 });
-		expect(entry.id).toMatch(/^og_[a-z0-9]+_[a-z0-9]+$/);
+		expect(entry.id).toMatch(/^og_[a-z0-9]+_[a-z0-9]+(_[a-z0-9]+)?$/);
 	});
 
 	it("saveArtifact with source includes it in manifest entry", async () => {

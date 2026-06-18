@@ -19,7 +19,7 @@ describe("WorkerPool", () => {
       const taskId = taskCounter++;
 
       return {
-        postMessage(msg: { taskId: number; input: unknown }) {
+        postMessage(msg: { taskId: string; input: unknown }) {
           // Simulate async work
           setTimeout(() => {
             if (w.onMessage) w.onMessage({ taskId: msg.taskId, result: `processed-${String(msg.input)}` });
@@ -131,7 +131,7 @@ describe("WorkerPool", () => {
     let liveErrorHandlers = 0;
 
     const createWorker = () => ({
-      postMessage(msg: { taskId: number; input: unknown }) {
+      postMessage(msg: { taskId: string; input: unknown }) {
         setTimeout(() => {
           // EventEmitter `once` semantics: the fired handler auto-removes.
           if (messageHandler) {

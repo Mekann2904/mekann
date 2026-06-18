@@ -13,13 +13,13 @@ import type {
   LifecycleEvent,
   RegistrySubscriber,
 } from "./types.js";
+import { randomToken } from "../../utils/id.js";
 
 // ─── Reservation token ───────────────────────────────────────────
 
-let reservationCounter = 0;
-
 export interface Reservation {
-  readonly token: number;
+  /** Opaque, cryptographically unguessable slot token (ADR-0029). */
+  readonly token: string;
   readonly maxAgents: number;
   consumed: boolean;
   rolledBack: boolean;
@@ -110,7 +110,7 @@ export class AgentRegistry {
       );
     }
     const reservation: Reservation = {
-      token: ++reservationCounter,
+      token: randomToken(),
       maxAgents: this._maxAgents,
       consumed: false,
       rolledBack: false,
