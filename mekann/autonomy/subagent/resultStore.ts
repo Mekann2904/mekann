@@ -163,7 +163,10 @@ export class SubagentResultStore {
     // so the mutation never leaks into the cache or the next persisted write.
     if (cached) return structuredClone(cached);
     const raw = JSON.parse(readFileSync(this.jsonPath(resultId), "utf8"));
-    const stored = this.validateStoredResult(raw, resultId, this.resolvePatchSync((raw as any).result));
+    // `raw` is the JSON.parse'd stored result (`any`); narrow it to the store's
+    // own `StoredSubagentResult` shape so `.result` access is type-checked
+    // (issue #141: replace `as any` with a narrow local type).
+    const stored = this.validateStoredResult(raw, resultId, this.resolvePatchSync((raw as StoredSubagentResult).result));
     this.entryCache.set(resultId, stored);
     return structuredClone(stored);
   }
@@ -190,7 +193,7 @@ export class SubagentResultStore {
       if (cached) { entries.push(cached); continue; }
       try {
         const raw = JSON.parse(await fsp.readFile(path.join(this.dir, name), "utf8"));
-        const stored = this.validateStoredResult(raw, id, await this.resolvePatchAsync((raw as any).result));
+        const stored = this.validateStoredResult(raw, id, await this.resolvePatchAsync((raw as StoredSubagentResult).result));
         this.entryCache.set(id, stored);
         entries.push(stored);
       } catch { /* skip corrupt/unreadable entries */ }
