@@ -50,6 +50,15 @@ describe("AgentRegistry", () => {
     );
   });
 
+  it("reservation tokens are opaque, unique, crypto-random strings (issue #152)", () => {
+    registry.ensureRoot("session-1");
+    const r1 = registry.reserveSpawnSlot("/root/t1");
+    const r2 = registry.reserveSpawnSlot("/root/t2");
+    expect(typeof r1.token).toBe("string");
+    expect(r1.token).not.toBe(r2.token);
+    expect(r1.token.length).toBeGreaterThanOrEqual(16);
+  });
+
   it("allows closed path to be reused", () => {
     registry.ensureRoot("session-1");
     const reservation = registry.reserveSpawnSlot("/root/task1");

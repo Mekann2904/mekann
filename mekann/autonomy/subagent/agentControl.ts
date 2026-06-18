@@ -11,6 +11,7 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 import { ROOT_PATH, resolveTaskPath, parentPath } from "./types.js";
 import { AgentSessionControl } from "./agentSession.js";
 import { AgentRegistry } from "./registry.js";
@@ -65,8 +66,16 @@ let agentIdCounter = 0;
 
 const processExternalPiSlots = new Set<string>();
 
+/**
+ * Generate a subagent id. The previous `sub_<counter>_<time>` form collided
+ * across parallel pi processes (both emit `sub_1_<same-ms>`) which in turn
+ * collided the IPC socket filename and registry id. Mix in crypto randomness
+ * so ids are unique across processes (issue #152 / IC, same root as #144).
+ * The per-process counter is retained only for readable ordering within a
+ * single session.
+ */
 function nextAgentId(): string {
-  return `sub_${++agentIdCounter}_${Date.now().toString(36)}`;
+  return `sub_${++agentIdCounter}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
 }
 
 export type DisplayMode = "none" | "kitty-pi" | "kitty-split";
@@ -91,6 +100,8 @@ export interface AgentControlOptions {
   defaultReasoningEffort?: string;
   /** Max re-runs per result via `agent_results action=retry` (issue #83 / C-014). */
   maxResultRetries?: number;
+  /** Max mailbox items/events retained before eviction (issue #152). */
+  mailboxRetention?: number;
 }
 
 // ─── Agent control ───────────────────────────────────────────────
@@ -115,6 +126,7 @@ export class AgentControl {
   private allowNestedSubagents: boolean;
   private defaultReasoningEffort: string;
   private maxResultRetries: number;
+  private readonly mailboxRetention: number;
   private sessionSpawnCount = 0;
   readonly resultStore: SubagentResultStore;
   readonly lifecycle: SubagentLifecycle;
@@ -133,7 +145,8 @@ export class AgentControl {
       Math.min(maxAgents ?? DEFAULT_MAX_AGENTS, HARD_MAX_OPEN_AGENTS),
       maxDepth ?? DEFAULT_MAX_DEPTH,
     );
-    this.mailbox = new Mailbox();
+    this.mailboxRetention = options.mailboxRetention ?? MEKANN_SUBAGENT_DEFAULTS.mailboxRetention;
+    this.mailbox = new Mailbox({ maxRetainedRecords: this.mailboxRetention });
     this.defaultWaitTimeout = defaultWaitTimeout ?? DEFAULT_WAIT_TIMEOUT_MS;
     this.minWaitTimeout = minWaitTimeout ?? MIN_WAIT_TIMEOUT_MS;
     this.displayMode = options.displayMode ?? "none";
@@ -450,7 +463,7 @@ export class AgentControl {
     return this.sessionControl.list(params, ctx);
   }
 
-  listAgentResults(params: any = {}, ctx?: ExtensionContext) { return { results: this.resultStoreFor(ctx?.cwd ?? process.cwd()).list(params) }; }
+  async listAgentResults(params: any = {}, ctx?: ExtensionContext) { return { results: await this.resultStoreFor(ctx?.cwd ?? process.cwd()).list(params) }; }
   showAgentResult(params: { result_id: string; include_patch?: boolean }, ctx?: ExtensionContext) { return this.applyQueueFor(ctx?.cwd ?? process.cwd()).showAgentResult(params.result_id, Boolean(params.include_patch)); }
   async applyAgentResults(params: any = {}, ctx?: ExtensionContext) { return this.applyQueueFor(ctx?.cwd ?? process.cwd()).applyAgentResults(params); }
   rejectAgentResult(params: { result_id: string; reason?: any }, ctx?: ExtensionContext) { return this.applyQueueFor(ctx?.cwd ?? process.cwd()).rejectAgentResult(params.result_id, params.reason ?? "manual_reject"); }
@@ -549,19 +562,38 @@ export class AgentControl {
   // ─── Shutdown ──────────────────────────────────────────────────
 
   async shutdown(): Promise<void> {
+    // Aggregate per-agent failures instead of swallowing them silently so a
+    // zombie worker or stuck kitty window does not vanish from the operator's
+    // view (issue #152 / IC-041). Shutdown still resolves (best-effort), but
+    // any collected errors are surfaced via the extension logger / stderr.
+    const failures: Array<{ agentPath: string; error: string }> = [];
     for (const agent of this.registry.list()) {
       if (agent.display && agent.display.status === "open") {
-        try { await this.kitty.close(agent.display); } catch { /* best-effort */ }
+        try { await this.kitty.close(agent.display); }
+        catch (err) { failures.push({ agentPath: agent.agentPath, error: err instanceof Error ? err.message : String(err) }); }
       }
     }
     this.drainQueueOnClose = false;
     try {
-      for (const path of [...new Set([...this.lifecycle.runtimePaths(), ...this.lifecycle.childSessionPaths()])]) await this.closeSingle(path).catch(() => undefined);
+      for (const path of [...new Set([...this.lifecycle.runtimePaths(), ...this.lifecycle.childSessionPaths()])]) {
+        try { await this.closeSingle(path); }
+        catch (err) { failures.push({ agentPath: path, error: err instanceof Error ? err.message : String(err) }); }
+      }
     } finally {
       this.drainQueueOnClose = true;
     }
     this.registry.clear();
     this.mailbox.clear();
+    if (failures.length > 0) this.reportShutdownFailures(failures);
+  }
+
+  private reportShutdownFailures(failures: Array<{ agentPath: string; error: string }>): void {
+    const summary = failures.map((f) => `${f.agentPath}: ${f.error}`).join("; ");
+    const logger = (this.pi as any)?.log ?? (this.pi as any)?.logger;
+    const message = `[subagent] shutdown encountered ${failures.length} failure(s): ${summary}`;
+    if (typeof logger?.warn === "function") logger.warn(message);
+    else if (typeof logger?.error === "function") logger.error(message);
+    else console.warn(message);
   }
 
   // ─── Accessors ─────────────────────────────────────────────────

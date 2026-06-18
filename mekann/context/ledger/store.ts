@@ -1,6 +1,7 @@
 import * as crypto from "node:crypto";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
+import { withAppendLock } from "../../utils/atomic-append.js";
 import { VALID_EVIDENCE_LEVELS, VALID_KINDS, VALID_REF_ROLES, VALID_REF_TYPES, VALID_STATUSES, type MekannContextEvent, type MekannContextEventKind, type MekannContextEventStatus, type MekannContextEvidenceLevel, type MekannContextRef, type MekannContextScope, type ProjectedContextEvent } from "./schema.js";
 
 // ─── Paths ──────────────────────────────────────────────────────
@@ -171,11 +172,18 @@ export async function appendContextEvent(input: AppendEventInput): Promise<Mekan
 		...(input.expiresAt != null ? { expiresAt: input.expiresAt } : {}),
 	};
 	const filePath = eventsPath(input.cwd);
-	await fsp.appendFile(filePath, `${JSON.stringify(event)}\n`, "utf8");
-	// Rotate after appending, preserving the just-appended event in current.
-	await rotateIfNeeded(input.cwd, filePath, input.maxFileSizeBytes);
-	// Periodically prune the event log to prevent unbounded growth
-	await pruneEventLog(input.cwd, filePath);
+	// Append, rotate, and prune as a single locked transaction so a concurrent
+	// writer (sibling pi process in the same cwd) cannot interleave a line into a
+	// half-rotated file or have its just-appended event clobbered by a rotation
+	// rewrite. The lock is an O_EXCL lockfile sibling shared with the other
+	// JSONL writers (issue #139).
+	await withAppendLock(filePath, async () => {
+		await fsp.appendFile(filePath, `${JSON.stringify(event)}\n`, "utf8");
+		// Rotate after appending, preserving the just-appended event in current.
+		await rotateIfNeeded(input.cwd, filePath, input.maxFileSizeBytes);
+		// Periodically prune the event log to prevent unbounded growth
+		await pruneEventLog(input.cwd, filePath);
+	});
 	return event;
 }
 

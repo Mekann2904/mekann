@@ -9,6 +9,14 @@ describe("inspect", () => {
   it("flags dynamic prefer_cache", () => { const w = inspectFragments([f("d", "x", { stability: "dynamic", cacheIntent: "prefer_cache" }) as any]); expect(w[0].code).toBe("DYNAMIC_FRAGMENT_CACHE_INTENT"); });
   it("flags unknown stable", () => { const w = inspectFragments([f("u", "x", { kind: "unknown" }) as any]); expect(w[0].code).toBe("UNKNOWN_FRAGMENT_NOT_STABLE"); });
   it("short stable prefix is info", () => { expect(inspectStablePrefix("short")[0].severity).toBe("info"); });
+  it("does not false-warn SHORT_STABLE_PREFIX for a substantial Japanese prefix", () => {
+    // 2000 hiragana chars: old length/4 estimate = 500 (< 1024, false "short"),
+    // weighted estimate = 2000 (>= 1024) so the cache-efficiency info warning must not fire.
+    expect(inspectStablePrefix("あ".repeat(2000))).toEqual([]);
+  });
+  it("still warns SHORT_STABLE_PREFIX for a genuinely short Japanese prefix", () => {
+    expect(inspectStablePrefix("あ".repeat(100))[0].code).toBe("SHORT_STABLE_PREFIX");
+  });
   it("flags cacheable fragment ordering ties", () => { const w = inspectFragmentOrdering([f("x", "one"), f("x", "two")]); expect(w).toContainEqual(expect.objectContaining({ severity: "warning", code: "CACHEABLE_FRAGMENT_ORDER_TIE", fragmentId: "x" })); });
   it("flags base system volatility", () => { const w = inspectBaseSystemPrompt("Current date: 2026-05-25\n<available_skills><location>/Users/me/x</location></available_skills>"); expect(w.map(x => x.code)).toEqual(expect.arrayContaining(["BASE_SYSTEM_VOLATILE_SIGNAL", "BASE_SYSTEM_ABSOLUTE_PATH", "BASE_SYSTEM_AVAILABLE_SKILLS_BLOCK"])); });
   it("does not flag stable base-system policy prose merely mentioning volatile terms", () => { const w = inspectBaseSystemPrompt("Use search results carefully. Check git status before committing. Tool result evidence matters."); expect(w.map(x => x.code)).not.toContain("BASE_SYSTEM_VOLATILE_SIGNAL"); });

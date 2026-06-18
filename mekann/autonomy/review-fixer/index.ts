@@ -10,7 +10,6 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { isFeatureEnabled } from "../../settings/enabled.js";
 import { createSubagentControl } from "../subagent/controlFactory.js";
@@ -152,13 +151,12 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
         };
       }
 
-      // 4. Snapshot content hashes before (detects changes to already-dirty files)
-      const hashesBefore = snapshotContentHashes(ctx.cwd);
-      // Also keep a porcelain snapshot for the details payload
-      let statusBefore = "";
-      try {
-        statusBefore = execFileSync("git", ["status", "--porcelain"], { cwd: ctx.cwd, encoding: "utf-8" });
-      } catch { /* ignore */ }
+      // 4. Snapshot content hashes before (detects changes to already-dirty files).
+      //    The porcelain status is reused for the details payload so we do not
+      //    fork `git status` a second time (issue #142).
+      const snapBefore = await snapshotContentHashes(ctx.cwd);
+      const hashesBefore = snapBefore.hashes;
+      const statusBefore = snapBefore.status;
 
       // 5. Run through the same synchronous subagent delegate path as delegate_agent
       const prompt = buildChildPrompt(issueContext, ctx.cwd, { maxFixRetries: settings.maxFixRetries });
@@ -179,12 +177,10 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
       }, ctx);
       const result = extractReviewFixerResult(delegate.final_result);
 
-      // 6. Snapshot content hashes after
-      const hashesAfter = snapshotContentHashes(ctx.cwd);
-      let statusAfter = "";
-      try {
-        statusAfter = execFileSync("git", ["status", "--porcelain"], { cwd: ctx.cwd, encoding: "utf-8" });
-      } catch { /* ignore */ }
+      // 6. Snapshot content hashes after (reusing porcelain status, no extra fork)
+      const snapAfter = await snapshotContentHashes(ctx.cwd);
+      const hashesAfter = snapAfter.hashes;
+      const statusAfter = snapAfter.status;
 
       // 7. Build response
       if (delegate.status === "errored") {

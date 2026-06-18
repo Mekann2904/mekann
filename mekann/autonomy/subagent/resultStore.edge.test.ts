@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { SubagentResultStore } from "./resultStore.js";
@@ -99,7 +99,7 @@ describe("SA-07-T1: patch ref validation rejects paths outside store dir", () =>
 // ---------------------------------------------------------------------------
 
 describe("SA-07-T2: recoverStaleApplying respects maxAgeMs", () => {
-	it("recovers results older than maxAgeMs", () => {
+	it("recovers results older than maxAgeMs", async () => {
 		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
 		const store = createStore(dir);
 		const stored = store.save(agent, observation);
@@ -111,14 +111,14 @@ describe("SA-07-T2: recoverStaleApplying respects maxAgeMs", () => {
 		raw.applying_at = Date.now() - 20 * 60 * 1000; // 20 minutes ago
 		writeFileSync(path.join(sDir, `${stored.result_id}.json`), JSON.stringify(raw));
 
-		const recovered = store.recoverStaleApplying(10 * 60 * 1000); // 10 min threshold
+		const recovered = await store.recoverStaleApplying(10 * 60 * 1000); // 10 min threshold
 		expect(recovered).toBe(1);
 
 		const after = store.load(stored.result_id);
 		expect(after.status).toBe("needs_review");
 	});
 
-	it("does not recover results newer than maxAgeMs", () => {
+	it("does not recover results newer than maxAgeMs", async () => {
 		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
 		const store = createStore(dir);
 		const stored = store.save(agent, observation);
@@ -130,14 +130,14 @@ describe("SA-07-T2: recoverStaleApplying respects maxAgeMs", () => {
 		raw.applying_at = Date.now() - 1 * 60 * 1000; // 1 minute ago
 		writeFileSync(path.join(sDir, `${stored.result_id}.json`), JSON.stringify(raw));
 
-		const recovered = store.recoverStaleApplying(10 * 60 * 1000); // 10 min threshold
+		const recovered = await store.recoverStaleApplying(10 * 60 * 1000); // 10 min threshold
 		expect(recovered).toBe(0);
 
 		const after = store.load(stored.result_id);
 		expect(after.status).toBe("applying");
 	});
 
-	it("recovers with no applying_at using created_at fallback", () => {
+	it("recovers with no applying_at using created_at fallback", async () => {
 		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
 		const store = createStore(dir);
 		const stored = store.save(agent, observation);
@@ -150,7 +150,7 @@ describe("SA-07-T2: recoverStaleApplying respects maxAgeMs", () => {
 		raw.created_at = Date.now() - 20 * 60 * 1000; // old created_at
 		writeFileSync(path.join(sDir, `${stored.result_id}.json`), JSON.stringify(raw));
 
-		const recovered = store.recoverStaleApplying(10 * 60 * 1000);
+		const recovered = await store.recoverStaleApplying(10 * 60 * 1000);
 		expect(recovered).toBe(1);
 	});
 });
@@ -197,29 +197,97 @@ describe("ResultStore: status transition clears previous state", () => {
 // ---------------------------------------------------------------------------
 
 describe("ResultStore: list with filters", () => {
-	it("filters by outcome", () => {
+	it("filters by outcome", async () => {
 		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
 		const store = createStore(dir);
 		store.save(agent, observation);
 		store.save(agent, patch());
 
-		const observations = store.list({ outcome: "observation" });
+		const observations = await store.list({ outcome: "observation" });
 		expect(observations).toHaveLength(1);
 		expect(observations[0].result.outcome).toBe("observation");
 
-		const patches = store.list({ outcome: "patch" });
+		const patches = await store.list({ outcome: "patch" });
 		expect(patches).toHaveLength(1);
 	});
 
-	it("filters by agent_path", () => {
+	it("filters by agent_path", async () => {
 		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
 		const store = new SubagentResultStore(dir);
 		store.save(agent, observation);
 		const otherAgent = { ...agent, agentPath: "/root/other" };
 		store.save(otherAgent, observation);
 
-		const filtered = store.list({ agent_path: "/root/task" });
+		const filtered = await store.list({ agent_path: "/root/task" });
 		expect(filtered).toHaveLength(1);
 		expect(filtered[0].agent_path).toBe("/root/task");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Issue #152: atomic tryMarkApplying + symlink-aware patch ref validation
+// ---------------------------------------------------------------------------
+
+describe("Issue #152: tryMarkApplying atomic transition", () => {
+	it("wins the pending→applying transition for the first caller", () => {
+		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
+		const store = createStore(dir);
+		const stored = store.save(agent, patch());
+		expect(store.tryMarkApplying(stored.result_id)).toBe(true);
+		expect(store.load(stored.result_id).status).toBe("applying");
+	});
+
+	it("returns false once another caller already moved it to applying", () => {
+		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
+		const store = createStore(dir);
+		const stored = store.save(agent, patch());
+		expect(store.tryMarkApplying(stored.result_id)).toBe(true);
+		// A second caller (e.g. a parallel pi process) must not also win and apply.
+		expect(store.tryMarkApplying(stored.result_id)).toBe(false);
+	});
+
+	it("respects the eligible-status set (needs_review only when allowed)", () => {
+		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
+		const store = createStore(dir);
+		const stored = store.save(agent, patch());
+		store.markNeedsReview(stored.result_id, "test");
+		expect(store.tryMarkApplying(stored.result_id)).toBe(false);
+		expect(store.tryMarkApplying(stored.result_id, new Set(["pending", "needs_review"]))).toBe(true);
+	});
+
+	it("releases the per-result lock so the same id can be re-armed later", () => {
+		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
+		const store = createStore(dir);
+		const stored = store.save(agent, patch());
+		expect(store.tryMarkApplying(stored.result_id)).toBe(true);
+		// Mark it pending again (simulating recoverStaleApplying) and re-arm.
+		const s = store.load(stored.result_id); s.status = "pending"; (store as any).saveStored(s);
+		expect(store.tryMarkApplying(stored.result_id)).toBe(true);
+	});
+});
+
+describe("Issue #152: symlink-aware patch ref validation", () => {
+	it("rejects a patch ref that is a symlink escaping the store dir", () => {
+		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
+		const outside = mkdtempSync(path.join(tmpdir(), "sar-out-"));
+		try {
+			const store = createStore(dir);
+			const outsideFile = path.join(outside, "secret.patch");
+			writeFileSync(outsideFile, "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1 +1 @@\n-old\n+new\n", "utf8");
+			// Place a symlink inside the store dir pointing outside.
+			symlinkSync(outsideFile, path.join(store.dir, "escaped.patch"));
+			const stored = store.save(agent, patch());
+			// Rewrite the stored result so its patch ref is the escaping symlink.
+			const rawPath = path.join(store.dir, `${stored.result_id}.json`);
+			const raw = JSON.parse(readFileSync(rawPath, "utf8"));
+			raw.result.patch.ref = path.join(store.dir, "escaped.patch");
+			writeFileSync(rawPath, JSON.stringify(raw), "utf8");
+			(store as any).invalidate();
+			// load() must reject the escaping ref (canonical validator).
+			expect(() => store.load(stored.result_id)).toThrow(/Invalid stored patch ref/);
+		} finally {
+			try { rmSync(dir, { recursive: true }); } catch {}
+			try { rmSync(outside, { recursive: true }); } catch {}
+		}
 	});
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { truncateTail, runCommand, runChecks, generatePiRunId, generateRunId, parseExternalInfo, filterSecrets, createRunArtifactDir, writeRunArtifacts, writeChecksArtifacts, loadRunFromArtifact, getGitFullHash, isGitDirty, getChangedFiles, gitAutoCommit, stageAutoresearchReportArtifacts, gitAutoRevert, hasCompleteMarker, loopFollowUpMessage, markArtifactComplete, type RunManifest } from "./runner.js";
+import { truncateTail, runCommand, runChecks, generatePiRunId, generateRunId, parseExternalInfo, createRunArtifactDir, writeRunArtifacts, writeChecksArtifacts, loadRunFromArtifact, getGitFullHash, isGitDirty, getChangedFiles, gitAutoCommit, stageAutoresearchReportArtifacts, gitAutoRevert, hasCompleteMarker, loopFollowUpMessage, markArtifactComplete, type RunManifest } from "./runner.js";
+import { redactSecrets } from "../../context/tool-output/redact.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as childProcess from "node:child_process";
@@ -324,29 +325,65 @@ describe("parseExternalInfo", () => {
 });
 
 // ---------------------------------------------------------------------------
-// filterSecrets
+// redactSecrets (secret masking)
 // ---------------------------------------------------------------------------
 
-describe("filterSecrets", () => {
-	it("redacts API_KEY values", () => {
-		expect(filterSecrets("API_KEY=sk-12345")).toContain("***REDACTED***");
-		expect(filterSecrets("API_KEY=sk-12345")).not.toContain("sk-12345");
+// NOTE: autoresearch の秘密マスキングは tool-output/redact.ts の redactSecrets に
+// 一本化済み (issue #138)。旧 filterSecrets は AWS/GitHub/OpenAI/Anthropic 鍵を
+// 取りこぼしていたため、ここでは正本 redactSecrets が各プロバイダ鍵を網羅的に
+// mask することを回帰保証する。
+describe("redactSecrets (autoresearch secret masking)", () => {
+	it("redacts AWS access key id", () => {
+		const out = redactSecrets("using key AKIAIOSFODNN7EXAMPLE now").text;
+		expect(out).not.toContain("AKIAIOSFODNN7EXAMPLE");
+		expect(out).toContain("[REDACTED_AWS_ACCESS_KEY]");
 	});
 
-	it("redacts SECRET values", () => {
-		expect(filterSecrets("MY_SECRET=abc123")).toContain("***REDACTED***");
+	it("redacts GitHub PAT (ghp_) and fine-grained token (github_pat_)", () => {
+		const ghp = "ghp_abcdefghijklmnopqrstuvwxyz0123456789AB";
+		const pat = "github_pat_abcdefghijklmnopqrstuvwxyz0123456789abcd";
+		const out = redactSecrets(`tokens: ${ghp} and ${pat}`).text;
+		expect(out).not.toContain(ghp);
+		expect(out).not.toContain(pat);
+		expect(out).toContain("[REDACTED_GITHUB_TOKEN]");
 	});
 
-	it("redacts PASSWORD values", () => {
-		expect(filterSecrets("DB_PASSWORD=hunter2")).toContain("***REDACTED***");
+	it("redacts OpenAI keys (sk- and sk-proj-)", () => {
+		const plain = "sk-abcdefghijklmnopqrstuvwxyz0123456789";
+		const proj = "sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+		const out = redactSecrets(`keys: ${plain} ${proj}`).text;
+		expect(out).not.toContain(plain);
+		expect(out).not.toContain(proj);
+		expect(out).toContain("[REDACTED_OPENAI_KEY]");
 	});
 
-	it("redacts TOKEN values", () => {
-		expect(filterSecrets("TOKEN=eyJhbGci")).toContain("***REDACTED***");
+	it("redacts Anthropic keys (sk-ant-)", () => {
+		// sk-ant- は openai パターンが先に巻き込む可能性があるため marker は /REDACTED/ で検証
+		const key = "sk-ant-api03-ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890xyz";
+		const out = redactSecrets(`key=${key}`).text;
+		expect(out).not.toContain(key);
+		expect(out).toMatch(/REDACTED/);
 	});
 
-	it("preserves normal lines", () => {
-		expect(filterSecrets("METRIC foo=42")).toBe("METRIC foo=42");
+	it("redacts env-style SECRET/TOKEN/PASSWORD/API_KEY/ACCESS_KEY values", () => {
+		expect(redactSecrets("API_KEY=sk-12345").text).toBe("API_KEY=[REDACTED]");
+		expect(redactSecrets("MY_SECRET=abc123").text).toBe("MY_SECRET=[REDACTED]");
+		expect(redactSecrets("DB_PASSWORD=hunter2").text).toBe("DB_PASSWORD=[REDACTED]");
+		expect(redactSecrets("TOKEN=eyJhbGci").text).toBe("TOKEN=[REDACTED]");
+	});
+
+	it("redacts Authorization: Bearer and api-key headers", () => {
+		expect(redactSecrets("Authorization: Bearer abc.def.ghi").text).toBe("Authorization: Bearer [REDACTED]");
+		expect(redactSecrets("x-api-key: mysecret123").text).toBe("x-api-key: [REDACTED]");
+	});
+
+	it("preserves normal metric/output lines", () => {
+		expect(redactSecrets("METRIC foo=42").text).toBe("METRIC foo=42");
+	});
+
+	it("returns redacted flag", () => {
+		expect(redactSecrets("METRIC foo=42").redacted).toBe(false);
+		expect(redactSecrets("TOKEN=leak").redacted).toBe(true);
 	});
 });
 
@@ -945,7 +982,7 @@ describe("RunManifest: body isolation (issue #30)", () => {
 		expect(manifest.command).toBe("echo hello");
 	});
 
-	it("stdout.log/stderr.log are still written with filterSecrets applied", async () => {
+	it("stdout.log/stderr.log are still written with redactSecrets applied", async () => {
 		const runDir = createRunArtifactDir(tmpDir, "sess1", "run1", "echo test", Date.now());
 		const result = await runCommand('echo "out" && echo "err" >&2 && echo "API_KEY=sk-secret-12345"', tmpDir, 5000);
 		writeRunArtifacts(runDir, result, "run1", Date.now(), Date.now());
@@ -954,7 +991,7 @@ describe("RunManifest: body isolation (issue #30)", () => {
 		expect(stdoutLog).toContain("out");
 		// secret is redacted in the log body file
 		expect(stdoutLog).not.toContain("sk-secret-12345");
-		expect(stdoutLog).toContain("***REDACTED***");
+		expect(stdoutLog).toContain("[REDACTED]");
 	});
 
 	it("secret in stdout body does not leak into manifest", async () => {
@@ -1004,12 +1041,12 @@ describe("RunManifest: body isolation (issue #30)", () => {
 		// checks-result.json still holds the filtered body (separate file)
 		const checksBody = JSON.parse(fs.readFileSync(path.join(runDir, "checks-result.json"), "utf8"));
 		expect(checksBody.output).toBe("CHECKS BODY OUTPUT");
-		// checks logs are filterSecrets'd and written
+		// checks logs are redactSecrets'd and written
 		expect(fs.existsSync(path.join(runDir, "checks.stdout.log"))).toBe(true);
 		expect(fs.existsSync(path.join(runDir, "checks.stderr.log"))).toBe(true);
 	});
 
-	it("checks.stdout.log/checks.stderr.log are filterSecrets'd", () => {
+	it("checks.stdout.log/checks.stderr.log are redactSecrets'd", () => {
 		const runDir = createRunArtifactDir(tmpDir, "sess1", "run1", "echo test", Date.now());
 		writeChecksArtifacts(runDir, {
 			passed: true,

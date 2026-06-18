@@ -55,7 +55,6 @@ import {
 	isGitDirty,
 	generatePiRunId,
 	createRunArtifactDir,
-	filterSecrets,
 	hasCompleteMarker,
 	loopFollowUpMessage,
 } from "./runner.js";

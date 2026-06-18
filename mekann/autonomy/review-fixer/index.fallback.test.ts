@@ -39,7 +39,7 @@ vi.mock("./issueContext.js", () => ({
 }));
 
 vi.mock("./changedFiles.js", () => ({
-  snapshotContentHashes: () => new Map<string, string>(),
+  snapshotContentHashes: async () => ({ hashes: new Map<string, string>(), status: "" }),
   computeChangedFiles: () => [],
 }));
 
@@ -52,10 +52,10 @@ vi.mock("./childPrompt.js", () => ({
 }));
 
 vi.mock("node:child_process", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:child_process")>();
-  // index.ts only calls execFileSync for `git status --porcelain`; stub that
-  // while keeping execFile (used transitively by pi-session.ts) intact.
-  return { ...actual, execFileSync: () => "" };
+  // index.ts no longer shells out to git directly (snapshots come from
+  // changedFiles.js, mocked above). Keep the real module intact for any
+  // transitive user (e.g. pi-session.ts).
+  return await importOriginal<typeof import("node:child_process")>();
 });
 
 const mockIssue = {

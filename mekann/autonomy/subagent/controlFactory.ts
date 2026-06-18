@@ -78,6 +78,8 @@ export function createSubagentControl(pi: ExtensionAPI, extensionPathDefault: st
   // can't disable the limit (issue #83 / C-014).
   const rawMaxResultRetries = Number(getFlagOrSetting(pi, "subagent-max-result-retries", "maxResultRetries", String(MEKANN_SUBAGENT_DEFAULTS.maxResultRetries)));
   const maxResultRetries = Number.isInteger(rawMaxResultRetries) && rawMaxResultRetries >= 1 && rawMaxResultRetries <= HARD_MAX_RESULT_RETRIES ? rawMaxResultRetries : MEKANN_SUBAGENT_DEFAULTS.maxResultRetries;
+  const rawMailboxRetention = Number(getFlagOrSetting(pi, "subagent-mailbox-retention", "mailboxRetention", String(MEKANN_SUBAGENT_DEFAULTS.mailboxRetention)));
+  const mailboxRetention = Number.isInteger(rawMailboxRetention) && rawMailboxRetention >= 100 ? rawMailboxRetention : MEKANN_SUBAGENT_DEFAULTS.mailboxRetention;
 
   return new AgentControl(pi, maxAgents, maxDepth, defaultWait, minWait, {
     displayMode,
@@ -91,6 +93,7 @@ export function createSubagentControl(pi: ExtensionAPI, extensionPathDefault: st
     allowNestedSubagents,
     defaultReasoningEffort,
     maxResultRetries,
+    mailboxRetention,
     helloTimeoutMs: helloTimeout,
   });
 }
