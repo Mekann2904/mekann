@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import commandNormalization from "./index.js";
+import { classifyBashCommand, normalizeBashCommand, splitSimpleCommand } from "./command.js";
+import { normalizeGrepLikeCommand } from "./grep.js";
 import { featureBooleanValue, isFeatureEnabled } from "../../settings/enabled.js";
 
 let cwd: string | undefined;
@@ -49,6 +51,96 @@ async function logExists(target: string): Promise<boolean> {
 		return false;
 	}
 }
+
+describe("splitSimpleCommand operator rejection (IC-062)", () => {
+	it.each([
+		["ls foo;rm bar", "semicolon compound"],
+		["ls foo | grep x", "pipe compound"],
+		["echo $(whoami)", "command substitution"],
+		["ls\nrm -rf /", "newline compound"],
+		["ls foo\nbar", "embedded newline"],
+		["echo a\r\nb", "CRLF"],
+		["ls\\\nrm", "backslash-newline continuation"],
+	])("rejects %s (%s) as non-simple", (cmd) => {
+		expect(splitSimpleCommand(cmd)).toBeNull();
+		expect(classifyBashCommand(cmd)).toBeNull();
+	});
+
+	it.each([
+		["rg needle src", ["rg", "needle", "src"]],
+		["ls ~/Documents", ["ls", "~/Documents"]],
+		['ls "my dir"', ["ls", "my dir"]],
+		["rg \u65e5\u672c\u8a9e src", ["rg", "\u65e5\u672c\u8a9e", "src"]],
+	])("still splits %p into %p", (cmd, expected) => {
+		expect(splitSimpleCommand(cmd)).toEqual(expected);
+	});
+});
+
+describe("normalizeGrepLikeCommand flag detection (IC-061)", () => {
+	it.each([
+		["rg needle src", "rg -n -H -0 --no-heading needle src"],
+		// Numeric / option-with-arg tokens must NOT be read as the short flag.
+		["rg -10 pattern", "rg -n -H -0 --no-heading -10 pattern"],
+		["rg -A2 needle", "rg -n -H -0 --no-heading -A2 needle"],
+		["rg -B1 needle", "rg -n -H -0 --no-heading -B1 needle"],
+		// Flag letter present but not terminating the cluster → not read as the flag.
+		["rg -inferior x", "rg -n -H -0 --no-heading -inferior x"],
+		["rg -Help x", "rg -n -H -0 --no-heading -Help x"],
+		// Already-present standalone flags are preserved (no duplicates added).
+		["rg -n needle", "rg -H -0 --no-heading -n needle"],
+		["rg -H needle", "rg -n -0 --no-heading -H needle"],
+		["rg -0 needle", "rg -n -H --no-heading -0 needle"],
+		["rg --line-number --with-filename -0 --no-heading x", "rg --line-number --with-filename -0 --no-heading x"],
+		// grep variant uses -Z for --null.
+		["grep foo", "grep -n -H -Z foo"],
+		["grep -n foo", "grep -H -Z -n foo"],
+		["grep -A2 foo", "grep -n -H -Z -A2 foo"],
+	])("normalizes %p -> %p", (input, expected) => {
+		expect(normalizeGrepLikeCommand(input)).toBe(expected);
+	});
+
+	it.each([
+		["rg --count foo"],
+		["rg -c foo"],
+		["grep -l foo"],
+		["grep --null foo"],
+	])("returns null for format-flag conflict %p", (input) => {
+		expect(normalizeGrepLikeCommand(input)).toBeNull();
+	});
+
+	it("leaves the command unchanged when every flag is already present", () => {
+		expect(normalizeGrepLikeCommand("rg -n -H -0 --no-heading needle")).toBe("rg -n -H -0 --no-heading needle");
+	});
+});
+
+describe("normalizeBashCommand list rewrites", () => {
+	const IGNORE = ".git|node_modules|vendor|target|dist|build|.next|coverage";
+
+	it("preserves HOME tilde expansion for ls (IC-066)", () => {
+		// `~` must stay unquoted so the shell expands `~/Documents`.
+		expect(normalizeBashCommand("ls ~/Documents", "list")).toBe("ls -1 ~/Documents");
+	});
+
+	it("adds exactly one -I with the full ignore list when none present (IC-065)", () => {
+		const out = normalizeBashCommand("tree", "list")!;
+		expect(out).toBe(`tree -L 3 -I '${IGNORE}'`);
+		expect(out.split(" ").filter((t) => t === "-I")).toHaveLength(1);
+	});
+
+	it("merges IGNORE_DIRS into an existing -I pattern instead of overwriting (IC-065)", () => {
+		expect(normalizeBashCommand("tree -I tmp", "list")).toBe(`tree -I 'tmp|${IGNORE}' -L 3`);
+	});
+
+	it("merges while preserving the user pattern and deduping overlaps", () => {
+		const out = normalizeBashCommand("tree -I node_modules src", "list")!;
+		expect(out).toBe(`tree -I 'node_modules|.git|vendor|target|dist|build|.next|coverage' src -L 3`);
+	});
+
+	it("still normalizes find and ls", () => {
+		expect(normalizeBashCommand("find .", "list")).toBe("find . -type f -maxdepth 4");
+		expect(normalizeBashCommand("ls", "list")).toBe("ls -1");
+	});
+});
 
 describe("command-normalization settings compatibility", () => {
 	it("honors deprecated output-budget settings as aliases", async () => {

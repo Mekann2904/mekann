@@ -1,6 +1,6 @@
 export type CommandNormalizationKind = "grep" | "list" | "git";
 
-const SHELL_OPERATORS = /[|;&<>`$(){}]/;
+const SHELL_OPERATORS = /[|;&<>`$(){}\n\r]/;
 const IGNORE_DIRS = [".git", "node_modules", "vendor", "target", "dist", "build", ".next", "coverage"];
 
 export function splitSimpleCommand(command: string): string[] | null {
@@ -11,7 +11,7 @@ export function splitSimpleCommand(command: string): string[] | null {
 }
 
 function quote(arg: string): string {
-	return /^[A-Za-z0-9_./:=@%+,-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'"'"'`)}'`;
+	return /^[~A-Za-z0-9_./:=@%+,-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'"'"'`)}'`;
 }
 
 function hasShort(args: string[], flag: string): boolean {
@@ -22,7 +22,18 @@ function normalizeList(bin: string, args: string[]): string | null {
 	if (bin === "tree") {
 		const out = [bin, ...args];
 		if (!args.includes("-L") && !args.some((a) => a.startsWith("--max-depth"))) out.push("-L", "3");
-		for (const dir of IGNORE_DIRS) if (!args.includes("-I") && !args.some((a) => a.includes(dir))) out.push("-I", IGNORE_DIRS.join("|"));
+		// Merge IGNORE_DIRS into the user's `-I <pattern>` when present, otherwise
+		// add a single -I. This neither overwrites an existing -I nor pushes
+		// duplicate -I flags (which the previous per-dir loop did). (IC-065)
+		const iFlagIdx = args.findIndex((a) => a === "-I");
+		const hasIgnoreFlag = args.some((a) => a === "-I" || a.startsWith("-I"));
+		if (iFlagIdx !== -1 && iFlagIdx + 1 < args.length) {
+			const userPatterns = args[iFlagIdx + 1].split("|").filter(Boolean);
+			const merged = [...new Set([...userPatterns, ...IGNORE_DIRS])];
+			out[1 + iFlagIdx + 1] = merged.join("|");
+		} else if (!hasIgnoreFlag) {
+			out.push("-I", IGNORE_DIRS.join("|"));
+		}
 		return out.map(quote).join(" ");
 	}
 	if (bin === "find") {
