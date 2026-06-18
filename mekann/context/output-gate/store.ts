@@ -17,6 +17,7 @@ export function spreadSessionMeta(input: { sessionId?: string; turnId?: string; 
 }
 import { redactSecrets } from "../tool-output/redact.js";
 import { buildStructuredPreview, type OutputContentType } from "./preview.js";
+import { appendJsonlLine, withAppendLock } from "../../utils/atomic-append.js";
 
 export interface OutputGateManifestEntry {
 	schemaVersion?: "output-gate/v1";
@@ -253,7 +254,7 @@ export async function saveArtifact(input: SaveArtifactInput): Promise<{ entry: O
 		...(input.commandHash ? { commandHash: input.commandHash } : {}),
 		...(input.source === undefined ? {} : { source: sanitizeManifestSource(input.source) }),
 	};
-	await fsp.appendFile(manifestPath(input.cwd), `${JSON.stringify(entry)}\n`, "utf8");
+	await appendJsonlLine(manifestPath(input.cwd), `${JSON.stringify(entry)}\n`);
 	return { entry, text: redacted.text };
 }
 
@@ -285,27 +286,33 @@ export async function readManifest(cwd: string): Promise<OutputGateManifestEntry
  */
 export async function retainArtifacts(cwd: string, keepCount: number): Promise<RetainArtifactsResult> {
 	const normalizedKeepCount = Math.max(0, Math.floor(keepCount));
-	const entries = await readManifest(cwd);
-	if (entries.length <= normalizedKeepCount) return { kept: entries, removed: 0 };
-	const sorted = [...entries].sort((a, b) => b.createdAt - a.createdAt);
-	const toRemove = sorted.slice(normalizedKeepCount);
-	let removed = 0;
-	for (const entry of toRemove) {
-		const abs = resolveArtifactPath(cwd, entry);
-		if (abs) {
-			try {
-				await fsp.unlink(abs);
-				removed++;
-			} catch { /* ignore missing/unlinkable file */ }
+	const manifest = manifestPath(cwd);
+	// Read, drop, and rewrite the manifest under the same append lock used by
+	// saveArtifact, so a concurrent save cannot append a line into a manifest
+	// we are mid-rewrite (which would silently lose that artifact's entry).
+	return withAppendLock(manifest, async () => {
+		const entries = await readManifest(cwd);
+		if (entries.length <= normalizedKeepCount) return { kept: entries, removed: 0 };
+		const sorted = [...entries].sort((a, b) => b.createdAt - a.createdAt);
+		const toRemove = sorted.slice(normalizedKeepCount);
+		let removed = 0;
+		for (const entry of toRemove) {
+			const abs = resolveArtifactPath(cwd, entry);
+			if (abs) {
+				try {
+					await fsp.unlink(abs);
+					removed++;
+				} catch { /* ignore missing/unlinkable file */ }
+			}
 		}
-	}
-	const kept = sorted.slice(0, normalizedKeepCount);
-	await fsp.writeFile(
-		manifestPath(cwd),
-		kept.length ? `${kept.map((e) => JSON.stringify(e)).join("\n")}\n` : "",
-		"utf8",
-	);
-	return { kept, removed };
+		const kept = sorted.slice(0, normalizedKeepCount);
+		await fsp.writeFile(
+			manifest,
+			kept.length ? `${kept.map((e) => JSON.stringify(e)).join("\n")}\n` : "",
+			"utf8",
+		);
+		return { kept, removed };
+	});
 }
 
 export function resolveArtifactPath(cwd: string, entry: OutputGateManifestEntry): string | undefined {
