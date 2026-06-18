@@ -6,6 +6,7 @@
  */
 
 import * as fs from "node:fs";
+import { appendJsonlLineSync } from "../../utils/atomic-append.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -162,8 +163,11 @@ export function parseJsonlLine(line: string): Record<string, unknown> | null {
 
 /** Append a line to a JSONL file. Creates the file if it doesn't exist. */
 export function appendToJsonl(filePath: string, data: Record<string, unknown>): void {
-	const line = JSON.stringify(data) + "\n";
-	fs.appendFileSync(filePath, line, "utf8");
+	// Atomic across processes (issue #139): plain appendFileSync can interleave
+	// JSONL lines when several pi processes write ledgers in one cwd, and
+	// readers silently drop the torn rows. appendJsonlLineSync serialises
+	// writers with an O_EXCL lockfile sibling.
+	appendJsonlLineSync(filePath, JSON.stringify(data) + "\n");
 }
 
 /** Read all entries from a JSONL file. Returns empty array if file doesn't exist. */
