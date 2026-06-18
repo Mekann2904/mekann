@@ -99,7 +99,7 @@ describe("SA-07-T1: patch ref validation rejects paths outside store dir", () =>
 // ---------------------------------------------------------------------------
 
 describe("SA-07-T2: recoverStaleApplying respects maxAgeMs", () => {
-	it("recovers results older than maxAgeMs", () => {
+	it("recovers results older than maxAgeMs", async () => {
 		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
 		const store = createStore(dir);
 		const stored = store.save(agent, observation);
@@ -111,14 +111,14 @@ describe("SA-07-T2: recoverStaleApplying respects maxAgeMs", () => {
 		raw.applying_at = Date.now() - 20 * 60 * 1000; // 20 minutes ago
 		writeFileSync(path.join(sDir, `${stored.result_id}.json`), JSON.stringify(raw));
 
-		const recovered = store.recoverStaleApplying(10 * 60 * 1000); // 10 min threshold
+		const recovered = await store.recoverStaleApplying(10 * 60 * 1000); // 10 min threshold
 		expect(recovered).toBe(1);
 
 		const after = store.load(stored.result_id);
 		expect(after.status).toBe("needs_review");
 	});
 
-	it("does not recover results newer than maxAgeMs", () => {
+	it("does not recover results newer than maxAgeMs", async () => {
 		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
 		const store = createStore(dir);
 		const stored = store.save(agent, observation);
@@ -130,14 +130,14 @@ describe("SA-07-T2: recoverStaleApplying respects maxAgeMs", () => {
 		raw.applying_at = Date.now() - 1 * 60 * 1000; // 1 minute ago
 		writeFileSync(path.join(sDir, `${stored.result_id}.json`), JSON.stringify(raw));
 
-		const recovered = store.recoverStaleApplying(10 * 60 * 1000); // 10 min threshold
+		const recovered = await store.recoverStaleApplying(10 * 60 * 1000); // 10 min threshold
 		expect(recovered).toBe(0);
 
 		const after = store.load(stored.result_id);
 		expect(after.status).toBe("applying");
 	});
 
-	it("recovers with no applying_at using created_at fallback", () => {
+	it("recovers with no applying_at using created_at fallback", async () => {
 		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
 		const store = createStore(dir);
 		const stored = store.save(agent, observation);
@@ -150,7 +150,7 @@ describe("SA-07-T2: recoverStaleApplying respects maxAgeMs", () => {
 		raw.created_at = Date.now() - 20 * 60 * 1000; // old created_at
 		writeFileSync(path.join(sDir, `${stored.result_id}.json`), JSON.stringify(raw));
 
-		const recovered = store.recoverStaleApplying(10 * 60 * 1000);
+		const recovered = await store.recoverStaleApplying(10 * 60 * 1000);
 		expect(recovered).toBe(1);
 	});
 });
@@ -197,28 +197,28 @@ describe("ResultStore: status transition clears previous state", () => {
 // ---------------------------------------------------------------------------
 
 describe("ResultStore: list with filters", () => {
-	it("filters by outcome", () => {
+	it("filters by outcome", async () => {
 		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
 		const store = createStore(dir);
 		store.save(agent, observation);
 		store.save(agent, patch());
 
-		const observations = store.list({ outcome: "observation" });
+		const observations = await store.list({ outcome: "observation" });
 		expect(observations).toHaveLength(1);
 		expect(observations[0].result.outcome).toBe("observation");
 
-		const patches = store.list({ outcome: "patch" });
+		const patches = await store.list({ outcome: "patch" });
 		expect(patches).toHaveLength(1);
 	});
 
-	it("filters by agent_path", () => {
+	it("filters by agent_path", async () => {
 		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
 		const store = new SubagentResultStore(dir);
 		store.save(agent, observation);
 		const otherAgent = { ...agent, agentPath: "/root/other" };
 		store.save(otherAgent, observation);
 
-		const filtered = store.list({ agent_path: "/root/task" });
+		const filtered = await store.list({ agent_path: "/root/task" });
 		expect(filtered).toHaveLength(1);
 		expect(filtered[0].agent_path).toBe("/root/task");
 	});

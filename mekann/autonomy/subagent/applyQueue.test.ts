@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ApplyQueue } from "./applyQueue.js";
@@ -47,11 +47,11 @@ function makeStoreAndQueue(overrides: { agent?: Partial<AgentMetadata>; shellAll
 }
 
 describe("ApplyQueue: listAgentResults", () => {
-  it("lists results from store", () => {
+  it("lists results from store", async () => {
     const { store, q, agent, cleanup } = makeStoreAndQueue();
     try {
       store.save(agent, { schema: "subagent.result.v1", outcome: "observation", summary: "test", findings: [] } as any);
-      expect(q.listAgentResults()).toHaveLength(1);
+      expect(await q.listAgentResults()).toHaveLength(1);
     } finally { cleanup(); }
   });
 });
@@ -73,6 +73,23 @@ describe("ApplyQueue: showAgentResult", () => {
       const stored = store.save(agent, patch());
       const shown = q.showAgentResult(stored.result_id, true);
       expect(shown.patch_body).toContain("diff --git");
+    } finally { cleanup(); }
+  });
+
+  // Regression for issue #142: load() must return an independent copy so caller
+  // mutations (showAgentResult attaching patch_body, mark* rewriting status)
+  // never leak into the in-memory cache or the next persisted JSON.
+  it("does not leak patch_body into the cache or disk after includePatch=true", () => {
+    const { store, q, agent, cleanup } = makeStoreAndQueue();
+    try {
+      const stored = store.save(agent, patch());
+      q.showAgentResult(stored.result_id, true); // mutates the returned copy only
+      // Cache must stay clean: a follow-up without patch must not see patch_body.
+      expect(q.showAgentResult(stored.result_id, false).patch_body).toBeUndefined();
+      // A status mutation must not persist the transient patch_body field.
+      q.rejectAgentResult(stored.result_id);
+      const raw = JSON.parse(readFileSync(path.join(store.dir, `${stored.result_id}.json`), "utf8"));
+      expect("patch_body" in raw).toBe(false);
     } finally { cleanup(); }
   });
 });

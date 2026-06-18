@@ -77,7 +77,7 @@ describe("SubagentLifecycle", () => {
     return lc;
   }
 
-  it("stores structured subagent results and enqueues a final_result", () => {
+  it("stores structured subagent results and enqueues a final_result", async () => {
     const cwd = mkdtempSync(path.join(tmpdir(), "sl-"));
     try {
       const registry = new AgentRegistry(4, 3);
@@ -96,7 +96,7 @@ describe("SubagentLifecycle", () => {
 
       expect(message).toContain("no_change");
       expect(registry.get("/root/task")?.lastTaskMessage).toBe(message);
-      expect(lifecycle.resultStoreFor(cwd).list()).toHaveLength(1);
+      expect(await lifecycle.resultStoreFor(cwd).list()).toHaveLength(1);
       expect(mailbox.pendingFor("/root").at(-1)?.kind).toBe("final_result");
       expect(mailbox.allEvents().at(-1)?.type).toBe("agent_final_message");
     } finally {
@@ -104,7 +104,7 @@ describe("SubagentLifecycle", () => {
     }
   });
 
-  it("falls back to truncated text when final text is not a structured result", () => {
+  it("falls back to truncated text when final text is not a structured result", async () => {
     const cwd = mkdtempSync(path.join(tmpdir(), "sl-"));
     try {
       const registry = new AgentRegistry(4, 3);
@@ -115,7 +115,7 @@ describe("SubagentLifecycle", () => {
       const message = lifecycle.handleFinalText({ agentId: "a1", agentPath: "/root/task", callerPath: "/root", status: "completed", cwd, finalText: "plain final text" });
 
       expect(message).toBe("plain final text");
-      expect(lifecycle.resultStoreFor(cwd).list()).toHaveLength(0);
+      expect(await lifecycle.resultStoreFor(cwd).list()).toHaveLength(0);
       expect(mailbox.pendingFor("/root").at(-1)?.content).toBe("plain final text");
     } finally {
       rmSync(cwd, { recursive: true, force: true });
@@ -182,7 +182,7 @@ describe("SubagentLifecycle", () => {
     expect(lifecycle.runtimeForSession("/root/queued")).toBeDefined();
   });
 
-  it("registerRetryLink links retry spawn to original result", () => {
+  it("registerRetryLink links retry spawn to original result", async () => {
     const cwd = mkdtempSync(path.join(tmpdir(), "sl-"));
     try {
       const registry = new AgentRegistry(4, 3);
@@ -195,7 +195,7 @@ describe("SubagentLifecycle", () => {
         finalText: JSON.stringify({ schema: "subagent.result.v1", outcome: "no_change", summary: "nothing to change" }),
       });
 
-      const originalId = lifecycle.resultStoreFor(cwd).list()[0].result_id;
+      const originalId = (await lifecycle.resultStoreFor(cwd).list())[0].result_id;
       lifecycle.registerRetryLink("/root/retry_task", originalId);
 
       const retryReservation = registry.reserveSpawnSlot("/root/retry_task");
@@ -210,7 +210,7 @@ describe("SubagentLifecycle", () => {
         finalText: JSON.stringify({ schema: "subagent.result.v1", outcome: "observation", summary: "retried", findings: [] }),
       });
 
-      expect(lifecycle.resultStoreFor(cwd).list()).toHaveLength(2);
+      expect(await lifecycle.resultStoreFor(cwd).list()).toHaveLength(2);
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
