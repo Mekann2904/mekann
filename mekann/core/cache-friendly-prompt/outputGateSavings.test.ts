@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	OUTPUT_GATE_DEFAULT_PREVIEW_BYTES,
 	OUTPUT_GATE_DEFAULT_THRESHOLD_BYTES,
 	parseOutputGateEvent,
 	readOutputGateEvents,
@@ -23,6 +24,7 @@ describe("outputGateSavings.parseOutputGateEvent", () => {
 			artifactId: "og_aaaaaa_1",
 			bytes: 100000,
 			lines: 1200,
+			stubBytes: null,
 		});
 	});
 
@@ -47,7 +49,20 @@ describe("outputGateSavings.parseOutputGateEvent", () => {
 		const parsed = parseOutputGateEvent(
 			ledgerEvent({ summary: "Large read output stored as og_bb12cd_42 (5120 bytes, 30 lines)" }),
 		);
-		expect(parsed).toEqual({ toolName: "read", artifactId: "og_bb12cd_42", bytes: 5120, lines: 30 });
+		expect(parsed).toEqual({ toolName: "read", artifactId: "og_bb12cd_42", bytes: 5120, lines: 30, stubBytes: null });
+	});
+
+	it("parses the stub-bytes tail when present", () => {
+		const parsed = parseOutputGateEvent(
+			ledgerEvent({ summary: "Large bash output stored as og_aaaaaa_1 (100000 bytes, 1200 lines, stub 850 bytes)" }),
+		);
+		expect(parsed).toEqual({
+			toolName: "bash",
+			artifactId: "og_aaaaaa_1",
+			bytes: 100000,
+			lines: 1200,
+			stubBytes: 850,
+		});
 	});
 });
 
@@ -58,6 +73,11 @@ describe("outputGateSavings.summarizeOutputGateSavings", () => {
 		expect(summary.totalBytes).toBe(0);
 		expect(summary.avgBytes).toBeNull();
 		expect(summary.stubRate).toBeNull();
+		expect(summary.inlineReductionRate).toBeNull();
+		expect(summary.totalStubBytes).toBe(0);
+		expect(summary.measuredStubBytes).toBe(0);
+		expect(summary.measuredStubEvents).toBe(0);
+		expect(summary.fallbackStubBytes).toBe(OUTPUT_GATE_DEFAULT_PREVIEW_BYTES);
 		expect(summary.latestTimestamp).toBeNull();
 		expect(summary.byTool).toEqual({});
 		expect(summary.savingsBeyondThresholdBytes).toBe(0);
@@ -109,6 +129,47 @@ describe("outputGateSavings.summarizeOutputGateSavings", () => {
 		);
 		expect(summary.savingsBeyondThresholdBytes).toBe(0);
 		expect(summary.stubRate).toBe(0);
+	});
+
+	it("computes inlineReductionRate from measured stub bytes", () => {
+		// two events: 100000 bytes / 850 stub, 4000 bytes / 600 stub.
+		// totalBytes = 104000, totalStubBytes = 1450, rate = (104000-1450)/104000.
+		const events = [
+			ledgerEvent({ summary: "Large bash output stored as og_aaaaaa_1 (100000 bytes, 1200 lines, stub 850 bytes)" }),
+			ledgerEvent({ summary: "Large read output stored as og_bb12cd_42 (4000 bytes, 20 lines, stub 600 bytes)" }),
+		];
+		const summary = summarizeOutputGateSavings(events);
+		expect(summary.measuredStubEvents).toBe(2);
+		expect(summary.measuredStubBytes).toBe(1450);
+		expect(summary.totalStubBytes).toBe(1450);
+		expect(summary.inlineReductionRate).toBeCloseTo((104000 - 1450) / 104000, 10);
+	});
+
+	it("falls back to preview-bytes default for legacy events without stub bytes", () => {
+		// legacy event: 60000 bytes, no stub tail. fallback stub = 8 KiB.
+		const events = [
+			ledgerEvent({ summary: "Large bash output stored as og_aaaaaa_1 (60000 bytes, 300 lines)" }),
+		];
+		const summary = summarizeOutputGateSavings(events);
+		expect(summary.measuredStubEvents).toBe(0);
+		expect(summary.measuredStubBytes).toBe(0);
+		expect(summary.totalStubBytes).toBe(OUTPUT_GATE_DEFAULT_PREVIEW_BYTES);
+		expect(summary.inlineReductionRate).toBeCloseTo((60000 - OUTPUT_GATE_DEFAULT_PREVIEW_BYTES) / 60000, 10);
+	});
+
+	it("mixes measured stub bytes with the fallback for legacy events", () => {
+		const events = [
+			ledgerEvent({ summary: "Large bash output stored as og_aaaaaa_1 (100000 bytes, 1200 lines, stub 850 bytes)" }),
+			ledgerEvent({ summary: "Large read output stored as og_bb12cd_42 (60000 bytes, 300 lines)" }),
+		];
+		const summary = summarizeOutputGateSavings(events);
+		expect(summary.measuredStubEvents).toBe(1);
+		expect(summary.measuredStubBytes).toBe(850);
+		expect(summary.totalStubBytes).toBe(850 + OUTPUT_GATE_DEFAULT_PREVIEW_BYTES);
+		expect(summary.inlineReductionRate).toBeCloseTo(
+			(160000 - (850 + OUTPUT_GATE_DEFAULT_PREVIEW_BYTES)) / 160000,
+			10,
+		);
 	});
 
 	it("uses the default 48 KiB threshold when none is passed", () => {

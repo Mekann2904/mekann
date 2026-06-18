@@ -55,7 +55,6 @@ import {
 	isGitDirty,
 	generatePiRunId,
 	createRunArtifactDir,
-	filterSecrets,
 	hasCompleteMarker,
 	loopFollowUpMessage,
 } from "./runner.js";
@@ -247,6 +246,14 @@ export default function autoresearchExtension(pi: ExtensionAPI): void {
 		store.resetLoopProgress();
 		syncAutoresearchToolSurface();
 		store.updateWidget(ctx);
+	});
+
+	// ─── session_shutdown ─────────────────────────────────────
+	// Free in-memory run results (each holds up to ~1MB of stdout/stderr).
+	// session_start already clears this map, but releasing at shutdown bounds
+	// peak memory for long-lived processes that reuse the extension host.
+	pi.on("session_shutdown", async () => {
+		store.runResultMap.clear();
 	});
 
 	// ─── Policy provider wiring ───────────────────────────────

@@ -32,11 +32,17 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 			reject(new DOMException("The operation was aborted.", "AbortError"));
 			return;
 		}
-		const timer = setTimeout(resolve, ms);
-		signal?.addEventListener("abort", () => {
+		const onAbort = () => {
 			clearTimeout(timer);
 			reject(new DOMException("The operation was aborted.", "AbortError"));
-		}, { once: true });
+		};
+		const timer = setTimeout(() => {
+			// Timer fired normally: drop the abort listener so a signal that is
+			// reused across repeated sleeps does not accumulate listeners.
+			signal?.removeEventListener("abort", onAbort);
+			resolve();
+		}, ms);
+		signal?.addEventListener("abort", onAbort, { once: true });
 	});
 }
 

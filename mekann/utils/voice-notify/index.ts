@@ -25,15 +25,6 @@ function isEnabled(): boolean {
 	return process.env.VOICE_NOTIFY_ENABLED !== "false";
 }
 
-function speak(text: string): void {
-	const child = execFile("say", [text], (error) => {
-		if (error) {
-			process.stderr.write(`[voice-notify] say failed: ${error.message}\n`);
-		}
-	});
-	child.unref();
-}
-
 function extractVoiceContent(text: string): string {
 	const parts: string[] = [];
 	let match: RegExpExecArray | null;
@@ -75,20 +66,37 @@ export default function voiceNotifyExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	const voiceQueue: string[] = [];
+	// Speak as soon as an assistant message containing <voice> completes, rather
+	// than waiting until the whole agent turn ends. Utterances flow through a
+	// serial queue so overlapping `say` processes never garble the audio.
+	const speechQueue: string[] = [];
+	let isSpeaking = false;
+
+	function drainSpeechQueue(): void {
+		if (isSpeaking) return;
+		const next = speechQueue.shift();
+		if (!next) return;
+		isSpeaking = true;
+		const child = execFile("say", [next], (error) => {
+			isSpeaking = false;
+			if (error) {
+				process.stderr.write(`[voice-notify] say failed: ${error.message}\n`);
+			}
+			drainSpeechQueue();
+		});
+		child.unref();
+	}
+
+	function enqueueSpeech(text: string): void {
+		speechQueue.push(text);
+		drainSpeechQueue();
+	}
 
 	pi.on("message_end", async (event) => {
+		if (!isEnabled()) return;
 		if (event.message.role !== "assistant") return;
 
 		const content = extractVoiceContent(assistantText(event.message));
-		if (content) voiceQueue.push(content);
-	});
-
-	pi.on("agent_end", async () => {
-		if (!isEnabled() || voiceQueue.length === 0) return;
-
-		const fullText = voiceQueue.join("。");
-		voiceQueue.length = 0;
-		speak(fullText);
+		if (content) enqueueSpeech(content);
 	});
 }

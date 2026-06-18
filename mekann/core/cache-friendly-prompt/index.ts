@@ -129,7 +129,7 @@ export default function cacheFriendlyPromptExtension(
 		});
 		const rendered = renderPromptFragments(fragments);
 		const baseSystemText = incomingSystemPrompt;
-		const { stableBaseSystemText, volatileRuntimeText } =
+		const { stableBaseSystemText, relocatedBaseSystemText, volatileRuntimeText } =
 			splitVolatileRuntimeBlock(baseSystemText);
 
 		const requestId = requestIdOf(event, ctx);
@@ -157,6 +157,9 @@ export default function cacheFriendlyPromptExtension(
 				stableBaseSystemText,
 				rendered.stableText,
 				rendered.semiStableText,
+				relocatedBaseSystemText
+					? `<!-- cache-friendly-prompt:Relocated base system context -->\n${relocatedBaseSystemText}`
+					: "",
 				volatileRuntimeText
 					? `<!-- cache-friendly-prompt:Volatile runtime context -->\n${volatileRuntimeText}`
 					: "",

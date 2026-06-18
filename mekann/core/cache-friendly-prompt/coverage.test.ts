@@ -600,6 +600,11 @@ describe("report.ts coverage", () => {
     // savings = 160000 - 49152*2 = 61696; rate = 61696 / 160000
     expect(savings.savingsBeyondThresholdBytes).toBe(160000 - 48 * 1024 * 2);
     expect(savings.stubRate).toBeCloseTo((160000 - 48 * 1024 * 2) / 160000, 10);
+    // legacy events (no `stub N bytes`) → fallback 8 KiB per event
+    expect(savings.measuredStubEvents).toBe(0);
+    expect(savings.measuredStubBytes).toBe(0);
+    expect(savings.totalStubBytes).toBe(8 * 1024 * 2);
+    expect(savings.inlineReductionRate).toBeCloseTo((160000 - 8 * 1024 * 2) / 160000, 10);
     expect(savings.latestTimestamp).toBe(new Date(1_700_000_005_000).toISOString());
 
     const report = writtenFiles.get(path.join(dir, "report.md"))!;
@@ -609,7 +614,9 @@ describe("report.ts coverage", () => {
     expect(report).toContain("### 12.1 By tool");
     // glossary shifted to 12 and gained output-gate terms
     expect(report).toContain("## 13. Glossary");
-    expect(report).toContain("| stub化率 |");
+    expect(report).toContain("| inline削減率 |");
+    expect(report).toContain("| stub化率（閾値超過削減率） |");
+    expect(report).toContain("| totalPromptTokenEstimate |");
   });
 
   it("renders an empty output-gate savings section when the ledger has no events", async () => {

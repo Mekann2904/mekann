@@ -123,13 +123,37 @@ export function joinPromptPartsCanonical(
 
 export function splitVolatileRuntimeBlock(systemPrompt: string): {
 	stableBaseSystemText: string;
+	/**
+	 * Semi-stable base-system blocks that should remain in the provider prefix
+	 * attribution, but must be moved after Mekann cacheable fragments because
+	 * they contain absolute paths or other path-heavy locator data.
+	 */
+	relocatedBaseSystemText: string;
 	volatileRuntimeText: string;
 } {
+	// Pi core currently emits project context and the skills preamble +
+	// <available_skills> block in the base system prompt before extension
+	// fragments. Both surfaces carry absolute paths (`project_instructions path`,
+	// skill locations, and skill preamble instructions), so leaving them there
+	// triggers volatile-before-stable warnings and makes Mekann's cacheable prefix
+	// appear after path-heavy state. Move those whole sections behind Mekann
+	// stable/semi-stable fragments while still treating them as part of the
+	// provider prefix hash (unlike truly volatile date/cwd lines).
+	const relocatedBlocks: string[] = [];
+	const relocatableSectionPattern = /\n*(?:(?:<project_context>[\s\S]*?<\/project_context>)|(?:(?:The following skills provide specialized instructions for specific tasks\.\nUse the read tool to load a skill's file when the task matches its description\.\nWhen a skill file references a relative path, resolve it against the skill directory \(parent of SKILL\.md \/ dirname of the path\) and use that absolute path in tool commands\.\n\n)?<available_skills>[\s\S]*?<\/available_skills>))\n*/g;
+	const withoutRelocatedBlocks = systemPrompt.replace(
+		relocatableSectionPattern,
+		(match) => {
+			relocatedBlocks.push(match.trim());
+			return "\n";
+		},
+	);
 	// Delegates to the shared volatile line source in prompt-core so extraction
 	// and inspection stay in lockstep (see volatile.ts).
-	const { stableLines, volatileLines } = splitVolatileLines(systemPrompt);
+	const { stableLines, volatileLines } = splitVolatileLines(withoutRelocatedBlocks);
 	return {
 		stableBaseSystemText: stableLines.join("\n").trimEnd(),
+		relocatedBaseSystemText: relocatedBlocks.join("\n\n").trim(),
 		volatileRuntimeText: volatileLines.join("\n").trim(),
 	};
 }
@@ -337,7 +361,7 @@ export function createInitialSnapshot(
 	const { baseSystemText, rendered } = input;
 	const selectedTools = input.selectedTools ?? [];
 
-	const { stableBaseSystemText } = splitVolatileRuntimeBlock(baseSystemText);
+	const { stableBaseSystemText, relocatedBaseSystemText } = splitVolatileRuntimeBlock(baseSystemText);
 	const featureCacheablePrefixText = joinPromptPartsCanonical([
 		rendered.stableText,
 		rendered.semiStableText,
@@ -346,6 +370,7 @@ export function createInitialSnapshot(
 		stableBaseSystemText,
 		rendered.stableText,
 		rendered.semiStableText,
+		relocatedBaseSystemText,
 	]);
 
 	return {
@@ -455,6 +480,8 @@ export function applyProviderRequest(
 	return {
 		...prev,
 		totalPromptChars: input.finalText.length,
+		// Text-only token estimate over extractTextFromProviderPayload output;
+		// excludes tool schemas / JSON structure, underreports vs inputTotalTokens.
 		totalPromptTokenEstimate: estimateTokens(input.finalText),
 	};
 }
@@ -525,6 +552,8 @@ export function buildRequestLog(input: RequestLogInput): CacheFriendlyRequestLog
 		providerPrefixChars: s?.providerPrefixChars,
 		providerPrefixTokenEstimate: s?.providerPrefixTokenEstimate,
 		totalPromptChars: input.finalText.length,
+		// Text-only token estimate over extractTextFromProviderPayload output;
+		// excludes tool schemas / JSON structure, underreports vs inputTotalTokens.
 		totalPromptTokenEstimate: estimateTokens(input.finalText),
 		promptProviderIds: input.promptProviderIds,
 		fragmentHashes: input.fragmentHashes,

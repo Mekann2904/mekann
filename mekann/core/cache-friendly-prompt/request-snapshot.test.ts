@@ -108,6 +108,22 @@ describe("splitVolatileRuntimeBlock", () => {
 		expect(stableBaseSystemText).toContain("current date");
 		expect(stableBaseSystemText).toContain("git status");
 	});
+
+	it("relocates project_context and the whole skills section after cacheable fragments instead of keeping absolute paths in the stable base", () => {
+		const projectContext = "<project_context>\n<project_instructions path=\"/Users/me/repo/AGENTS.md\">rules</project_instructions>\n</project_context>";
+		const skillsSection = "The following skills provide specialized instructions for specific tasks.\nUse the read tool to load a skill's file when the task matches its description.\nWhen a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n<available_skills>\n  <skill><location>/Users/me/skill/SKILL.md</location></skill>\n</available_skills>";
+		const { stableBaseSystemText, relocatedBaseSystemText, volatileRuntimeText } =
+			splitVolatileRuntimeBlock(
+				`BASE\n${projectContext}\n${skillsSection}\nCurrent date: 2026-06-17`,
+			);
+		expect(stableBaseSystemText).toBe("BASE");
+		expect(relocatedBaseSystemText).toContain("<project_context>");
+		expect(relocatedBaseSystemText).toContain("/Users/me/repo/AGENTS.md");
+		expect(relocatedBaseSystemText).toContain("The following skills provide specialized instructions");
+		expect(relocatedBaseSystemText).toContain("<available_skills>");
+		expect(relocatedBaseSystemText).toContain("/Users/me/skill/SKILL.md");
+		expect(volatileRuntimeText).toBe("Current date: 2026-06-17");
+	});
 });
 
 // ---------------------------------------------------------------------------
