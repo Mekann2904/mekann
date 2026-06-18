@@ -52,7 +52,13 @@
     "update:cursor-plugins-skills": "bash scripts/update-cursor-plugins-skills.sh",
     "update:gsap-skills": "bash scripts/update-gsap-skills.sh",
     "clone:oss": "bash scripts/clone-oss.sh",
-    "update:oss": "bash scripts/update-oss.sh"
+    "update:oss": "bash scripts/update-oss.sh",
+    "bench:startup": "npx tsx scripts/benchmark-startup.ts",
+    "bench:startup:mjs": "node scripts/benchmark-startup.mjs",
+    "lint": "biome lint",
+    "lint:fix": "biome lint --write",
+    "format": "biome format --write",
+    "format:check": "biome format --check"
   },
   "engines": {
     "node": ">=22.19.0"
@@ -66,6 +72,7 @@
     ]
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.0",
     "@earendil-works/pi-agent-core": "0.75.3",
     "@earendil-works/pi-ai": "0.75.3",
     "@earendil-works/pi-coding-agent": "0.75.3",
