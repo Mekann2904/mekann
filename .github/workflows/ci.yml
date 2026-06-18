@@ -314,6 +314,38 @@ jobs:
       - name: Unit tests
         run: npm run test:ledger
 
+  # ─── Type-safety gates (issue #141) ────────────────────────────────
+  # `lint` enforces @typescript-eslint/no-explicit-any (warn repo-wide,
+  # error on the cleaned ERROR_TIER files). `as-any-baseline` fails if the
+  # non-test `as any` count grows beyond scripts/as-any-baseline.json.
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies
+        run: npm ci --workspaces --include-workspace-root
+
+      - name: ESLint (no-explicit-any)
+        run: npm run lint
+
+  as-any-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check `as any` baseline
+        run: bash scripts/check-as-any-baseline.sh
+
   # ─── Aggregate test count ──────────────────────────────────────────
   # Keep `needs:` in sync with every job above. Job results are echoed from
   # `needs.<job>.result` so the summary always reflects reality, and the gate
@@ -322,7 +354,7 @@ jobs:
   test-summary:
     runs-on: ubuntu-latest
     needs:
-      [mekann, prompt-core, cache-friendly-prompt, agent-guidelines, model-optimizer, command-normalization, modes, sandbox-unit, sandbox-macos, zip-repo, subagent, autoresearch, goal, output-gate, typecheck-prod, ledger]
+      [mekann, prompt-core, cache-friendly-prompt, agent-guidelines, model-optimizer, command-normalization, modes, sandbox-unit, sandbox-macos, zip-repo, subagent, autoresearch, goal, output-gate, typecheck-prod, ledger, lint, as-any-baseline]
     if: always()
     steps:
       - name: Suite results
@@ -343,6 +375,8 @@ jobs:
           echo "output-gate: ${{ needs['output-gate'].result }}"
           echo "typecheck-prod: ${{ needs['typecheck-prod'].result }}"
           echo "ledger: ${{ needs.ledger.result }}"
+          echo "lint: ${{ needs.lint.result }}"
+          echo "as-any-baseline: ${{ needs['as-any-baseline'].result }}"
       - name: Fail if any suite did not succeed
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
         run: |

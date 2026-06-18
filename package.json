@@ -46,6 +46,8 @@
     "check:coverage:modes": "bash scripts/check-coverage-threshold.sh mekann/safety/modes 85 npx vitest run --coverage --fileParallelism=false",
     "typecheck:prod": "tsc -p tsconfig.prod.json",
     "typecheck": "npm run typecheck:prod && cd mekann/safety/sandbox && npm run typecheck && cd ../../autonomy/subagent && npm run typecheck",
+    "lint": "eslint .",
+    "check:as-any-baseline": "bash scripts/check-as-any-baseline.sh",
     "prepush": "bash scripts/prepush-parallel.sh",
     "check:mattpocock-skills": "node scripts/check-mattpocock-skills.js",
     "update:mattpocock-skills": "bash scripts/update-mattpocock-skills.sh",
@@ -74,9 +76,11 @@
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.15",
     "@vitest/coverage-v8": "^4.1.6",
+    "eslint": "^10.5.0",
     "fast-check": "^4.8.0",
     "husky": "^9.1.7",
     "tinyglobby": "^0.2.16",
+    "typescript-eslint": "^8.61.1",
     "vitest": "^4.1.6"
   },
   "optionalDependencies": {
