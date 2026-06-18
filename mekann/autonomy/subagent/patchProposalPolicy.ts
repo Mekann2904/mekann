@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import type { FileFingerprint, PatchProposalResult, PublicSurfaceDelta, SemanticTarget, SubagentAuthority } from "./types.js";
 import { detectPublicSurfaceFromPatch, extractTouchedPathsFromPatchStrict, isNewFilePatch, normalizePublicSurfaceDeltas, safeRepoRelativePath } from "./fingerprint.js";
 import { keyOfTarget } from "./semantic.js";
+import { isPatchRefUnderDir } from "./pathSafety.js";
 
 export type PatchProposalUse = "candidate" | "apply";
 
@@ -63,7 +64,7 @@ export function evaluatePatchProposalForApply(input: PatchProposalPolicyInput): 
 function evaluatePatchProposal(input: PatchProposalPolicyInput): PatchProposalDecision {
   const findings: PatchProposalFinding[] = [];
   const ref = input.proposal.patch?.ref;
-  if (typeof ref !== "string" || !isUnderDir(ref, input.patchRefRootDir)) {
+  if (typeof ref !== "string" || !isPatchRefUnderDir(ref, input.patchRefRootDir)) {
     findings.push({ kind: "invalid_patch_ref" });
     return decide(findings);
   }
@@ -149,7 +150,6 @@ function validateBaseFileHashesSync(cwd: string, files: FileFingerprint[]): { ok
 
 function sha256Buffer(buffer: Buffer): string { return "sha256:" + createHash("sha256").update(buffer).digest("hex"); }
 function surfaceKey(delta: Pick<PublicSurfaceDelta, "surface" | "name" | "change">): string { return `${delta.surface}:${delta.name}:${delta.change}`; }
-function isUnderDir(file: string, dir: string): boolean { const rel = path.relative(path.resolve(dir), path.resolve(file)); return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel); }
 function defaultWriteScopeMatcher(file: string, writeScope: string[]): boolean { return writeScope.some((scope) => file === scope.replace(/\/$/, "") || file.startsWith(scope.replace(/\/$/, "") + "/")); }
 
 export function firstFinding(findings: PatchProposalFinding[]): PatchProposalFinding | undefined { return findings[0]; }

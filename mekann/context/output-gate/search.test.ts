@@ -250,4 +250,18 @@ describe("search output-gate artifacts", () => {
 		expect(out).toContain("hello mars");
 		expect(out).not.toContain("og_filt_1");
 	});
+
+	it("capText keeps CJK results valid UTF-8 within the byte budget (no stray U+FFFD)", async () => {
+		const cwd = await tmp();
+		// 3 bytes/char hiragana; force a cut mid-character at the byte boundary.
+		await saveArtifact({ cwd, toolName: "bash", text: "あいうえお".repeat(200), idGenerator: () => "og_cjkcap_1" });
+		const maxBytes = 80;
+		const out = await searchToolOutputs({ cwd, query: "あ", preferRg: false, maxSearchResultBytes: maxBytes });
+		expect(out).toContain("truncated");
+		expect(out).not.toContain("\uFFFD");
+		// The content portion (excluding the appended truncation marker) must fit.
+		const marker = "\n[output-gate search results truncated]";
+		const content = out.endsWith(marker) ? out.slice(0, out.length - marker.length) : out;
+		expect(Buffer.byteLength(content, "utf8")).toBeLessThanOrEqual(maxBytes);
+	});
 });
