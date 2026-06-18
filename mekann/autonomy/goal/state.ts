@@ -119,21 +119,24 @@ export function validateTokenBudget(budget: unknown): number | null {
 // ---------------------------------------------------------------------------
 
 /** Normalize a goal to ensure all fields have valid defaults. */
-function normalizeGoal(goal: Goal | Record<string, unknown>): Goal {
+function normalizeGoal(goal: Goal): Goal {
   return {
-    thread_id: (goal as any).thread_id,
-    goal_id: (goal as any).goal_id,
-    objective: (goal as any).objective,
-    status: (goal as any).status,
-    token_budget: (goal as any).token_budget,
-    tokens_used: (goal as any).tokens_used,
-    time_used_seconds: (goal as any).time_used_seconds,
-    created_at_ms: (goal as any).created_at_ms,
-    updated_at_ms: (goal as any).updated_at_ms,
+    // Construct from the known fields only — this intentionally drops stale
+    // properties (e.g. legacy continuation_count/max_continuations) carried by
+    // older persisted entries. `goal` is typed `Goal`, so access is type-safe.
+    thread_id: goal.thread_id,
+    goal_id: goal.goal_id,
+    objective: goal.objective,
+    status: goal.status,
+    token_budget: goal.token_budget,
+    tokens_used: goal.tokens_used,
+    time_used_seconds: goal.time_used_seconds,
+    created_at_ms: goal.created_at_ms,
+    updated_at_ms: goal.updated_at_ms,
+    // Defensive: persistence entries are JSON-deserialized, so this may be
+    // missing/garbage even though the static type says `number | null`.
     last_continued_at_ms:
-      typeof (goal as any).last_continued_at_ms === "number"
-        ? (goal as any).last_continued_at_ms
-        : null,
+      typeof goal.last_continued_at_ms === "number" ? goal.last_continued_at_ms : null,
   };
 }
 
