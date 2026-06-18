@@ -8,7 +8,7 @@
  * invoked from the tool's `prepareArguments` (throws → tool error).
  */
 
-import { parseIssueNumberFromBranch } from "../issue/worktree.js";
+import { parseIssueNumberFromBranch, issueBaseConfigKey } from "../issue/worktree.js";
 import { classifyStatus, type PrStatus, type Verdict } from "../pr-workflow/index.js";
 import { ISSUE_WORKFLOW_ACTIONS, type IssueWorkflowAction, type IssueWorkflowParams } from "./schemas.js";
 
@@ -158,6 +158,21 @@ async function currentBranch(runner: CommandRunner, cwd: string): Promise<string
 	return stdout.trim();
 }
 
+/**
+ * Read the recorded fork-point base branch for an issue branch via the runner.
+ * Returns "" when unset or unreadable, so `create_pr` falls back to gh's
+ * default base. Mirrors the sync `readIssueBase` in worktree.ts (same key).
+ */
+async function readRecordedBase(runner: CommandRunner, cwd: string, branch: string): Promise<string> {
+	if (!branch) return "";
+	try {
+		const { stdout } = await run(runner, "git", ["config", issueBaseConfigKey(branch)], cwd);
+		return stdout.trim();
+	} catch {
+		return "";
+	}
+}
+
 function trim(v: string | undefined): string {
 	return typeof v === "string" ? v.trim() : "";
 }
@@ -173,15 +188,20 @@ async function doCurrentBranch(runner: CommandRunner, cwd: string): Promise<Acti
 		/* ignore */
 	}
 	const issueNumber = parseIssueNumberFromBranch(branch);
+	let base = "";
+	if (issueNumber !== null) {
+		base = await readRecordedBase(runner, cwd, branch);
+	}
 	const lines = [
 		`branch: ${branch || "(detached)"}`,
 		`issueNumber: ${issueNumber ?? "(not an issue worktree)"}`,
 		`isIssueWorktree: ${issueNumber !== null}`,
 	];
+	if (base) lines.push(`prBase: ${base}`);
 	if (toplevel) lines.push(`worktree: ${toplevel}`);
 	return {
 		text: lines.join("\n"),
-		details: { action: "current_branch", branch, issueNumber, isIssueWorktree: issueNumber !== null, toplevel },
+		details: { action: "current_branch", branch, issueNumber, isIssueWorktree: issueNumber !== null, prBase: base || null, toplevel },
 		isError: false,
 	};
 }
@@ -306,10 +326,26 @@ function maskTempArg(args: string[], fp: string): string {
 
 async function doCreatePr(runner: CommandRunner, cwd: string, params: IssueWorkflowParams): Promise<ActionResult> {
 	const out: string[] = [];
+	const explicitBase = trim(params.base);
+	// When the caller omits --base, fall back to the branch the issue worktree
+	// was forked from (recorded at worktree creation), so a PR opened from
+	// `develop` or a parent `issue-<n>` targets that branch instead of always
+	// defaulting to the repo's main. Explicit `base` always wins.
+	let effectiveBase = explicitBase;
+	let baseSource: "explicit" | "recorded" | "default" = "default";
+	if (effectiveBase) {
+		baseSource = "explicit";
+	} else {
+		const branch = await currentBranch(runner, cwd);
+		const recorded = await readRecordedBase(runner, cwd, branch);
+		if (recorded) {
+			effectiveBase = recorded;
+			baseSource = "recorded";
+		}
+	}
 	const url = await runner.withTempFile(params.body as string, async (fp) => {
 		const args = ["pr", "create", "--title", params.title as string, "--body-file", fp];
-		const base = trim(params.base);
-		if (base) args.push("--base", base);
+		if (effectiveBase) args.push("--base", effectiveBase);
 		if (params.draft) args.push("--draft");
 		const { stdout, stderr } = await run(runner, "gh", args, cwd);
 		out.push(`$ gh ${maskTempArg(args, fp)}`);
@@ -318,7 +354,7 @@ async function doCreatePr(runner: CommandRunner, cwd: string, params: IssueWorkf
 	});
 	return {
 		text: out.join("\n") || "PR created",
-		details: { action: "create_pr", title: params.title ?? null, base: trim(params.base) || null, draft: !!params.draft, url: url || null },
+		details: { action: "create_pr", title: params.title ?? null, base: effectiveBase || null, baseSource, draft: !!params.draft, url: url || null },
 		isError: false,
 	};
 }

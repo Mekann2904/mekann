@@ -36,6 +36,72 @@ export function parseIssueNumberFromBranch(branch: string): number | null {
 }
 
 /**
+ * Git config key recording the branch an issue worktree was forked from, so
+ * `create_pr` can target it instead of always defaulting to the repo's default
+ * branch. Lives in the shared `.git/config` (read from any linked worktree),
+ * never enters the working tree, and is cleared in `removeWorktree`.
+ */
+export function issueBaseConfigKey(branch: string): string {
+	return `branch.${branch}.mekann-base`;
+}
+
+/**
+ * Detect the current branch of a working tree. Returns "" for detached HEAD
+ * or any error so callers can treat it as "no base available".
+ */
+export function detectCurrentBranch(cwd: string): string {
+	try {
+		const name = execFileSync("git", ["-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"], {
+			encoding: "utf-8",
+			stdio: ["ignore", "pipe", "pipe"],
+		}).trim();
+		return name === "HEAD" || !name ? "" : name;
+	} catch {
+		return "";
+	}
+}
+
+/** Read the recorded fork-point base branch for an issue branch, or "" if unset. */
+export function readIssueBase(repoRoot: string, branch: string): string {
+	try {
+		const out = execFileSync("git", ["config", issueBaseConfigKey(branch)], {
+			cwd: repoRoot,
+			encoding: "utf-8",
+			stdio: ["ignore", "pipe", "pipe"],
+		}).trim();
+		return out;
+	} catch {
+		return "";
+	}
+}
+
+/** Record the fork-point base branch for an issue branch. Non-fatal on failure. */
+function recordIssueBase(repoRoot: string, branch: string, base: string): void {
+	try {
+		execFileSync("git", ["config", issueBaseConfigKey(branch), base], {
+			cwd: repoRoot,
+			encoding: "utf-8",
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+	} catch {
+		// Non-fatal: create_pr will fall back to gh's default base.
+	}
+}
+
+/** Clear the recorded fork-point base branch for an issue branch. */
+function unsetIssueBase(repoRoot: string, branch: string): void {
+	try {
+		execFileSync("git", ["config", "--unset", issueBaseConfigKey(branch)], {
+			cwd: repoRoot,
+			encoding: "utf-8",
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+	} catch {
+		// Already unset or absent — nothing to do.
+	}
+}
+
+/**
  * Detect git repository info from the current working directory.
  */
 export function getRepoInfo(cwd?: string): RepoInfo | null {
@@ -91,6 +157,12 @@ export function createWorktree(repoRoot: string, branch: string, worktreePath: s
 	// Ensure parent directory exists
 	fs.mkdirSync(path.dirname(worktreePath), { recursive: true });
 
+	// Capture the branch this worktree is forked from before we add the
+	// worktree. `git worktree add` does not move repoRoot's HEAD, but reading it
+	// here documents intent: this is the fork point `create_pr` will target
+	// instead of always defaulting to the repo's main branch.
+	const baseBranch = detectCurrentBranch(repoRoot);
+
 	// Check if branch already exists
 	let branchExists = false;
 	try {
@@ -120,6 +192,13 @@ export function createWorktree(repoRoot: string, branch: string, worktreePath: s
 			encoding: "utf-8",
 			stdio: ["ignore", "pipe", "pipe"],
 		});
+	}
+
+	// Record the fork point so create_pr can default --base to the branch the
+	// issue worktree was invoked from. Only set when absent so a resumed or
+	// recreated worktree keeps its original base even if repoRoot moved on.
+	if (baseBranch && baseBranch !== branch && !readIssueBase(repoRoot, branch)) {
+		recordIssueBase(repoRoot, branch, baseBranch);
 	}
 
 	return { branch, path: worktreePath };
@@ -157,6 +236,9 @@ export function removeWorktree(repoRoot: string, wt: WorktreeInfo): void {
 	} catch {
 		// Branch not merged or already removed — skip silently
 	}
+
+	// Drop the recorded PR base so a future issue-<n> branch starts clean.
+	unsetIssueBase(repoRoot, wt.branch);
 
 	// Clean up empty worktrees directory
 	const wtRoot = worktreesRoot(repoRoot);

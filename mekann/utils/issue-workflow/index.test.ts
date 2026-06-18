@@ -269,6 +269,100 @@ describe("executeAction create_pr", () => {
 		expect(create && create.includes("--base") && create.includes("develop")).toBe(true);
 		expect(create && create.includes("--draft")).toBe(true);
 	});
+
+	it("falls back to the recorded base when --base is omitted", async () => {
+		const seen: string[][] = [];
+		const git = vi.fn((args: string[]): ExecOut => {
+			seen.push(args);
+			if (args[0] === "branch" && args[1] === "--show-current") return { stdout: "issue-1\n", stderr: "" };
+			if (args[0] === "config" && args[1] === "branch.issue-1.mekann-base") return { stdout: "develop\n", stderr: "" };
+			return { stdout: "", stderr: "" };
+		});
+		const gh = vi.fn((args: string[]): ExecOut => {
+			seen.push(args);
+			return { stdout: "https://github.com/o/r/pull/1\n", stderr: "" };
+		});
+		const { runner } = createMockRunner({ git, gh });
+		const result = await executeAction({ action: "create_pr", title: "t", body: "b" }, "/repo/wt", runner);
+		expect(result.isError).toBe(false);
+		const create = seen.find((a) => a[0] === "pr" && a[1] === "create");
+		expect(create && create.includes("--base") && create.includes("develop")).toBe(true);
+		expect(result.details).toMatchObject({ base: "develop", baseSource: "recorded" });
+	});
+
+	it("falls back to no --base when no recorded base exists (gh default = repo main)", async () => {
+		const seen: string[][] = [];
+		const git = vi.fn((args: string[]): ExecOut => {
+			seen.push(args);
+			if (args[0] === "branch" && args[1] === "--show-current") return { stdout: "issue-1\n", stderr: "" };
+			if (args[0] === "config") return { stdout: "", stderr: "" }; // unset
+			return { stdout: "", stderr: "" };
+		});
+		const gh = vi.fn((args: string[]): ExecOut => {
+			seen.push(args);
+			return { stdout: "https://github.com/o/r/pull/1\n", stderr: "" };
+		});
+		const { runner } = createMockRunner({ git, gh });
+		const result = await executeAction({ action: "create_pr", title: "t", body: "b" }, "/repo/wt", runner);
+		expect(result.isError).toBe(false);
+		const create = seen.find((a) => a[0] === "pr" && a[1] === "create");
+		expect(create && create.some((a) => a === "--base")).toBe(false);
+		expect(result.details).toMatchObject({ base: null, baseSource: "default" });
+	});
+
+	it("explicit --base wins over the recorded base", async () => {
+		const seen: string[][] = [];
+		const git = vi.fn((args: string[]): ExecOut => {
+			seen.push(args);
+			if (args[0] === "branch" && args[1] === "--show-current") return { stdout: "issue-1\n", stderr: "" };
+			if (args[0] === "config" && args[1] === "branch.issue-1.mekann-base") return { stdout: "develop\n", stderr: "" };
+			return { stdout: "", stderr: "" };
+		});
+		const gh = vi.fn((args: string[]): ExecOut => {
+			seen.push(args);
+			return { stdout: "url\n", stderr: "" };
+		});
+		const { runner } = createMockRunner({ git, gh });
+		const result = await executeAction({ action: "create_pr", title: "t", body: "b", base: "release/x" }, "/repo/wt", runner);
+		expect(result.isError).toBe(false);
+		// Must not have read the recorded base when an explicit base is supplied.
+		expect(seen.find((a) => a[0] === "config")).toBeUndefined();
+		const create = seen.find((a) => a[0] === "pr" && a[1] === "create");
+		expect(create && create.includes("--base") && create.includes("release/x")).toBe(true);
+		expect(create && create.includes("develop")).toBe(false);
+		expect(result.details).toMatchObject({ base: "release/x", baseSource: "explicit" });
+	});
+});
+
+// ── executeAction: current_branch exposes recorded prBase ───────────
+
+describe("executeAction current_branch prBase", () => {
+	it("reports the recorded prBase on an issue branch", async () => {
+		const git = vi.fn((args: string[]): ExecOut => {
+			if (args[0] === "branch" && args[1] === "--show-current") return { stdout: "issue-42\n", stderr: "" };
+			if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return { stdout: "/repo/wt\n", stderr: "" };
+			if (args[0] === "config" && args[1] === "branch.issue-42.mekann-base") return { stdout: "develop\n", stderr: "" };
+			return { stdout: "", stderr: "" };
+		});
+		const { runner } = createMockRunner({ git });
+		const result = await executeAction({ action: "current_branch" }, "/repo/wt", runner);
+		expect(result.isError).toBe(false);
+		expect(result.text).toContain("prBase: develop");
+		expect(result.details).toMatchObject({ prBase: "develop" });
+	});
+
+	it("omits prBase when not on an issue branch", async () => {
+		const git = vi.fn((args: string[]): ExecOut => {
+			if (args[0] === "branch" && args[1] === "--show-current") return { stdout: "main\n", stderr: "" };
+			if (args[0] === "rev-parse" && args[1] === "--show-toplevel") return { stdout: "/repo\n", stderr: "" };
+			return { stdout: "", stderr: "" };
+		});
+		const { runner } = createMockRunner({ git });
+		const result = await executeAction({ action: "current_branch" }, "/repo", runner);
+		expect(result.isError).toBe(false);
+		expect(result.text).not.toContain("prBase");
+		expect(result.details).toMatchObject({ prBase: null });
+	});
 });
 
 // ── executeAction: issue_comment ─────────────────────────────────────

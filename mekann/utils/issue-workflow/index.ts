@@ -86,6 +86,7 @@ export default function issueWorkflowExtension(pi: ExtensionAPI): void {
 			"issue_workflow writes message/body to a temp file and passes it via -F / --body-file, so commit messages and PR bodies survive shell-special characters verbatim.",
 			"Mutating actions (commit, push, create_pr, update_pr, ready, comment, issue_comment, promote_to_ready_for_agent, demote_to_ready_for_human) only run inside an issue worktree (branch issue-<number>) and are auto-approved there. Read-only actions (current_branch, status, diff, view_pr) work anywhere.",
 			"create_pr should produce a ready (non-draft) PR — review_fixer has already gated implementation quality.",
+			"create_pr targets the branch the issue worktree was forked from (the branch /issue was invoked on); you usually do NOT pass `base`. Pass `base` only to override. Use current_branch to see the recorded prBase.",
 		],
 		parameters: IssueWorkflowParamsSchema,
 		prepareArguments(args: unknown): IssueWorkflowParams {
