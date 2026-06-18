@@ -5,7 +5,7 @@
 ## Commands
 
 - `/issue`: opens the interactive issue worktree selector in a Kitty split.
-- `/issue <parent-number>`: orchestrates the parent's sub-issues (issue #71). Starts the first startable child's Work Pi; when the child's PR is merged and the Work Pi is closed, the next startable child is launched automatically. Approval-gated: a non-merged close stops the chain.
+- `/issue <number>`: opens that issue. When the issue is a parent (has sub-issues), it orchestrates the parent's sub-issues (issue #71); otherwise it opens the issue's worktree directly. Orchestration starts the first startable child's Work Pi; when the child's PR is merged and the Work Pi is closed, the next startable child is launched automatically. Approval-gated: a non-merged close stops the chain.
 - `/issue-create <title>`: searches open issues for potential duplicates, asks for confirmation, then creates a GitHub issue.
 - `/clean-issue-worktrees`: removes issue worktrees whose GitHub issues are closed.
 

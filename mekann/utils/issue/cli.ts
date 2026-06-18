@@ -4,7 +4,7 @@
  *
  * Interactive mode: OpenTUI issue list → create worktree → launch pi in Kitty split
  * Direct mode: --issue N → create worktree and print its path
- * Orchestrate mode: <parent-number> → GitHub-truth orchestration of sub-issues (issue #71)
+ * Open mode: <number> → orchestrate a parent's sub-issues (issue #71) or open a leaf directly
  * Cleanup: remove worktrees whose issues are closed
  */
 
@@ -14,6 +14,7 @@ import { getRepoInfo, createWorktree, removeWorktree, worktreeDir, listExistingW
 import { mountIssueList } from "./app.js";
 import { launchPiSessionInKittySplit } from "../terminal/pi-session.js";
 import { createOrchestrationDeps } from "./orchestration/deps.js";
+import type { OrchestrationDeps } from "./orchestration/collector.js";
 import { startOrchestration, type LaunchWorkPi } from "./orchestration/lifecycle.js";
 import { resolveIssueWorkPiModel } from "./orchestration/issueModel.js";
 import { buildIssueSessionSystemPrompt, buildIssueSessionInitialMessage } from "./prompts.js";
@@ -43,8 +44,8 @@ async function main(): Promise<void> {
 		return;
 	}
 
-	if (args.value.mode === "orchestrate") {
-		await runOrchestration(args.value.issueNumber!);
+	if (args.value.mode === "open") {
+		await runOpen(args.value.issueNumber!);
 		return;
 	}
 
@@ -138,25 +139,64 @@ function buildOrchestrationLauncher(parent: number, repoRoot: string): LaunchWor
 }
 
 /**
- * Orchestrate a parent PRD/epic issue (issue #71).
+ * Orchestrate a parent issue's sub-issues when it has any; otherwise do nothing
+ * and let the caller open the issue directly.
  *
- * Snapshot children from GitHub truth, start the first startable child's Work
- * Pi (marked with orchestration env vars), then exit. The Work Pi's own session
- * shutdown hook continues the chain after its PR is merged.
+ * Single source of truth for the parent/leaf decision, shared by `/issue
+ * <number>` (runOpen) and the interactive list's single-select (issue #71).
+ * Reuses the caller's `deps` so orchestration neither re-resolves repo info
+ * nor rebuilds the orchestration dependencies, and the gh sub-issues call that
+ * decides parent-vs-leaf is the same `deps` instance orchestration snapshots
+ * from.
+ *
+ * Returns true when the issue is a parent (orchestration ran or was attempted);
+ * false when it is a leaf and the caller should open it directly.
  */
-async function runOrchestration(parentNumber: number): Promise<void> {
-	const repoInfo = getRepoInfo();
-	if (!repoInfo) { console.error("Not in git repo."); process.exitCode = 1; return; }
+async function orchestrateIfParent(repoInfo: RepoInfo, deps: OrchestrationDeps, issueNumber: number): Promise<boolean> {
+	if ((await safeListSubIssues(deps, issueNumber)).length === 0) return false;
 
-	const deps = createOrchestrationDeps({ remote: repoInfo.remote, repoRoot: repoInfo.root });
-	const launchWorkPi = buildOrchestrationLauncher(parentNumber, repoInfo.root);
-
+	const launchWorkPi = buildOrchestrationLauncher(issueNumber, repoInfo.root);
 	try {
-		const outcome = await startOrchestration(parentNumber, repoInfo.root, deps, launchWorkPi);
+		const outcome = await startOrchestration(issueNumber, repoInfo.root, deps, launchWorkPi);
 		console.log(outcome.message);
 		if (outcome.kind === "no-children") process.exitCode = 0;
 	} catch (error) {
 		console.error(error instanceof Error ? error.message : String(error));
+		process.exitCode = 1;
+	}
+	return true;
+}
+
+/**
+ * Open a single issue by number (`/issue <number>`; issue #71 + leaf-issue fix).
+ *
+ * Parent (has sub-issues) → orchestrate its sub-issues; leaf → open the issue's
+ * worktree directly (worktree + Work Pi). Previously the bare numeric CLI arg
+ * was hardwired to orchestrate-only, so `/issue <number>` printed "nothing to
+ * orchestrate" and opened nothing for leaf issues.
+ */
+async function runOpen(issueNumber: number): Promise<void> {
+	const repoInfo = getRepoInfo();
+	if (!repoInfo) { console.error("Not in git repo."); process.exitCode = 1; return; }
+
+	// One deps instance is reused for the parent/leaf check and for orchestration.
+	const deps = createOrchestrationDeps({ remote: repoInfo.remote, repoRoot: repoInfo.root });
+	if (await orchestrateIfParent(repoInfo, deps, issueNumber)) return;
+
+	// Leaf issue → open directly: dependency/label gate, then worktree + Work Pi.
+	const [dependencyStatus, labels] = await Promise.all([
+		getIssueDependencyStatus(repoInfo.remote, issueNumber),
+		getIssueLabels(repoInfo.remote, issueNumber).catch(() => []),
+	]);
+	if (!ensureIssueCanStart(issueNumber, { ...dependencyStatus, labels })) return;
+
+	const existing = listExistingWorktrees(repoInfo.root).find((wt) => wt.branch === issueBranch(issueNumber));
+	const { skipped } = await bulkLaunchIssues(
+		[{ issueNumber, hasWorktree: Boolean(existing), worktreePath: existing?.path, labels }],
+		createBulkLaunchDeps(repoInfo),
+	);
+	if (skipped.length > 0) {
+		console.error(`Could not open #${issueNumber}: ${skipped[0].reason}`);
 		process.exitCode = 1;
 	}
 }
@@ -275,21 +315,13 @@ async function runInteractive(): Promise<void> {
 			renderer.destroy();
 
 			// Orchestration special case: only meaningful for a single selected
-			// parent PRD/epic. Preserves the exact legacy single-select behavior.
-			// A bulk-selected batch always opens each issue directly.
+			// parent PRD/epic. A bulk-selected batch always opens each issue
+			// directly. Shares the parent/leaf decision with `/issue <number>`
+			// via orchestrateIfParent (issue #71).
 			if (toOpen.length === 1) {
 				const issue = toOpen[0];
 				const deps = createOrchestrationDeps({ remote: repoInfo.remote, repoRoot: repoInfo.root });
-				const children = await safeListSubIssues(deps, issue.number);
-				if (children.length > 0) {
-					const launchWorkPi = buildOrchestrationLauncher(issue.number, repoInfo.root);
-					try {
-						const outcome = await startOrchestration(issue.number, repoInfo.root, deps, launchWorkPi);
-						console.log(outcome.message);
-					} catch (error) {
-						console.error(error instanceof Error ? error.message : String(error));
-						process.exitCode = 1;
-					}
+				if (await orchestrateIfParent(repoInfo, deps, issue.number)) {
 					process.exit(process.exitCode ?? 0);
 					return;
 				}

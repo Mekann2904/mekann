@@ -1,5 +1,5 @@
 export interface IssueArgs {
-	mode: "interactive" | "direct" | "cleanup" | "orchestrate" | "autopilot";
+	mode: "interactive" | "direct" | "cleanup" | "open" | "autopilot";
 	issueNumber?: number;
 	resultPath?: string;
 }
@@ -45,12 +45,15 @@ export function parseIssueArgs(argv: string[]): { ok: true; value: IssueArgs } |
 		return { ok: true, value: { mode: "direct", issueNumber: num, resultPath } };
 	}
 
-	// Bare numeric argument → orchestrate mode (treat the number as a parent
-	// PRD/epic issue and drive its sub-issues). See issue #71.
-	const maybeParent = parseInt(filtered[0], 10);
-	if (!isNaN(maybeParent) && maybeParent > 0 && filtered.length === 1) {
-		return { ok: true, value: { mode: "orchestrate", issueNumber: maybeParent, resultPath } };
+	// Bare numeric argument → open mode. Mirrors the interactive list's
+	// single-select: orchestrate when the issue is a parent (has sub-issues,
+	// issue #71), otherwise open it directly (worktree + Work Pi). Previously
+	// this was hardwired to orchestrate-only, so `/issue <number>` did nothing
+	// for leaf issues ("nothing to orchestrate").
+	const maybeNumber = parseInt(filtered[0], 10);
+	if (!isNaN(maybeNumber) && maybeNumber > 0 && filtered.length === 1) {
+		return { ok: true, value: { mode: "open", issueNumber: maybeNumber, resultPath } };
 	}
 
-	return { ok: false, error: "Usage: mekann-issue [autopilot | <parent-number> | --issue <number> | cleanup]" };
+	return { ok: false, error: "Usage: mekann-issue [autopilot | <number> | --issue <number> | cleanup]" };
 }

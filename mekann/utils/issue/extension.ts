@@ -27,14 +27,15 @@ export default function issueWorktree(pi: ExtensionAPI): void {
 			const input = (args ?? "").trim();
 
 			// `/issue` (no args) → interactive list.
-			// `/issue <parent-number>` → orchestrate that parent's sub-issues (issue #71).
-			let orchestrateArg = "";
+			// `/issue <number>` → open that issue: orchestrate when it is a parent
+			// (has sub-issues, issue #71), otherwise open its worktree directly.
+			let issueArg = "";
 			if (input !== "") {
 				if (!/^\d+$/.test(input)) {
-					ctx.ui.notify("Usage: /issue  (or /issue <parent-number> to orchestrate sub-issues)", "warning");
+					ctx.ui.notify("Usage: /issue  (or /issue <number> to open/orchestrate)", "warning");
 					return;
 				}
-				orchestrateArg = ` ${input}`;
+				issueArg = ` ${input}`;
 			}
 
 			const error = checkPrerequisites(ctx);
@@ -65,7 +66,7 @@ export default function issueWorktree(pi: ExtensionAPI): void {
 				title: "Issues",
 				copyEnv: true,
 				matchCurrentWindow: true,
-				action: { mode: "shell", command: `${envVar} bun ${JSON.stringify(cliPath)}${orchestrateArg}` },
+				action: { mode: "shell", command: `${envVar} bun ${JSON.stringify(cliPath)}${issueArg}` },
 			});
 
 			if (!result.ok) {
