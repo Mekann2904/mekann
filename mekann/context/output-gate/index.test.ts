@@ -105,12 +105,15 @@ describe("output-gate extension execute handler", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("execute handles missing params gracefully", async () => {
+	it("execute returns 'Query is required.' for an empty query", async () => {
 		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
 		outputGateExtension(pi);
 		const toolDef = pi.registerTool.mock.calls[0][0];
 		const cwd = await tmp();
-		const result = await toolDef.execute("id1", {}, undefined, undefined, { cwd });
+		// pi validates required fields, so `{}` cannot reach execute in production;
+		// the realistic empty-input case is an empty query string, which the
+		// controller turns into its graceful "Query is required." response.
+		const result = await toolDef.execute("id1", { query: "" }, undefined, undefined, { cwd });
 		expect(result.content[0].text).toBe("Query is required.");
 	});
 });

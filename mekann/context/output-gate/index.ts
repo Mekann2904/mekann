@@ -126,21 +126,12 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 		parameters: searchToolOutputsParams,
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const cwd = ctx?.cwd ?? process.cwd();
-			// Type-safe decode against the schema: field access is compile-checked
-			// (schema↔handler drift becomes a type error) and Convert preserves the
-			// legacy String/Number/Boolean coercion for loosely-typed payloads.
-			// pi always supplies schema-valid params; the catch degrades gracefully
-			// for direct/test calls missing required fields (controller returns
-			// "Query is required." for an empty query).
-			let p: SearchToolOutputsParams;
-			try {
-				p = parseParams(searchToolOutputsParams, params);
-			} catch {
-				// Direct/test calls missing the required `query`: degrade to an empty
-				// query so the controller returns its "Query is required." message
-				// instead of throwing. Optional fields are omitted (== undefined).
-				p = { query: "" };
-			}
+			// Type-safe decode: field access is compile-checked (schema↔handler drift
+			// becomes a type error) and Convert preserves the legacy String/Number/
+			// Boolean coercion for loosely-typed payloads. pi always supplies
+			// schema-valid params, and the controller owns the "Query is required."
+			// fallback for an empty query — so this handler needs no special-casing.
+			const p: SearchToolOutputsParams = parseParams(searchToolOutputsParams, params);
 			const text = await controller.search({
 				cwd,
 				query: p.query,

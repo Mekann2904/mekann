@@ -1,9 +1,9 @@
 {
-  "as_any_count": 76,
-  "scope": "Non-test TypeScript sources under mekann/ (ripgrep line count of the literal string 'as any'; excludes *.test.ts, *.spec.ts, tests/, __tests__/).",
+  "as_any_count": 75,
+  "scope": "Non-test TypeScript sources under mekann/ (line count of the literal string 'as any'; excludes *.test.ts, *.spec.ts, tests/, __tests__/, *.d.ts). Scope matches eslint.config.mjs `ignores` for the no-explicit-any rule so the baseline gate and lint gate police the same files.",
   "starting_point": 117,
   "issue": 141,
-  "method": "scripts/check-as-any-baseline.sh",
+  "method": "scripts/count-as-any.mjs (via scripts/check-as-any-baseline.sh)",
   "updated": "2026-06-18",
-  "notes": "Lower this number whenever a cleanup lands; never raise it without justification. ESLint (eslint.config.mjs) additionally enforces @typescript-eslint/no-explicit-any at 'error' for files in the ERROR_TIER list (zero explicit-any), and at 'warn' for the rest."
+  "notes": "Lower this number whenever a cleanup lands; never raise it without justification. Counting moved from ripgrep to a deterministic Node walker (scripts/count-as-any.mjs) because `rg --type ts` resolved the file-type/globs differently across ripgrep versions, so the same commit counted 76 locally but 77 on the GitHub Actions runner and flapped this gate. ESLint (eslint.config.mjs) additionally enforces @typescript-eslint/no-explicit-any at 'error' for files in the ERROR_TIER list (zero explicit-any), and at 'warn' for the rest."
 }
