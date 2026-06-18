@@ -104,7 +104,7 @@ describe("autoresearchExtension", () => {
 			expect(text).not.toContain("bearer123");
 			expect(text).not.toContain("tok123");
 			expect(text).not.toContain("pw123");
-			expect(text).toContain("***REDACTED***");
+			expect(text).toContain("[REDACTED]");
 
 			expect(result.details.stdout).toBeUndefined();
 			expect(result.details.stderr).toBeUndefined();
@@ -120,7 +120,7 @@ describe("autoresearchExtension", () => {
 			expect(stdoutLog).not.toContain("bearer123");
 			expect(stderrLog).not.toContain("tok123");
 			expect(stderrLog).not.toContain("pw123");
-			expect(stdoutLog + stderrLog).toContain("***REDACTED***");
+			expect(stdoutLog + stderrLog).toContain("[REDACTED]");
 
 			fs.rmSync(testDir, { recursive: true, force: true });
 		});

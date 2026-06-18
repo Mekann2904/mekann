@@ -24,8 +24,8 @@ import {
 	writeRunArtifacts,
 	writeChecksArtifacts,
 	markArtifactComplete,
-	filterSecrets,
 } from "../runner.js";
+import { redactSecrets } from "../../../context/tool-output/redact.js";
 import {
 	readState as readStateV2,
 	writeState as writeStateV2,
@@ -281,7 +281,7 @@ export async function executeRun(
 	if (result.timedOut) text = `[TIMEOUT] タイムアウト(${params.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS}秒)\n`;
 	else if (!result.passed) text = `[FAIL] 失敗(終了コード: ${result.exitCode})\n`;
 	else text = `[OK] 完了\n`;
-	const safeCommand = filterSecrets(result.command);
+	const safeCommand = redactSecrets(result.command).text;
 	text += `実行時間: ${result.durationSeconds.toFixed(1)}秒\n`;
 	text += `コマンド: ${safeCommand}\n`;
 	text += `runId: ${runId}\n`;
@@ -313,7 +313,7 @@ export async function executeRun(
 		text += `\n主指標 duration_seconds=${result.durationSeconds}${store.state.metricUnit} (wall_clock) を autoresearch_log に報告できます。`;
 	}
 
-	const safeOutput = filterSecrets(result.output);
+	const safeOutput = redactSecrets(result.output).text;
 	if (safeOutput) text += `\n出力(末尾):\n${safeOutput}`;
 	text += `\nrunId: ${runId}(autoresearch_log の runId に渡してください)`;
 
@@ -342,7 +342,7 @@ export async function executeRun(
 				passed: checks.passed,
 				timedOut: checks.timedOut,
 				durationSeconds: checks.durationSeconds,
-				outputTailChars: filterSecrets(checks.output).length,
+				outputTailChars: redactSecrets(checks.output).text.length,
 			},
 			preCommit,
 			startedAt,

@@ -12,6 +12,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomBytes } from "node:crypto";
 import { truncateTail as truncateTailShared } from "../../utils/truncate-utils/index.js";
+import { redactSecrets } from "../../context/tool-output/redact.js";
 import {
 	createStreamingParseState,
 	finalizeParsedRunOutput,
@@ -173,24 +174,6 @@ export function truncateTail(text: string, maxLines: number, maxBytes: number): 
 }
 
 // ---------------------------------------------------------------------------
-// Secret filtering
-// ---------------------------------------------------------------------------
-
-const SECRET_REPLACEMENTS: Array<[RegExp, (...args: string[]) => string]> = [
-	[/(API_KEY|SECRET|PASSWORD|TOKEN|PRIVATE_KEY)[\s]*[=:]\s*\S+/gi, (_match, key) => `${key}=***REDACTED***`],
-	[/(Authorization\s*:\s*Bearer)\s+\S+/gi, (_match, prefix) => `${prefix} ***REDACTED***`],
-];
-
-/** Filter lines that look like they contain secrets. */
-export function filterSecrets(text: string): string {
-	let result = text;
-	for (const [pattern, replace] of SECRET_REPLACEMENTS) {
-		result = result.replace(pattern, replace);
-	}
-	return result;
-}
-
-// ---------------------------------------------------------------------------
 // Checks execution
 // ---------------------------------------------------------------------------
 
@@ -288,14 +271,14 @@ function runSpawn(params: SpawnParams, timeoutMs: number, signal: AbortSignal | 
 		child.stdout!.on("data", (chunk: Buffer) => {
 			const str = chunk.toString("utf8");
 			if (Buffer.byteLength(stdout, "utf8") < CAPTURE_MAX_BYTES) stdout += str;
-			if (logStreams.stdoutStream) logStreams.stdoutStream.write(filterSecrets(str));
+			if (logStreams.stdoutStream) logStreams.stdoutStream.write(redactSecrets(str).text);
 			parseStreamingChunk(sp, str, "stdoutBuf");
 		});
 
 		child.stderr!.on("data", (chunk: Buffer) => {
 			const str = chunk.toString("utf8");
 			if (Buffer.byteLength(stderr, "utf8") < CAPTURE_MAX_BYTES) stderr += str;
-			if (logStreams.stderrStream) logStreams.stderrStream.write(filterSecrets(str));
+			if (logStreams.stderrStream) logStreams.stderrStream.write(redactSecrets(str).text);
 			parseStreamingChunk(sp, str, "stderrBuf");
 		});
 
@@ -703,13 +686,13 @@ export function writeRunArtifacts(
 	// stdout.log — skip if streaming already wrote content
 	const stdoutPath = path.join(runDir, "stdout.log");
 	if (!fs.existsSync(stdoutPath) || fs.statSync(stdoutPath).size === 0) {
-		fs.writeFileSync(stdoutPath, filterSecrets(result.stdout), "utf8");
+		fs.writeFileSync(stdoutPath, redactSecrets(result.stdout).text, "utf8");
 	}
 
 	// stderr.log — skip if streaming already wrote content
 	const stderrPath = path.join(runDir, "stderr.log");
 	if (!fs.existsSync(stderrPath) || fs.statSync(stderrPath).size === 0) {
-		fs.writeFileSync(stderrPath, filterSecrets(result.stderr), "utf8");
+		fs.writeFileSync(stderrPath, redactSecrets(result.stderr).text, "utf8");
 	}
 
 	// metrics.json
@@ -744,17 +727,17 @@ export function writeRunArtifacts(
 export function writeChecksArtifacts(runDir: string, checksResult: ChecksResult): void {
 	// Save checks stdout/stderr logs (already filtered)
 	if (checksResult.stdout) {
-		fs.writeFileSync(path.join(runDir, "checks.stdout.log"), filterSecrets(checksResult.stdout), "utf8");
+		fs.writeFileSync(path.join(runDir, "checks.stdout.log"), redactSecrets(checksResult.stdout).text, "utf8");
 	}
 	if (checksResult.stderr) {
-		fs.writeFileSync(path.join(runDir, "checks.stderr.log"), filterSecrets(checksResult.stderr), "utf8");
+		fs.writeFileSync(path.join(runDir, "checks.stderr.log"), redactSecrets(checksResult.stderr).text, "utf8");
 	}
 
 	const safeChecksResult = {
 		...checksResult,
-		stdout: filterSecrets(checksResult.stdout ?? ""),
-		stderr: filterSecrets(checksResult.stderr ?? ""),
-		output: filterSecrets(checksResult.output ?? ""),
+		stdout: redactSecrets(checksResult.stdout ?? "").text,
+		stderr: redactSecrets(checksResult.stderr ?? "").text,
+		output: redactSecrets(checksResult.output ?? "").text,
 	};
 	fs.writeFileSync(path.join(runDir, "checks-result.json"), JSON.stringify(safeChecksResult, null, 2), "utf8");
 
