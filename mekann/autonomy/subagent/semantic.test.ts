@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { keyOfTarget, intersects, isHighRisk, isBreakingOrUnknown } from "./semantic.js";
+import { keyOfTarget, intersects, isHighRisk, isBreakingOrUnknown, nameOfKey } from "./semantic.js";
 import type { SemanticTarget, SemanticRisk, PublicSurfaceDelta } from "./types.js";
 
 describe("keyOfTarget", () => {
@@ -14,6 +14,20 @@ describe("keyOfTarget", () => {
   it("works with various kinds", () => {
     expect(keyOfTarget({ kind: "api_route", name: "GET /api" })).toBe("api_route:GET /api");
     expect(keyOfTarget({ kind: "db_table", name: "users" })).toBe("db_table:users");
+  });
+
+  it("disambiguates same-named targets by module (issue #152)", () => {
+    expect(keyOfTarget({ kind: "symbol", name: "parse", module: "a" })).toBe("symbol:a:parse");
+    expect(keyOfTarget({ kind: "symbol", name: "parse", module: "b" })).toBe("symbol:b:parse");
+    expect(keyOfTarget({ kind: "symbol", name: "parse", filePath: "src/x.ts" })).toBe("symbol:src/x.ts:parse");
+  });
+});
+
+describe("nameOfKey", () => {
+  it("extracts the trailing name segment", () => {
+    expect(nameOfKey("symbol:foo")).toBe("foo");
+    expect(nameOfKey("symbol:a:parse")).toBe("parse");
+    expect(nameOfKey("file:src/x.ts:y")).toBe("y");
   });
 });
 

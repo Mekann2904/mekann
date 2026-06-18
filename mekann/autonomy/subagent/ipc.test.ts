@@ -227,6 +227,34 @@ describe.skipIf(isWindows)("SubagentClient", () => {
   });
 });
 
+describe.skipIf(isWindows)("IPC parser post-destroy behavior (issue #152 / IC-082)", () => {
+  let tmpDir: string;
+  beforeAll(() => { tmpDir = mkdtempSync(path.join(tmpdir(), "ipc-parse-")); });
+  afterAll(() => { try { rmSync(tmpDir, { recursive: true }); } catch {} });
+
+  it("emits a single parse error and ignores further data after destroy on an oversize line", async () => {
+    const sockPath = path.join(tmpDir, "oversize.sock");
+    const hub = new SubagentHub(sockPath);
+    await hub.start();
+    const errors: any[] = [];
+    hub.onMessage((msg) => { if (msg.type === "error") errors.push(msg); });
+
+    // Open a raw connection and push an oversize line (no trailing newline so it
+    // stays in the buffer), then push more bytes afterwards.
+    const sock = net.createConnection(sockPath);
+    await new Promise<void>((resolve, reject) => sock.once("connect", resolve).once("error", reject));
+    const huge = "x".repeat(2 * 1024 * 1024);
+    sock.write(huge);
+    sock.write(huge); // second write after the first triggered the destroy path
+    await new Promise((r) => setTimeout(r, 150));
+
+    expect(errors.length).toBe(1);
+    expect(errors[0].message).toContain("exceeds");
+    sock.destroy();
+    await hub.stop();
+  });
+});
+
 describe("Windows early check in constructors", () => {
   let originalPlatform: PropertyDescriptor;
 
