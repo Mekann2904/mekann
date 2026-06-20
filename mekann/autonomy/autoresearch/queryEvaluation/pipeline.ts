@@ -26,20 +26,25 @@ function clamp(value: number, min = 0, max = 1): number {
 
 // ── Risk detection ────────────────────────────────────────────
 
+// 秘密情報・本番環境の検出語彙。ASCII 系は `\b` 境界、CJK 系は substring のみ
+// (`\b` は ASCII 境界なので「本番の秘密」のように非 ASCII 同士に挟まれた日本語
+//  単語の境界を検出できず、リスク検出が抜ける — issue #147)。
+const SECRET_TERMS =
+  /\b(?:secret|token|api\s*key|password)\b|秘密|認証情報|シークレット|トークン|パスワード|api\s*キー|秘密鍵/i;
+const LEAK_ACTIONS =
+  /\b(?:upload|post|print|echo|show|dump|reveal|expose)\b|表示|送信|出力|公開|吐き?出|見せ|印刷|書き出|転送/i;  // 吐出(としゅつ)・吐き出(はきだ)し両方を許容
+const PROD_TERMS = /\b(?:production|prod)\b|本番|商用環境?|プロダクション/i;
+const DESTRUCTIVE_ACTIONS =
+  /\b(?:update|delete|write|drop|alter|truncate|erase|clear)\b|変更|削除|書き込|消去|破棄|初期化|落と[すし]/i;
+
 export function detectRiskFlags(query: string): string[] {
   const q = query.toLowerCase();
   const flags = applyTextRules(q, RISK_RULES);
 
-  if (
-    /\b(secret|token|api\s*key|password|秘密|認証情報)\b/.test(q) &&
-    /(表示|送信|upload|post|出力|出力し|print|echo|show|dump)/.test(q)
-  ) {
+  if (SECRET_TERMS.test(q) && LEAK_ACTIONS.test(q)) {
     flags.push("秘密情報の漏洩リスク");
   }
-  if (
-    /\b(production|prod|本番db|本番)\b/.test(q) &&
-    /(変更|削除|書き込|update|delete|write|drop|alter|truncate)/.test(q)
-  ) {
+  if (PROD_TERMS.test(q) && DESTRUCTIVE_ACTIONS.test(q)) {
     flags.push("本番環境への破壊的変更");
   }
 
