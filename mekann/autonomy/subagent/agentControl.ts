@@ -41,6 +41,7 @@ import { SubagentLifecycle } from "./subagentLifecycle.js";
 import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
 import { featureRawConfig } from "../../settings/enabled.js";
 import { evaluateSpawnCost } from "./subagentCostPolicy.js";
+import { bestEffortAsync } from "../../utils/best-effort.js";
 
 // ─── Default config ──────────────────────────────────────────────
 
@@ -233,7 +234,10 @@ export class AgentControl {
     if (!display || display.status === "closed") return;
     // Only append to log files for external Pi displays that have a logPath
     if (display.logPath) {
-      void this.kitty.appendLog(display, line).catch(() => undefined);
+      // Swallowing log-append errors is fine, but they must be observable so a
+      // broken display log path does not silently eat all result logging
+      // (issue #146).
+      void bestEffortAsync("subagent-display-log", () => this.kitty.appendLog(display, line));
     }
   }
 
@@ -551,12 +555,19 @@ export class AgentControl {
   async shutdown(): Promise<void> {
     for (const agent of this.registry.list()) {
       if (agent.display && agent.display.status === "open") {
-        try { await this.kitty.close(agent.display); } catch { /* best-effort */ }
+        // Best-effort like the closeSingle loop below: one failing kitty close
+        // must not abort the rest of shutdown, but a display that refuses to
+        // close should be observable, not silently swallowed (issue #146).
+        await bestEffortAsync("subagent-shutdown-kitty-close", () => this.kitty.close(agent.display!));
       }
     }
     this.drainQueueOnClose = false;
     try {
-      for (const path of [...new Set([...this.lifecycle.runtimePaths(), ...this.lifecycle.childSessionPaths()])]) await this.closeSingle(path).catch(() => undefined);
+      // Closing each path is best-effort (one failing close must not abort the
+      // rest of shutdown), but a zombie worker that refuses to close should be
+      // visible in the structured log rather than silently swallowed
+      // (issue #146).
+      for (const path of [...new Set([...this.lifecycle.runtimePaths(), ...this.lifecycle.childSessionPaths()])]) await bestEffortAsync("subagent-shutdown-close", () => this.closeSingle(path));
     } finally {
       this.drainQueueOnClose = true;
     }
