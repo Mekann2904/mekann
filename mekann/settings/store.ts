@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync, type FSWatcher } from "node:fs";
 import { dirname, join, resolve as resolvePath } from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { homedir } from "node:os";
 import { getPiAgentConfigDir } from "../config.js";
 import type { MekannSettingsFile } from "./types.js";
@@ -25,8 +25,68 @@ export interface LoadedSettings { path: string; exists: boolean; settings: Mekan
  *     post-write reads never return stale values.
  *   - `invalidateSettingsCache(path?)` is the escape hatch for explicit reloads
  *     (e.g. a Pi reload/session_start hook that knows settings changed).
+ *   - `fs.watch` (IC-035): the first read of each existing settings file also
+ *     starts a debounced watcher so edits made by external processes — the
+ *     `mekann settings-editor` CLI, a text editor, another Pi — invalidate the
+ *     cached entry automatically. `fs.watch` is best-effort (some sandboxes
+ *     disable it); when unavailable we silently degrade to explicit
+ *     invalidation only, which is the pre-existing behaviour.
  */
 const settingsCache = new Map<string, LoadedSettings>();
+
+// --- fs.watch-backed cache invalidation (IC-035) ----------------------------
+//
+// One watcher per cached settings path. The set is bounded by the number of
+// distinct settings files (global + workspace), so it never grows unboundedly,
+// and watchers live for the process — exactly what a long-running Pi session
+// wants. Watch events are debounced (a burst of events coalesces into one
+// invalidation) and never throw: a watcher error simply stops watching that
+// path and falls back to explicit invalidation.
+const SETTINGS_WATCH_DEBOUNCE_MS = 100;
+
+interface SettingsWatcherHandle {
+  watcher: FSWatcher;
+  timer: ReturnType<typeof setTimeout> | undefined;
+}
+
+const settingsWatchers = new Map<string, SettingsWatcherHandle>();
+
+function startSettingsWatcher(cacheKey: string, filePath: string): void {
+  if (settingsWatchers.has(cacheKey)) return;
+  const handle: SettingsWatcherHandle = { watcher: undefined as unknown as FSWatcher, timer: undefined };
+  const trigger = (): void => {
+    if (handle.timer !== undefined) return;
+    handle.timer = setTimeout(() => {
+      handle.timer = undefined;
+      // Drop the cached entry; the next `loadSettings` re-reads disk.
+      settingsCache.delete(cacheKey);
+    }, SETTINGS_WATCH_DEBOUNCE_MS);
+  };
+  try {
+    const watcher = watch(filePath, () => trigger());
+    watcher.on("error", () => {
+      const current = settingsWatchers.get(cacheKey);
+      if (current) {
+        if (current.timer !== undefined) clearTimeout(current.timer);
+        settingsWatchers.delete(cacheKey);
+      }
+      try { watcher.close(); } catch { /* best-effort */ }
+    });
+    handle.watcher = watcher;
+    settingsWatchers.set(cacheKey, handle);
+  } catch {
+    // `fs.watch` unavailable for this path/platform (file missing, sandbox
+    // restrictions, etc.). Degrade to explicit invalidation only — no watcher.
+  }
+}
+
+function stopSettingsWatcher(cacheKey: string): void {
+  const handle = settingsWatchers.get(cacheKey);
+  if (!handle) return;
+  settingsWatchers.delete(cacheKey);
+  if (handle.timer !== undefined) clearTimeout(handle.timer);
+  try { handle.watcher.close(); } catch { /* best-effort */ }
+}
 
 function cloneJsonValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(cloneJsonValue);
@@ -60,8 +120,14 @@ function snapshotLoaded(loaded: LoadedSettings): LoadedSettings {
  * `saveSettingsChecked`, or when a Pi reload/session_start must re-read disk.
  */
 export function invalidateSettingsCache(path?: string): void {
-  if (path === undefined) settingsCache.clear();
-  else settingsCache.delete(resolvePath(path));
+  if (path === undefined) {
+    for (const key of [...settingsWatchers.keys()]) stopSettingsWatcher(key);
+    settingsCache.clear();
+  } else {
+    const key = resolvePath(path);
+    stopSettingsWatcher(key);
+    settingsCache.delete(key);
+  }
 }
 
 export function normalizeSettings(raw: unknown): MekannSettingsFile {
@@ -97,23 +163,158 @@ export function loadSettings(path: string): LoadedSettings {
   if (cached) return snapshotLoaded(cached);
   const loaded = readSettingsFromDisk(path);
   settingsCache.set(cacheKey, snapshotLoaded(loaded));
+  // Watch existing files so external edits (editor / CLI / other Pi) invalidate
+  // the cache. Non-existent files can't be watched; once created (typically via
+  // `saveSettingsChecked`, which refreshes the cache itself) the next read
+  // starts a watcher.
+  if (loaded.exists) startSettingsWatcher(cacheKey, path);
   return snapshotLoaded(loaded);
 }
 
-function sleepSync(ms: number): void { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }
-export function withSettingsLock<T>(settingsPath: string, fn: () => T): T {
-  const dir = dirname(settingsPath); if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  const lockPath = `${settingsPath}.lock`; const start = Date.now();
-  for (;;) {
-    try { mkdirSync(lockPath); break; } catch (e) {
-      if ((e as { code?: string }).code !== "EEXIST") throw e;
-      try { if (Date.now() - statSync(lockPath).mtimeMs > 30_000) { rmSync(lockPath, { recursive: true, force: true }); continue; } } catch {}
-      if (Date.now() - start > 5_000) throw new Error(`settings lock timeout: ${lockPath}`);
-      sleepSync(25);
+/**
+ * Robust synchronous backoff. `Atomics.wait` on a `SharedArrayBuffer` is the
+ * cheap path, but some sandboxes (macOS seatbelt, containers) disable SAB, in
+ * which case `Atomics.wait` throws `TypeError` and would crash the whole lock
+ * loop (IC-034). Fall back to a bounded busy-wait so contention backoff keeps
+ * working instead of bringing down settings I/O.
+ */
+function sleepSync(ms: number): void {
+  if (ms <= 0) return;
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      /* SharedArrayBuffer unavailable: spin until the backoff has elapsed. */
     }
   }
-  try { return fn(); } finally { rmSync(lockPath, { recursive: true, force: true }); }
 }
+
+function errnoCode(e: unknown): string | undefined {
+  return (e as { code?: string } | null | undefined)?.code;
+}
+
+// --- Settings file lock (IC-033) --------------------------------------------
+//
+// `mkdirSync` is an atomic create-or-fail (O_EXCL) lock directory. The lock is
+// broken only when it is *definitively* stale: the owning process is dead
+// (`process.kill(pid, 0)` → ESRCH), or — as a last-resort safety valve against
+// pid reuse / unreadable owner info — older than `staleMs`. A live holder is
+// never displaced even if its critical section runs long, so two processes can
+// no longer overwrite the settings concurrently (the old 30s-only heuristic
+// would steal a still-running writer). `owner.json` inside the lock dir carries
+// `{ pid, token, startedAt }`; on release we only remove a lock whose token is
+// still ours, so a lock that was stale-broken and re-acquired mid-flight is
+// left for its new owner. We keep the directory-based lock (rather than an
+// O_EXCL *file*) so there is no on-disk format migration window with older
+// Mekann processes.
+const SETTINGS_LOCK_TIMEOUT_MS = 5_000;
+const SETTINGS_LOCK_POLL_MS = 25;
+const SETTINGS_LOCK_STALE_MS = 60_000;
+
+export interface SettingsLockOptions {
+  /** Total time to keep trying to acquire the lock before giving up. */
+  timeoutMs?: number;
+  /** Delay between acquire attempts while contended. */
+  pollMs?: number;
+  /** A held lock older than this (and with no live owner) is abandoned. */
+  staleMs?: number;
+}
+
+interface LockOwner {
+  pid?: number;
+  token?: string;
+  startedAt?: number;
+}
+
+function readLockOwner(lockDir: string): { owner: LockOwner | null; mtimeMs: number | null } {
+  try {
+    const owner = JSON.parse(readFileSync(join(lockDir, "owner.json"), "utf8")) as LockOwner;
+    return { owner, mtimeMs: null };
+  } catch {
+    try {
+      return { owner: null, mtimeMs: statSync(lockDir).mtimeMs };
+    } catch {
+      return { owner: null, mtimeMs: null };
+    }
+  }
+}
+
+/**
+ * `true` only when the holder is *definitively* gone (`ESRCH`). Everything else
+ * — alive (signal succeeded), alive-but-unsignalable (`EPERM`), or an
+ * inconclusive error — is treated as "not dead" so a live holder is never
+ * displaced. Stale-breaking on those cases is left to the `startedAt` age check.
+ */
+function isOwnerPidDead(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (e) {
+    return errnoCode(e) === "ESRCH"; // no such process → holder is gone
+  }
+}
+
+function isStaleSettingsLock(lockDir: string, now: number, staleMs: number): boolean {
+  const { owner, mtimeMs } = readLockOwner(lockDir);
+  if (owner && typeof owner.pid === "number") {
+    if (isOwnerPidDead(owner.pid)) return true; // holder crashed: safe to break now
+    const startedAt = typeof owner.startedAt === "number" ? owner.startedAt : (mtimeMs ?? now);
+    // Even a live-looking holder can't pin the lock forever (pid reuse / stuck
+    // process): bound it by startedAt as a last resort.
+    return now - startedAt > staleMs;
+  }
+  // No owner info (pre-owner-file lock, or owner.json unreadable): fall back to
+  // the lock directory's mtime age.
+  const reference = mtimeMs ?? now;
+  return now - reference > staleMs;
+}
+
+function settingsLockOwns(lockDir: string, token: string): boolean {
+  const { owner } = readLockOwner(lockDir);
+  return owner?.token === token;
+}
+
+export function withSettingsLock<T>(settingsPath: string, fn: () => T, options: SettingsLockOptions = {}): T {
+  const dir = dirname(settingsPath);
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const lockDir = `${settingsPath}.lock`;
+  const token = `${process.pid}-${Date.now().toString(36)}-${randomBytes(6).toString("hex")}`;
+  const timeoutMs = options.timeoutMs ?? SETTINGS_LOCK_TIMEOUT_MS;
+  const pollMs = options.pollMs ?? SETTINGS_LOCK_POLL_MS;
+  const staleMs = options.staleMs ?? SETTINGS_LOCK_STALE_MS;
+  const start = Date.now();
+  for (;;) {
+    try {
+      mkdirSync(lockDir); // O_EXCL create-or-EEXIST
+      break;
+    } catch (e) {
+      if (errnoCode(e) !== "EEXIST") throw e; // real filesystem error
+      if (isStaleSettingsLock(lockDir, Date.now(), staleMs)) {
+        rmSync(lockDir, { recursive: true, force: true });
+        continue; // retry immediately so a crashed writer doesn't stall us
+      }
+      if (Date.now() - start > timeoutMs) throw new Error(`settings lock timeout: ${lockDir}`);
+      sleepSync(pollMs);
+    }
+  }
+  // Stamp owner info so other processes can tell a live holder from a crashed one.
+  try {
+    writeFileSync(join(lockDir, "owner.json"), JSON.stringify({ pid: process.pid, token, startedAt: Date.now() }), "utf8");
+  } catch {
+    /* owner info is best-effort; the mtime-age stale fallback still applies */
+  }
+  try {
+    return fn();
+  } finally {
+    // Only remove a lock that still belongs to us; if a stale-breaker already
+    // handed it to another owner, leave it intact.
+    if (settingsLockOwns(lockDir, token)) rmSync(lockDir, { recursive: true, force: true });
+  }
+}
+
+const SETTINGS_RENAME_ATTEMPTS = 5;
+const SETTINGS_RENAME_BACKOFF_MS = 20;
 
 export function saveSettingsChecked(path: string, settings: MekannSettingsFile, expectedHash: string): string {
   return withSettingsLock(path, () => {
@@ -126,9 +327,31 @@ export function saveSettingsChecked(path: string, settings: MekannSettingsFile, 
       throw new Error(`settings changed concurrently: ${path}`);
     }
     const json = JSON.stringify(settings, null, 2) + "\n";
+    // Atomic publish (IC-032): stage the full payload in a sibling tmp file —
+    // same directory, so the rename is same-device and never EXDEV — then swap
+    // it into place. We deliberately do NOT fall back to a direct `writeFileSync`
+    // overwrite of `path` if rename fails: a crash mid-overwrite would leave a
+    // partial, unparseable settings file. Instead we keep the intact tmp file as
+    // a recovery artifact and surface the failure, leaving `path` untouched.
     const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
-    writeFileSync(tmp, json, "utf8");
-    try { renameSync(tmp, path); } catch { writeFileSync(path, json, "utf8"); rmSync(tmp, { force: true }); }
+    try {
+      writeFileSync(tmp, json, "utf8");
+    } catch (e) {
+      try { rmSync(tmp, { force: true }); } catch { /* best-effort partial cleanup */ }
+      throw new Error(`settings save failed: cannot write ${tmp}: ${(e as Error).message}`);
+    }
+    for (let attempt = 0; attempt < SETTINGS_RENAME_ATTEMPTS; attempt++) {
+      try {
+        renameSync(tmp, path);
+        break; // success — tmp is now `path`
+      } catch (e) {
+        if (attempt >= SETTINGS_RENAME_ATTEMPTS - 1) {
+          // Leave `tmp` on disk for manual recovery; `path` stays at its prior value.
+          throw new Error(`settings save failed: rename ${tmp} -> ${path}: ${(e as Error).message}`);
+        }
+        sleepSync(SETTINGS_RENAME_BACKOFF_MS);
+      }
+    }
     const newHash = hashText(json);
     // Refresh the cache with the just-written content so subsequent reads see
     // the new value without a disk round-trip (and never see the stale one).
