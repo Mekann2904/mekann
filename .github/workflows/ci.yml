@@ -12,7 +12,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces --include-workspace-root
@@ -27,7 +27,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces --include-workspace-root
@@ -42,7 +42,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces --include-workspace-root
@@ -57,7 +57,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces --include-workspace-root
@@ -72,7 +72,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces --include-workspace-root
@@ -87,7 +87,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces --include-workspace-root
@@ -105,7 +105,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces=false
@@ -143,7 +143,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces=false
@@ -183,7 +183,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces=false
@@ -204,7 +204,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces=false
@@ -222,7 +222,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces=false
@@ -243,7 +243,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces=false
@@ -261,7 +261,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces=false
@@ -276,7 +276,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces --include-workspace-root
@@ -291,7 +291,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces --include-workspace-root
@@ -306,7 +306,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces --include-workspace-root
@@ -318,7 +318,6 @@ jobs:
   # `lint` enforces @typescript-eslint/no-explicit-any (warn repo-wide,
   # error on the cleaned ERROR_TIER files). `as-any-baseline` fails if the
   # non-test `as any` count grows beyond scripts/as-any-baseline.json.
-
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -326,7 +325,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Install dependencies
         run: npm ci --workspaces --include-workspace-root
@@ -341,11 +340,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version-file: .nvmrc
 
       - name: Check `as any` baseline
         run: bash scripts/check-as-any-baseline.sh
-
   # ─── Aggregate test count ──────────────────────────────────────────
   # Keep `needs:` in sync with every job above. Job results are echoed from
   # `needs.<job>.result` so the summary always reflects reality, and the gate
