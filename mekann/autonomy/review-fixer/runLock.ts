@@ -50,10 +50,21 @@ async function isStale(lockDir: string, staleAfterMs: number): Promise<boolean> 
  * exclusive mkdir in the git common dir, so all issue worktrees for the same
  * repo share one mutex across Issue Pi processes.
  */
+/**
+ * Acquire a per-issue review_fixer lock. The lock is a directory created with
+ * exclusive mkdir in the git common dir, keyed by issue number. All issue
+ * worktrees for the same repo share these per-issue mutexes across Issue Pi
+ * processes, so the SAME issue can never run two review_fixers at once — while
+ * DIFFERENT issues stay free to run review_fixer in parallel (autopilot).
+ *
+ * Granularity note: the lock is intentionally per-issue, not repo-wide. A
+ * repo-wide lock would serialize unrelated parallel issues and defeat
+ * autopilot's worker pool (regression observed on #154 blocked by #155).
+ */
 export async function acquireReviewFixerLock(cwd: string, issueNumber: number, staleAfterMs = DEFAULT_STALE_AFTER_MS): Promise<ReviewFixerLockAcquireResult> {
   const commonDir = await gitCommonDir(cwd);
   const lockParent = path.join(commonDir, "mekann");
-  const lockDir = path.join(lockParent, "review-fixer.lock");
+  const lockDir = path.join(lockParent, `review-fixer-issue-${issueNumber}.lock`);
   const info: ReviewFixerLockInfo = { issueNumber, cwd, pid: process.pid, startedAt: new Date().toISOString(), staleAfterMs };
 
   await mkdir(lockParent, { recursive: true });

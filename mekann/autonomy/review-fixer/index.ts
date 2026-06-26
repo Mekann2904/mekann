@@ -153,10 +153,12 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
         };
       }
 
-      // 4. Acquire repo-wide lock before launching a child Pi. Autopilot runs
+      // 4. Acquire a per-issue lock before launching a child Pi. Autopilot runs
       //    multiple Issue Pi processes, so process-local subagent slot limits are
       //    not enough to enforce the product invariant: only one review_fixer per
-      //    repo at a time.
+      //    issue at a time. The lock is keyed by issue number (NOT repo-wide), so
+      //    parallel issues keep running their own review_fixer concurrently while
+      //    the same issue is prevented from spawning overlapping children.
       const lock = await acquireReviewFixerLock(ctx.cwd, issueContext.number);
       if (!lock.acquired) {
         const owner = lock.info;
@@ -164,9 +166,9 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
           content: [{
             type: "text" as const,
             text: [
-              "Review fixer is already running for this repository. No new child Pi was launched.",
+              `Review fixer is already running for issue #${issueContext.number}. No new child Pi was launched.`,
               owner ? `Active run: issue #${owner.issueNumber}, pid ${owner.pid}, started ${owner.startedAt}, cwd ${owner.cwd}` : `Lock: ${lock.lockDir}`,
-              "Wait for the active review_fixer to finish, or remove the stale lock only after confirming no review-fixer pane/process is alive.",
+              "Wait for the active review_fixer to finish, or remove the stale lock only after confirming no review-fixer pane/process is alive for this issue.",
             ].join("\n"),
           }],
           details: { lock: { acquired: false, path: lock.lockDir, owner } },
