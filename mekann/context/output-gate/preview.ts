@@ -1,3 +1,5 @@
+import { safeUtf8Slice } from "../../utils/truncate-utils/index.js";
+
 export type OutputContentType = "json" | "diff" | "search-results" | "test-output" | "log" | "text" | "unknown";
 
 export interface OutputPreview {
@@ -93,6 +95,6 @@ export function buildStructuredPreview(text: string, opts: { toolName?: string; 
 	else if (contentType === "log") built = lineFocusedPreview(text, ERROR_RE, 100);
 	if (!built) built = { preview: truncateLines(text.split(/\r?\n/), 80).join("\n"), hints: [] };
 	let preview = built.preview;
-	if (byteLength(preview) > opts.maxBytes) preview = Buffer.from(preview, "utf8").subarray(0, opts.maxBytes).toString("utf8").replace(/�$/u, "") + "\n[structured preview truncated]";
+	if (byteLength(preview) > opts.maxBytes) preview = safeUtf8Slice(preview, opts.maxBytes) + "\n[structured preview truncated]";
 	return { contentType, preview, retrievalHints: built.hints, omittedBytes: Math.max(0, byteLength(text) - byteLength(preview)) };
 }

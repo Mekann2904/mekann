@@ -5,12 +5,23 @@ import { featureConfig, featureValue } from "../../settings/featureConfig.js";
 import { ensureContextMonitorServer, recordCompaction } from "./server.js";
 import { recordContextObservation } from "../observations.js";
 import type { ContextObservation, MessageBreakdownItem } from "../context-control/observation.js";
+import { estimateTokens } from "../../core/prompt-core/index.js";
 
 // ─── helpers ─────────────────────────────────────────────────────
 
 function byteLen(value: unknown): number {
   if (typeof value === "string") return Buffer.byteLength(value, "utf8");
   try { return Buffer.byteLength(JSON.stringify(value), "utf8"); } catch { return 0; }
+}
+
+/**
+ * Serialize a message to a stable string for both byte length and byte-aware
+ * token estimation, without re-stringifying twice. Mirrors `byteLen`'s
+ * JSON.stringify path so the two numbers describe the same text.
+ */
+function messageText(message: unknown): string {
+  if (typeof message === "string") return message;
+  try { return JSON.stringify(message); } catch { return String(message ?? ""); }
 }
 
 function countMessages(messages: unknown): { count: number; bytes: number } {
@@ -43,13 +54,17 @@ function messageBreakdown(messages: unknown, limit = 20): MessageBreakdownItem[]
   if (!Array.isArray(messages)) return [];
   return messages
     .map((message: any, index) => {
-      const bytes = byteLen(message);
+      const text = messageText(message);
+      const bytes = Buffer.byteLength(text, "utf8");
       return {
         index,
         role: String(message?.role ?? message?.type ?? "message"),
         source: shortSource(message),
         bytes,
-        estimatedTokens: Math.ceil(bytes / 4),
+        // Byte-aware estimate: weight by character class (ASCII ~4 chars/token,
+        // CJK/emoji ~1 token/char) so Japanese/CJK-heavy messages are no longer
+        // underestimated ~4x by a flat `bytes / 4` (issue #157 / IC-220).
+        estimatedTokens: estimateTokens(text),
       };
     })
     .sort((a, b) => Number(b.bytes) - Number(a.bytes))

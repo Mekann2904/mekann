@@ -149,7 +149,11 @@ export function topMessageItems(limit = 20, scope: ContextMonitorScope = current
       type: item.role ?? "message",
       source: item.source ?? item.role ?? "message",
       bytes,
-      estimatedTokens: Math.ceil(bytes / 4),
+      // Reuse the byte-aware estimate computed in the message breakdown
+      // (character-class weighted) instead of a flat `bytes / 4`, which
+      // underestimated CJK ~4x on the dashboard (issue #157 / IC-178). Fall
+      // back to the byte heuristic only for stale items lacking the field.
+      estimatedTokens: item.estimatedTokens ?? Math.ceil(bytes / 4),
       policy,
       reason: policy === "SUMMARIZE" ? "Large message or tool result dominates live context" : "Within normal per-item budget",
     };

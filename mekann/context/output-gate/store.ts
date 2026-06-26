@@ -18,6 +18,12 @@ export function spreadSessionMeta(input: { sessionId?: string; turnId?: string; 
 import { redactSecrets } from "../tool-output/redact.js";
 import { buildStructuredPreview, type OutputContentType } from "./preview.js";
 import { appendJsonlLine, withAppendLock } from "../../utils/atomic-append.js";
+import { safeUtf8Slice } from "../../utils/truncate-utils/index.js";
+
+// Re-export so historical callers (output-gate store tests, search.ts) keep
+// importing byte-safe slicing from this module. The canonical implementation
+// lives in utils/truncate-utils (see issue #157 / IC-269).
+export { safeUtf8Slice };
 
 export interface OutputGateManifestEntry {
 	schemaVersion?: "output-gate/v1";
@@ -156,30 +162,6 @@ export function sanitizeManifestSource(source: unknown, maxStringBytes = 2000): 
 
 export async function ensureOutputGateDirs(cwd: string): Promise<void> {
 	await fsp.mkdir(artifactsDir(cwd), { recursive: true });
-}
-
-export function safeUtf8Slice(text: string, maxBytes: number, fromEnd = false): string {
-	const buf = Buffer.from(text, "utf8");
-	if (buf.byteLength <= maxBytes) return text;
-	if (maxBytes <= 0) return "";
-
-	if (fromEnd) {
-		let start = Math.max(0, buf.byteLength - maxBytes);
-		while (start < buf.byteLength) {
-			const out = buf.subarray(start).toString("utf8");
-			if (!out.startsWith("�")) return out;
-			start += 1;
-		}
-		return "";
-	}
-
-	let end = Math.min(maxBytes, buf.byteLength);
-	while (end > 0) {
-		const out = buf.subarray(0, end).toString("utf8");
-		if (!out.endsWith("�")) return out;
-		end -= 1;
-	}
-	return "";
 }
 
 export function buildPreview(text: string, previewBytes?: number): string {
