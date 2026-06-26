@@ -23,6 +23,8 @@ import { registerReviewFixerPromptProvider } from "./promptProvider.js";
 import { ISSUE_PI_ENV } from "../../utils/terminal/pi-session.js";
 import { snapshotContentHashes, computeChangedFiles } from "./changedFiles.js";
 import { REVIEW_FIXER_FALLBACK_SKILL } from "./constants.js";
+import { acquireReviewFixerLock } from "./runLock.js";
+import { recordReviewFixerAttempt } from "./attempts.js";
 
 export function extractReviewFixerResult(output: string | undefined): ReviewFixerResult | null {
   // Legacy helper kept for callers/tests that still parse old structured output.
@@ -151,92 +153,170 @@ export default function reviewFixerExtension(pi: ExtensionAPI): void | Promise<v
         };
       }
 
-      // 4. Snapshot content hashes before (detects changes to already-dirty files).
-      //    The porcelain status is reused for the details payload so we do not
-      //    fork `git status` a second time (issue #142).
-      const snapBefore = await snapshotContentHashes(ctx.cwd);
-      const hashesBefore = snapBefore.hashes;
-      const statusBefore = snapBefore.status;
-
-      // 5. Run through the same synchronous subagent delegate path as delegate_agent
-      const prompt = buildChildPrompt(issueContext, ctx.cwd, { maxFixRetries: settings.maxFixRetries });
-      const delegate = await ensureControl().delegate({
-        task_name: `review-fixer-${issueContext.number}`,
-        message: prompt,
-        model: settings.model ? `${settings.model.provider}/${settings.model.modelId}` : undefined,
-        reasoning_effort: settings.reasoningEffort,
-        role: "review-fixer",
-        nickname: `review-fixer #${issueContext.number}`,
-        fork_turns: "none",
-        authority: { mode: "edit" },
-        result_contract: "free_text",
-        roi_category: "fresh_review",
-        justification: "Synchronous issue-scoped thermo-nuclear code quality review before PR creation.",
-        cost_intent: "expensive",
-        anchorPolicy: { kind: "issue", issueNumber: issueContext.number },
-      }, ctx);
-      const result = extractReviewFixerResult(delegate.final_result);
-
-      // 6. Snapshot content hashes after (reusing porcelain status, no extra fork)
-      const snapAfter = await snapshotContentHashes(ctx.cwd);
-      const hashesAfter = snapAfter.hashes;
-      const statusAfter = snapAfter.status;
-
-      // 7. Build response
-      if (delegate.status === "errored") {
+      // 4. Acquire repo-wide lock before launching a child Pi. Autopilot runs
+      //    multiple Issue Pi processes, so process-local subagent slot limits are
+      //    not enough to enforce the product invariant: only one review_fixer per
+      //    repo at a time.
+      const lock = await acquireReviewFixerLock(ctx.cwd, issueContext.number);
+      if (!lock.acquired) {
+        const owner = lock.info;
         return {
           content: [{
             type: "text" as const,
             text: [
-              `## Review Fixer FAILED for Issue #${issueContext.number}`,
-              "",
-              `**Status**: FAILED — subagent status: ${delegate.status}`,
-              "Do NOT proceed with commit / push / PR creation. Investigate the failure.",
-              "",
-              `**Fallback**: you can run the same review manually in this session with \`/skill:${REVIEW_FIXER_FALLBACK_SKILL}\` (it is force-loadable even though it is hidden from the Issue Work Pi skill surface — see ADR-0023).`,
+              "Review fixer is already running for this repository. No new child Pi was launched.",
+              owner ? `Active run: issue #${owner.issueNumber}, pid ${owner.pid}, started ${owner.startedAt}, cwd ${owner.cwd}` : `Lock: ${lock.lockDir}`,
+              "Wait for the active review_fixer to finish, or remove the stale lock only after confirming no review-fixer pane/process is alive.",
             ].join("\n"),
           }],
-          details: {
-            issue: { number: issueContext.number, title: issueContext.title, url: issueContext.url },
-            childResult: result,
-            subagent: { agent_id: delegate.agent_id, task_name: delegate.task_name, status: delegate.status },
-            rawOutputLength: (delegate.final_result ?? "").length,
-            statusBefore: statusBefore.trim(),
-            statusAfter: statusAfter.trim(),
-          },
+          details: { lock: { acquired: false, path: lock.lockDir, owner } },
           isError: true,
         };
       }
 
-      // Compute changed files via content-hash comparison
-      // This detects changes to files that were already dirty before the child ran,
-      // not just newly-appeared files in git status.
-      const effectiveChangedFiles = computeChangedFiles(hashesBefore, hashesAfter);
+      try {
+        const attempt = await recordReviewFixerAttempt(ctx.cwd, issueContext.number, settings.maxFixRetries);
+        if (!attempt.allowed) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: `Review fixer launch budget exceeded for issue #${issueContext.number}: ${attempt.state.attempts}/${attempt.maxAttempts} attempts against the same tree state. Stop and ask the human to inspect the existing review-fixer result instead of launching another child Pi.`,
+            }],
+            details: { issue: { number: issueContext.number, title: issueContext.title, url: issueContext.url }, attempt: attempt.state, maxAttempts: attempt.maxAttempts },
+            isError: true,
+          };
+        }
 
-      const details: Record<string, unknown> = {
-        issue: { number: issueContext.number, title: issueContext.title, url: issueContext.url },
-        childResult: result,
-        subagent: { agent_id: delegate.agent_id, task_name: delegate.task_name, status: delegate.status },
-        changedFiles: effectiveChangedFiles,
-        statusBefore: statusBefore.trim(),
-        statusAfter: statusAfter.trim(),
-      };
+        // 5. Snapshot content hashes before (detects changes to already-dirty files).
+        //    The porcelain status is reused for the details payload so we do not
+        //    fork `git status` a second time (issue #142).
+        const snapBefore = await snapshotContentHashes(ctx.cwd);
+        const hashesBefore = snapBefore.hashes;
+        const statusBefore = snapBefore.status;
 
-      const summaryLines: string[] = [];
-      summaryLines.push(`## Review Fixer Result for Issue #${issueContext.number}`);
-      summaryLines.push("");
-      summaryLines.push(`**Subagent status**: ${delegate.status}`);
-      summaryLines.push(`**New workspace changes**: ${effectiveChangedFiles.length > 0 ? effectiveChangedFiles.join(", ") : "none"}`);
-      summaryLines.push("");
-      summaryLines.push("## Child Pi output");
-      summaryLines.push("");
-      summaryLines.push((delegate.final_result ?? "(no final output)").trim() || "(no final output)");
+        // 6. Run through the same synchronous subagent delegate path as delegate_agent
+        const prompt = buildChildPrompt(issueContext, ctx.cwd, { maxFixRetries: settings.maxFixRetries });
+        const delegate = await ensureControl().delegate({
+          task_name: `review-fixer-${issueContext.number}`,
+          message: prompt,
+          model: settings.model ? `${settings.model.provider}/${settings.model.modelId}` : undefined,
+          reasoning_effort: settings.reasoningEffort,
+          role: "review-fixer",
+          nickname: `review-fixer #${issueContext.number}`,
+          fork_turns: "none",
+          authority: { mode: "edit" },
+          result_contract: "free_text",
+          roi_category: "fresh_review",
+          justification: "Synchronous issue-scoped thermo-nuclear code quality review before PR creation.",
+          cost_intent: "expensive",
+          anchorPolicy: { kind: "issue", issueNumber: issueContext.number },
+        }, ctx);
+        const result = extractReviewFixerResult(delegate.final_result);
 
-      return {
-        content: [{ type: "text" as const, text: summaryLines.join("\n") }],
-        details,
-        isError: false,
-      };
+        // 7. Snapshot content hashes after (reusing porcelain status, no extra fork)
+        const snapAfter = await snapshotContentHashes(ctx.cwd);
+        const hashesAfter = snapAfter.hashes;
+        const statusAfter = snapAfter.status;
+
+        // 8. Build response
+        if (delegate.status === "errored") {
+          return {
+            content: [{
+              type: "text" as const,
+              text: [
+                `## Review Fixer FAILED for Issue #${issueContext.number}`,
+                "",
+                `**Status**: FAILED — subagent status: ${delegate.status}`,
+                "Do NOT proceed with commit / push / PR creation. Investigate the failure.",
+                "",
+                `**Fallback**: you can run the same review manually in this session with \`/skill:${REVIEW_FIXER_FALLBACK_SKILL}\` (it is force-loadable even though it is hidden from the Issue Work Pi skill surface — see ADR-0023).`,
+              ].join("\n"),
+            }],
+            details: {
+              issue: { number: issueContext.number, title: issueContext.title, url: issueContext.url },
+              childResult: result,
+              subagent: { agent_id: delegate.agent_id, task_name: delegate.task_name, status: delegate.status },
+              rawOutputLength: (delegate.final_result ?? "").length,
+              statusBefore: statusBefore.trim(),
+              statusAfter: statusAfter.trim(),
+            },
+            isError: true,
+          };
+        }
+
+        if (!result) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: [
+                `## Review Fixer FAILED for Issue #${issueContext.number}`,
+                "",
+                "The child Pi did not return the required review-fixer.result.v1 JSON result.",
+                "Do NOT launch another review_fixer automatically. Stop and ask the human to inspect the child output / pane.",
+              ].join("\n"),
+            }],
+            details: {
+              issue: { number: issueContext.number, title: issueContext.title, url: issueContext.url },
+              childResult: null,
+              subagent: { agent_id: delegate.agent_id, task_name: delegate.task_name, status: delegate.status },
+              rawOutputLength: (delegate.final_result ?? "").length,
+              statusBefore: statusBefore.trim(),
+              statusAfter: statusAfter.trim(),
+            },
+            isError: true,
+          };
+        }
+
+        // Compute changed files via content-hash comparison
+        // This detects changes to files that were already dirty before the child ran,
+        // not just newly-appeared files in git status.
+        const effectiveChangedFiles = computeChangedFiles(hashesBefore, hashesAfter);
+
+        const details: Record<string, unknown> = {
+          issue: { number: issueContext.number, title: issueContext.title, url: issueContext.url },
+          childResult: result,
+          subagent: { agent_id: delegate.agent_id, task_name: delegate.task_name, status: delegate.status },
+          changedFiles: effectiveChangedFiles,
+          statusBefore: statusBefore.trim(),
+          statusAfter: statusAfter.trim(),
+        };
+
+        if (result.status === "failed") {
+          return {
+            content: [{
+              type: "text" as const,
+              text: [
+                `## Review Fixer FAILED for Issue #${issueContext.number}`,
+                "",
+                "The child Pi returned status=failed. Do NOT launch another review_fixer automatically; inspect the findings and ask the human if another pass is needed.",
+                "",
+                (delegate.final_result ?? "(no final output)").trim() || "(no final output)",
+              ].join("\n"),
+            }],
+            details,
+            isError: true,
+          };
+        }
+
+        const summaryLines: string[] = [];
+        summaryLines.push(`## Review Fixer Result for Issue #${issueContext.number}`);
+        summaryLines.push("");
+        summaryLines.push(`**Subagent status**: ${delegate.status}`);
+        summaryLines.push(`**Gate status**: ${result.status}`);
+        summaryLines.push(`**New workspace changes**: ${effectiveChangedFiles.length > 0 ? effectiveChangedFiles.join(", ") : "none"}`);
+        summaryLines.push("");
+        summaryLines.push("## Child Pi output");
+        summaryLines.push("");
+        summaryLines.push((delegate.final_result ?? "(no final output)").trim() || "(no final output)");
+
+        return {
+          content: [{ type: "text" as const, text: summaryLines.join("\n") }],
+          details,
+          isError: false,
+        };
+      } finally {
+        await lock.release();
+      }
     },
   });
 }
