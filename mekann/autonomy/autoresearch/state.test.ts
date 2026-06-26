@@ -280,6 +280,16 @@ describe("parseMetricLines", () => {
 		const output = "METRIC total_ms=100\nMETRIC: other=200";
 		expect(parseMetricLines(output)).toEqual({ total_ms: 100, other: 200 });
 	});
+
+	it("rejects Infinity values that would JSON-serialize to null", () => {
+		const output = "METRIC good=42\nMETRIC pos_inf=Infinity\nMETRIC neg_inf=-Infinity";
+		expect(parseMetricLines(output)).toEqual({ good: 42 });
+	});
+
+	it("rejects NaN and numeric overflow (1e999) values", () => {
+		const output = "METRIC good=10\nMETRIC not_a_num=abc\nMETRIC overflow=1e999";
+		expect(parseMetricLines(output)).toEqual({ good: 10 });
+	});
 });
 
 // ---------------------------------------------------------------------------
