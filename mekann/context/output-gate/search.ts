@@ -3,7 +3,7 @@ import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
 import { featureConfig } from "../../settings/featureConfig.js";
-import { readManifest, resolveArtifactPath, type OutputGateManifestEntry } from "./store.js";
+import { readManifest, resolveArtifactPath, safeUtf8Slice, type OutputGateManifestEntry } from "./store.js";
 
 export interface SearchToolOutputsInput {
 	cwd: string;
@@ -31,7 +31,9 @@ interface SearchFile { entry: OutputGateManifestEntry; abs: string }
 
 function capText(text: string, maxBytes: number): string {
 	if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
-	return Buffer.from(text, "utf8").subarray(0, maxBytes).toString("utf8").replace(/�$/u, "") + "\n[output-gate search results truncated]";
+	// Byte-safe head cut (robust for CJK/emoji, no stray U+FFFD) then append the
+	// truncation marker. The marker is intentionally outside the byte budget.
+	return safeUtf8Slice(text, maxBytes, false) + "\n[output-gate search results truncated]";
 }
 
 function header(entry: OutputGateManifestEntry, line: number): string {

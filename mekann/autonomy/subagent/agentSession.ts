@@ -9,6 +9,26 @@ import { truncateText } from "./contextFork.js";
 
 const MESSAGE_INJECTION_MAX_CHARS = 4_000;
 
+/**
+ * Compute the highest sequence number across `beforeSeq`, mailbox items, and
+ * events using a plain loop. `Math.max(...spread)` would consume one stack
+ * frame per element and overflow once mailbox/events grow large
+ * (MAX_RETAINED_RECORDS, issue #152 / IC-162).
+ */
+function maxSeqLinear(beforeSeq: number, mailbox: MailboxItem[], events: LifecycleEvent[]): number {
+  let max = beforeSeq;
+  for (let i = 0; i < mailbox.length; i++) {
+    const s = mailbox[i].seq;
+    if (s > max) max = s;
+  }
+  for (let i = 0; i < events.length; i++) {
+    const e: any = events[i];
+    const s = typeof e?.seq === "number" ? e.seq : 0;
+    if (s > max) max = s;
+  }
+  return max;
+}
+
 export function clampTimeout(value: number, min: number, max = 600_000): number {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, Math.trunc(value)));
@@ -106,7 +126,10 @@ export class AgentSessionControl {
     const callerPath = this.deps.resolveCallerPath(ctx);
     const timeoutMs = clampTimeout(params.timeout_ms ?? defaultWaitTimeout, minWaitTimeout);
     const result = await this.waitForMailboxUpdate(callerPath, timeoutMs);
-    return { timed_out: result.events.length === 0 && result.mailbox.length === 0, events: result.events, mailbox: result.mailbox };
+    // `timed_out` is the authoritative signal from the mailbox (issue #152 /
+    // IC-029). Previously this was derived from emptiness, which conflated a
+    // genuine timeout with an empty-but-successful notification.
+    return { timed_out: result.timed_out, events: result.events, mailbox: result.mailbox };
   }
 
   async waitIndefinitely(ctx: ExtensionContext): Promise<Omit<WaitResult, "timed_out">> {
@@ -114,13 +137,15 @@ export class AgentSessionControl {
     return this.waitForMailboxUpdate(callerPath);
   }
 
-  private async waitForMailboxUpdate(callerPath: string, timeoutMs?: number): Promise<{ events: LifecycleEvent[]; mailbox: MailboxItem[] }> {
+  private async waitForMailboxUpdate(callerPath: string, timeoutMs?: number): Promise<{ events: LifecycleEvent[]; mailbox: MailboxItem[]; timed_out: boolean }> {
     const beforeSeq = this.lastConsumedSeq.get(callerPath) ?? 0;
     const result = timeoutMs === undefined
       ? await this.deps.mailbox.waitForUpdateIndefinitely(callerPath, beforeSeq)
       : await this.deps.mailbox.waitForUpdate(callerPath, beforeSeq, timeoutMs);
-    const maxSeq = Math.max(...result.mailbox.map((m: MailboxItem) => m.seq), ...result.events.map((e: LifecycleEvent) => "seq" in e ? (e as any).seq as number : 0), beforeSeq);
-    this.lastConsumedSeq.set(callerPath, maxSeq);
+    // Linear aggregation: spreading huge mailbox/events arrays into Math.max
+    // can exceed the call-stack limit once retention is large (issue #152 /
+    // IC-162). Iterate instead.
+    this.lastConsumedSeq.set(callerPath, maxSeqLinear(beforeSeq, result.mailbox, result.events));
     return result;
   }
 

@@ -1,5 +1,28 @@
 import { describe, it, expect } from "vitest";
-import { truncateTail, truncateHead } from "./index.js";
+import { truncateTail, truncateHead, truncateToBytesFromEnd, truncateToBytesFromStart } from "./index.js";
+
+// Deterministic LCG so property tests are reproducible.
+function makeRng(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
+}
+
+function buildRandomContent(rng: () => number, alphabet: string[], opts: { maxLines?: number; maxLineLen?: number; newlineChance?: number } = {}): string {
+  const maxLines = opts.maxLines ?? 6;
+  const maxLineLen = opts.maxLineLen ?? 30;
+  const newlineChance = opts.newlineChance ?? 0.5;
+  let out = "";
+  const lines = 1 + Math.floor(rng() * maxLines);
+  for (let l = 0; l < lines; l++) {
+    const len = 1 + Math.floor(rng() * maxLineLen);
+    for (let c = 0; c < len; c++) out += alphabet[Math.floor(rng() * alphabet.length)];
+    if (rng() < newlineChance) out += "\n";
+  }
+  return out;
+}
 
 describe("truncateTail", () => {
   it("returns content unchanged when within limits", () => {
@@ -78,4 +101,58 @@ describe("truncateHead", () => {
     const result = truncateHead(content, { maxLines: 2, maxBytes: 1024 });
     expect(result.totalLines).toBe(5);
   });
+});
+
+describe("byte-safe helpers", () => {
+  it("truncateToBytesFromStart never exceeds maxBytes and keeps valid UTF-8", () => {
+    expect(truncateToBytesFromStart("abc", 10)).toBe("abc");
+    expect(truncateToBytesFromStart("abcdef", 3)).toBe("abc");
+    // CJK (3 bytes/char): 3 bytes can hold one char, not two.
+    expect(Buffer.byteLength(truncateToBytesFromStart("あいう", 3), "utf-8")).toBeLessThanOrEqual(3);
+    expect(truncateToBytesFromStart("あいう", 3)).not.toContain("\uFFFD");
+    // Emoji (4 bytes/char): never split a surrogate pair.
+    expect(truncateToBytesFromStart("😀😁", 5)).not.toContain("\uFFFD");
+    expect(Buffer.byteLength(truncateToBytesFromStart("😀😁", 5), "utf-8")).toBeLessThanOrEqual(5);
+    expect(truncateToBytesFromStart("x", 0)).toBe("");
+  });
+
+  it("truncateToBytesFromEnd never exceeds maxBytes and keeps valid UTF-8", () => {
+    expect(truncateToBytesFromEnd("abc", 10)).toBe("abc");
+    expect(truncateToBytesFromEnd("abcdef", 3)).toBe("def");
+    expect(Buffer.byteLength(truncateToBytesFromEnd("あいう", 3), "utf-8")).toBeLessThanOrEqual(3);
+    expect(truncateToBytesFromEnd("あいう", 3)).not.toContain("\uFFFD");
+    expect(truncateToBytesFromEnd("😀😁", 5)).not.toContain("\uFFFD");
+    expect(Buffer.byteLength(truncateToBytesFromEnd("😀😁", 5), "utf-8")).toBeLessThanOrEqual(5);
+    expect(truncateToBytesFromEnd("x", 0)).toBe("");
+  });
+});
+
+describe("CJK / emoji byte-budget property tests", () => {
+  const CJK = Array.from("あいうえお漢字表覗");
+  const EMOJI = Array.from("😀😁😂🤔😃😄🥳🤯🦄");
+  const MIXED = Array.from("abcあ😁de漢😂fgえ");
+
+  for (const [name, alphabet] of [["pure CJK", CJK], ["pure emoji", EMOJI], ["ASCII+CJK+emoji mixed", MIXED]] as const) {
+    it(`truncateTail keeps ${name} within maxBytes`, () => {
+      const rng = makeRng(123);
+      for (let i = 0; i < 300; i++) {
+        const content = buildRandomContent(rng, alphabet);
+        const maxBytes = 5 + Math.floor(rng() * 60);
+        const result = truncateTail(content, { maxLines: 1000, maxBytes });
+        expect(Buffer.byteLength(result.content, "utf-8")).toBeLessThanOrEqual(maxBytes);
+        expect(result.content).not.toContain("\uFFFD");
+      }
+    });
+
+    it(`truncateHead keeps ${name} within maxBytes`, () => {
+      const rng = makeRng(456);
+      for (let i = 0; i < 300; i++) {
+        const content = buildRandomContent(rng, alphabet);
+        const maxBytes = 5 + Math.floor(rng() * 60);
+        const result = truncateHead(content, { maxLines: 1000, maxBytes });
+        expect(Buffer.byteLength(result.content, "utf-8")).toBeLessThanOrEqual(maxBytes);
+        expect(result.content).not.toContain("\uFFFD");
+      }
+    });
+  }
 });
