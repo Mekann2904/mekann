@@ -5,8 +5,9 @@
  * use-cases, and converts between Pi event types and controller I/O.
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ToolResultEvent } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { parseParams } from "../../tool-params.js";
 import * as fsp from "node:fs/promises";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
@@ -45,11 +46,21 @@ function createController(): OutputGateController {
 // Pi response helper
 // ---------------------------------------------------------------------------
 
-function textResponse(text: string): {
+function textResponse(text: string, details: Record<string, unknown> = { source: "output-gate" }): {
 	content: Array<{ type: "text"; text: string }>;
 	details: Record<string, unknown>;
 } {
-	return { content: [{ type: "text" as const, text }], details: {} };
+	return { content: [{ type: "text" as const, text }], details };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+	return value && typeof value === "object" ? value as Record<string, unknown> : undefined;
+}
+
+function isOutputGateStored(details: unknown): boolean {
+	if (!details || typeof details !== "object" || !("outputGate" in details)) return false;
+	const outputGate = details.outputGate;
+	return Boolean(outputGate && typeof outputGate === "object" && "stored" in outputGate && outputGate.stored === true);
 }
 
 // ---------------------------------------------------------------------------
@@ -87,6 +98,16 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 	}
 
 	// --- search_tool_outputs tool ---
+	const searchToolOutputsParams = Type.Object({
+		query: Type.String({ description: "Search query" }),
+		artifact: Type.Optional(Type.String({ description: "Optional output-gate artifact id" })),
+		maxResults: Type.Optional(Type.Number({ description: "Maximum matching snippets" })),
+		contextLines: Type.Optional(Type.Number({ description: "Context lines around each match" })),
+		preferRg: Type.Optional(Type.Boolean({ description: "Use ripgrep for search (default: true)" })),
+		literal: Type.Optional(Type.Boolean({ description: "Treat query as fixed string, not regex (default: true)" })),
+		caseSensitive: Type.Optional(Type.Boolean({ description: "Case-sensitive search (default: false)" })),
+	});
+
 	pi.registerTool({
 		name: "search_tool_outputs",
 		label: "Search Stored Tool Outputs",
@@ -97,59 +118,12 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Use search_tool_outputs with an artifact id from an output-gate stub to retrieve relevant snippets.",
 		],
-		parameters: Type.Object({
-			query: Type.String({ description: "Search query" }),
-			artifact: Type.Optional(
-				Type.String({ description: "Optional output-gate artifact id" }),
-			),
-			maxResults: Type.Optional(
-				Type.Number({ description: "Maximum matching snippets" }),
-			),
-			contextLines: Type.Optional(
-				Type.Number({ description: "Context lines around each match" }),
-			),
-			preferRg: Type.Optional(
-				Type.Boolean({ description: "Use ripgrep for search (default: true)" }),
-			),
-			literal: Type.Optional(
-				Type.Boolean({
-					description: "Treat query as fixed string, not regex (default: true)",
-				}),
-			),
-			caseSensitive: Type.Optional(
-				Type.Boolean({ description: "Case-sensitive search (default: false)" }),
-			),
-		}),
+		parameters: searchToolOutputsParams,
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const cwd = ctx?.cwd ?? process.cwd();
-			const text = await controller.search({
-				cwd,
-				query: String((params as any).query ?? ""),
-				artifact: (params as any).artifact
-					? String((params as any).artifact)
-					: undefined,
-				maxResults:
-					(params as any).maxResults === undefined
-						? undefined
-						: Number((params as any).maxResults),
-				contextLines:
-					(params as any).contextLines === undefined
-						? undefined
-						: Number((params as any).contextLines),
-				preferRg:
-					(params as any).preferRg === undefined
-						? undefined
-						: Boolean((params as any).preferRg),
-				literal:
-					(params as any).literal === undefined
-						? undefined
-						: Boolean((params as any).literal),
-				caseSensitive:
-					(params as any).caseSensitive === undefined
-						? undefined
-						: Boolean((params as any).caseSensitive),
-			} satisfies SearchToolOutputsInput);
-			return textResponse(text);
+			const p = parseParams(searchToolOutputsParams, params);
+			const text = await controller.search({ cwd, ...p } satisfies SearchToolOutputsInput);
+			return textResponse(text, { source: "output-gate", query: p.query, artifact: p.artifact });
 		},
 	});
 
@@ -161,28 +135,28 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 				.filter((v) => v.startsWith(prefix))
 				.map((value) => ({ value, label: value }));
 		},
-		async handler(args: string | undefined, ctx: any) {
-			const cwd = ctx?.cwd ?? process.cwd();
-			const arg = args?.trim() ?? "";
+		async handler(args: string, ctx: ExtensionCommandContext) {
+			const cwd = ctx.cwd;
+			const arg = (args ?? "").trim();
 
 			if (arg === "enable-tools") {
 				searchToolActive = true;
 				setToolsActive(pi, OUTPUT_GATE_TOOL_NAMES, true);
-				ctx?.ui?.notify?.("output-gate search tools enabled", "info");
+				ctx.ui.notify("output-gate search tools enabled", "info");
 				return;
 			}
 
 			if (arg === "disable-tools") {
 				searchToolActive = false;
 				setToolsActive(pi, OUTPUT_GATE_TOOL_NAMES, false);
-				ctx?.ui?.notify?.("output-gate search tools disabled", "info");
+				ctx.ui.notify("output-gate search tools disabled", "info");
 				return;
 			}
 
 			// show <artifactId>
 			const showId = parseShowArg(arg);
 			if (showId) {
-				ctx?.ui?.notify?.(await controller.show(cwd, showId), "info");
+				ctx.ui.notify(await controller.show(cwd, showId), "info");
 				return;
 			}
 
@@ -195,12 +169,12 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 			}
 
 			if (arg === "stats") {
-				ctx?.ui?.notify?.(await controller.stats(cwd), "info");
+				ctx.ui.notify(await controller.stats(cwd), "info");
 				return;
 			}
 
 			if (arg === "list") {
-				ctx?.ui?.notify?.(await controller.list(cwd), "info");
+				ctx.ui.notify(await controller.list(cwd), "info");
 				return;
 			}
 
@@ -209,34 +183,31 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 					parseKeepArg(arg) ??
 					(Number(featureConfig("output-gate").artifactRetentionMaxFiles) ||
 					MEKANN_OUTPUT_GATE_DEFAULTS.artifactRetentionMaxFiles);
-				ctx?.ui?.notify?.(await controller.purge(cwd, keep), "info");
+				ctx.ui.notify(await controller.purge(cwd, keep), "info");
 				await syncSearchToolSurface(cwd);
 				return;
 			}
 
 			// default: status
-			ctx?.ui?.notify?.(await controller.status(cwd), "info");
+			ctx.ui.notify(await controller.status(cwd), "info");
 		},
 	});
 
 	// --- tool_result hook ---
-	pi.on("tool_result", async (event: any, ctx: any) => {
-		const toolName = String(event?.toolName ?? event?.name ?? "tool");
-		const cwd = event?.cwd ?? ctx?.cwd ?? process.cwd();
+	pi.on("tool_result", async (event: ToolResultEvent, ctx: ExtensionContext) => {
+		const toolName = event.toolName;
+		const cwd = ctx.cwd;
 
 		try {
 			const result = await controller.handleToolResult({
 				cwd,
 				toolName,
-				content: event?.content,
-				details: event?.details,
-				isError: event?.isError,
-				sessionId: ctx?.sessionId,
-				turnId: ctx?.turnId,
-				toolCallId: event?.toolCallId,
-				branchId: ctx?.branchId ?? event?.branchId,
+				content: event.content,
+				details: asRecord(event.details),
+				isError: event.isError,
+				toolCallId: event.toolCallId,
 			});
-			if ((result?.details?.outputGate as any)?.stored === true) await syncSearchToolSurface(cwd);
+			if (isOutputGateStored(result?.details)) await syncSearchToolSurface(cwd);
 			return result;
 		} catch {
 			// Fail-open: output-gate must never break or replace the original tool result.
@@ -244,8 +215,8 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 		}
 	});
 
-	pi.on("session_start", async (_event: any, ctx: any) => {
-		await syncSearchToolSurface(ctx?.cwd ?? process.cwd());
+	pi.on("session_start", async (_event, ctx: ExtensionContext) => {
+		await syncSearchToolSurface(ctx.cwd ?? process.cwd());
 	});
 
 	pi.on("session_shutdown", async () => {

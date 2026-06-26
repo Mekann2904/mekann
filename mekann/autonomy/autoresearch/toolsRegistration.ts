@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@earendil-works/pi-ai";
+import { parseParams } from "../../tool-params.js";
 import { readCurrentContract } from "./contractV1.js";
 import { executeEvaluateQuery } from "./tools/evaluateQuery.js";
 import { executePlan } from "./tools/plan.js";
@@ -41,16 +41,16 @@ const initParamDefs = Type.Object({
 	name: Type.String({ description: "Experiment name." }),
 	metric_name: Type.String({ description: "Primary metric name, e.g. total_ms." }),
 	metric_unit: Type.Optional(Type.String({ description: "Metric unit, e.g. ms." })),
-	direction: Type.Optional(StringEnum(["lower", "higher"] as const, { description: "Default: lower." }) as any),
+	direction: Type.Optional(Type.Union([Type.Literal("lower"), Type.Literal("higher")], { description: "Default: lower." })),
 	objective: Type.Optional(Type.String({ description: "Experiment objective." })),
 	benchmark_command: Type.Optional(Type.String({ description: "Benchmark command, e.g. ./autoresearch.sh." })),
-	metric_method: Type.Optional(StringEnum(["wall_clock", "stdout_metric", "report_file"] as const, { description: "Metric method. Default: wall_clock." }) as any),
-	checks_mode: Type.Optional(StringEnum(["script", "command", "none"] as const, { description: "Checks mode. Default: script." }) as any),
+	metric_method: Type.Optional(Type.Union([Type.Literal("wall_clock"), Type.Literal("stdout_metric"), Type.Literal("report_file")], { description: "Metric method. Default: wall_clock." })),
+	checks_mode: Type.Optional(Type.Union([Type.Literal("script"), Type.Literal("command"), Type.Literal("none")], { description: "Checks mode. Default: script." })),
 	checks_command: Type.Optional(Type.String({ description: "Checks command when checks_mode=command." })),
-	acceptance_mode: Type.Optional(StringEnum(["better_than_baseline", "better_than_best"] as const, { description: "Acceptance mode (V1). Default: better_than_baseline. manual/improvement_threshold は V1 schema で禁止済み。" }) as any),
+	acceptance_mode: Type.Optional(Type.Union([Type.Literal("better_than_baseline"), Type.Literal("better_than_best")], { description: "Acceptance mode (V1). Default: better_than_baseline. manual/improvement_threshold は V1 schema で禁止済み。" })),
 	min_improvement: Type.Optional(Type.Number({ description: "Minimum relative improvement ratio (minRelativeImprovement), e.g. 0.02." })),
 	repeat: Type.Optional(Type.Number({ description: "Measurement repeats. Default: 3." })),
-	aggregate: Type.Optional(StringEnum(["median", "mean", "min", "max"] as const, { description: "Aggregation method (V1). Default: median." }) as any),
+	aggregate: Type.Optional(Type.Union([Type.Literal("median"), Type.Literal("mean"), Type.Literal("max"), Type.Literal("min")], { description: "Aggregation method (V1). Default: median." })),
 	require_git: Type.Optional(Type.Boolean({ description: "Require a git repo. Default: true." })),
 	require_clean_baseline: Type.Optional(Type.Boolean({ description: "Require a clean baseline. Default: true." })),
 	allowed_paths: Type.Optional(Type.Array(Type.String(), { description: "Allowed path patterns." })),
@@ -66,10 +66,10 @@ pi.registerTool({
 	promptGuidelines: [
 		"Use once at session start; do not reinitialize existing config.",
 	],
-	parameters: initParamDefs as any,
+	parameters: initParamDefs,
 
 	async execute(_tc, params, _sig, _ou, ctx) {
-		return executeInit(store, params as any, ctx, deps);
+		return executeInit(store, parseParams(initParamDefs, params), ctx, deps);
 	},
 });
 
@@ -109,7 +109,7 @@ pi.registerTool({
 	],
 	parameters: Type.Object({
 		metric: Type.Number({ description: "Primary metric value." }),
-		status: StringEnum(["keep", "discard", "crash", "checks_failed"] as const, { description: "Result status." }) as any,
+		status: Type.Union([Type.Literal("keep"), Type.Literal("discard"), Type.Literal("crash"), Type.Literal("checks_failed")], { description: "Result status." }),
 		description: Type.String({ description: "Short experiment description." }),
 		runId: Type.Optional(Type.String({ description: "runId from autoresearch_run." })),
 		commit: Type.Optional(Type.String({ description: "Git commit hash; auto when omitted." })),
@@ -118,7 +118,7 @@ pi.registerTool({
 	}),
 
 	async execute(_tc, params, _sig, _ou, ctx) {
-		return executeLog(store, params as any, ctx, deps);
+		return executeLog(store, params, ctx, deps);
 	},
 });
 
@@ -188,7 +188,7 @@ pi.registerTool({
 	label: "autoresearch list candidates",
 	description: "List autoresearch candidates for the current plan.",
 	parameters: Type.Object({}),
-	async execute(_tc, params, _signal, _ou, ctx) { return executeListCandidates(store, params as Record<string, never>, ctx); },
+	async execute(_tc, _params, _signal, _ou, ctx) { return executeListCandidates(store, {}, ctx); },
 });
 
 pi.registerTool({
@@ -224,7 +224,7 @@ pi.registerTool({
 		const contract = readCurrentContract(ctx.cwd);
 		if (!contract) return store.textResponse("[ERROR] current contract が見つかりません。");
 		const result = suggestSubagents(contract);
-		return store.textDetails(JSON.stringify(result, null, 2), result as Record<string, unknown>);
+		return store.textDetails(JSON.stringify(result, null, 2), { suggestions: result });
 	},
 });
 
