@@ -8,6 +8,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { GoalStore, type Goal, type GoalStateEntry, CONTINUATION_COOLDOWN_MS } from "./state.js";
 import { continuationPrompt, budgetLimitPrompt, objectiveUpdatedPrompt } from "./prompts.js";
+import { normalizeActualCacheUsage } from "../../core/cache-friendly-prompt/actualUsage.js";
 
 // ---------------------------------------------------------------------------
 // Compaction threshold
@@ -26,6 +27,18 @@ const COMPACT_RESERVE_TOKENS = 16384;
 // ---------------------------------------------------------------------------
 
 export type GoalEventCallback = (action: string, goal: Goal) => void;
+
+/**
+ * Pi's sessionManager exposes `isPersisted()` at runtime, but the SDK type for
+ * ExtensionContext does not declare it. Probe it structurally instead of an
+ * unchecked cast so the call stays type-checked (and avoids widening the
+ * repo's explicit-cast baseline). Returns false when the method is absent,
+ * matching the previous optional-chain early-return behavior.
+ */
+function isSessionPersisted(sessionManager: unknown): boolean {
+  const fn = (sessionManager as { isPersisted?: () => unknown }).isPersisted;
+  return typeof fn === "function" ? Boolean(fn()) : false;
+}
 
 export class GoalRuntime {
   private store: GoalStore;
@@ -107,19 +120,27 @@ export class GoalRuntime {
     // unique enough: two distinct assistant messages can be emitted in the same
     // millisecond, so include usage fields in the key.
     const usage = msg.usage;
-    const inputTotal = usage.inputTotal ?? usage.input ?? 0;
-    const usageKey = [msg.timestamp, inputTotal, usage.output ?? 0, usage.cacheRead ?? 0].join(":");
+    const rawInputTotal = usage.inputTotal ?? usage.input ?? 0;
+    const usageKey = [msg.timestamp, rawInputTotal, usage.output ?? 0, usage.cacheRead ?? 0].join(":");
     if (this.accounted_assistant_usage_keys.has(usageKey)) return;
     this.accounted_assistant_usage_keys.add(usageKey);
 
     const goal = this.store.getGoal();
     if (!goal || goal.status !== "active") return;
 
-    // Token delta: exclude cached input tokens.
-    // inputTotal/input means total input tokens including cache-read/cache-write tokens.
-    // Provider raw usage must be normalized before this point; this is a
-    // non-cached-token budget proxy, not provider billing/cost accounting.
-    const tokenDelta = Math.max(0, inputTotal - (usage.cacheRead ?? 0)) + (usage.output ?? 0);
+    // Normalize provider usage so token accounting is consistent regardless of
+    // whether the provider reports input as total input or as non-cached input.
+    // Without normalization, providers whose input already excludes cached
+    // tokens (e.g. Anthropic-style) get double-subtracted (input - cacheRead)
+    // and underreport usage (IC-213). normalizeActualCacheUsage yields a
+    // consistent total-input figure; subtracting cache read gives the
+    // non-cached-token budget proxy. This is not provider billing/cost
+    // accounting.
+    const normalized = normalizeActualCacheUsage(undefined, usage);
+    const inputTotalTokens = normalized?.inputTotalTokens ?? rawInputTotal;
+    const cacheReadTokens = normalized?.cacheReadTokens ?? (usage.cacheRead ?? 0);
+    const outputTokens = normalized?.outputTokens ?? (usage.output ?? 0);
+    const tokenDelta = Math.max(0, inputTotalTokens - cacheReadTokens) + outputTokens;
 
     // Also account accumulated wall-clock time
     this.accountUsage(this.consumeWallClockSeconds(), tokenDelta);
@@ -227,7 +248,7 @@ export class GoalRuntime {
   maybeContinueIfIdle(ctx: ExtensionContext): void {
     // Check all preconditions
     if (this.pi.getFlag("goals") !== true) return;
-    if (!(ctx.sessionManager as any).isPersisted?.()) return;
+    if (!isSessionPersisted(ctx.sessionManager)) return;
     if (this.continuationSuppressed) return;
     if (this.active_turn_marker) return;
     if (this.continuation_active) return;

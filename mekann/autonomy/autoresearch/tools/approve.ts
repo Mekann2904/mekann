@@ -4,6 +4,7 @@
  */
 
 import * as fs from "node:fs";
+import * as crypto from "node:crypto";
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
@@ -105,7 +106,11 @@ export async function executeApprove(
 	}
 
 	const contractHash = computeContractHash(contract);
-	const contractId = `contract-${Date.now()}-${contractHash.slice(7, 15)}`;
+	// Collision-resistant contractId: Date.now() + contractHash prefix + a
+	// cryptographic random suffix. Two concurrent approves in the same
+	// millisecond previously collided on the `Date.now()`-`hash8` prefix
+	// (IC-180); the random suffix makes parallel collision negligible.
+	const contractId = `contract-${Date.now()}-${contractHash.slice(7, 15)}-${crypto.randomBytes(4).toString("hex")}`;
 	ensureAutoresearchDir(ctx.cwd);
 
 	function logEvent(event: string, details: Record<string, unknown> = {}): void {
