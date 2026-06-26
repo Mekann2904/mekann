@@ -1,5 +1,7 @@
 import { rmSync } from "node:fs";
 
+import { isLikelyKitty } from "./kitty-env.js";
+
 const cleanupPaths = new Set<string>();
 let installed = false;
 
@@ -38,7 +40,7 @@ export function clearDashboardTerminalArtifactsSync(): void {
 
 function clearKittyImages(): void {
 	if (process.env.VITEST) return;
-	if (!process.env.KITTY_WINDOW_ID && !process.env.TERM?.toLowerCase().includes("kitty")) return;
+	if (!isLikelyKitty()) return;
 	try {
 		process.stdout.write("\x1b_Ga=d,d=A\x1b\\");
 	} catch {
