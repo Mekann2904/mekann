@@ -85,13 +85,31 @@ export function currentPlanPath(cwd: string): string { return path.join(getAutor
 export function journalPath(cwd: string): string { return path.join(getAutoresearchRoot(cwd), "journal.jsonl"); }
 
 export function readState(cwd: string): AutoresearchStateV2 {
-	try { return JSON.parse(fs.readFileSync(statePath(cwd), "utf8")) as AutoresearchStateV2; }
-	catch { return { version: 2, updatedAt: new Date().toISOString() }; }
+	const fp = statePath(cwd);
+	try { return JSON.parse(fs.readFileSync(fp, "utf8")) as AutoresearchStateV2; }
+	catch (e: any) {
+		if (fs.existsSync(fp)) {
+			const corrupt = `${fp}.corrupt.${new Date().toISOString().replace(/[:.]/g, "-")}`;
+			try { fs.renameSync(fp, corrupt); } catch {}
+		}
+		return { version: 2, updatedAt: new Date().toISOString() };
+	}
+}
+
+export function writeFileAtomicSync(fp: string, data: string | Buffer, options?: fs.WriteFileOptions): void {
+	fs.mkdirSync(path.dirname(fp), { recursive: true });
+	const tmp = path.join(path.dirname(fp), `.${path.basename(fp)}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`);
+	try {
+		fs.writeFileSync(tmp, data, options as any);
+		fs.renameSync(tmp, fp);
+	} catch (e) {
+		try { fs.rmSync(tmp, { force: true }); } catch {}
+		throw e;
+	}
 }
 
 export function writeState(cwd: string, state: AutoresearchStateV2): void {
-	fs.mkdirSync(getAutoresearchRoot(cwd), { recursive: true });
-	fs.writeFileSync(statePath(cwd), JSON.stringify({ ...state, version: 2, updatedAt: new Date().toISOString() }, null, 2) + "\n");
+	writeFileAtomicSync(statePath(cwd), JSON.stringify({ ...state, version: 2, updatedAt: new Date().toISOString() }, null, 2) + "\n", "utf8");
 }
 
 export function appendJournal(cwd: string, event: Record<string, unknown>): void {
@@ -181,12 +199,20 @@ function assertRootWrappersWritable(cwd: string): void {
 		}
 	}
 }
+function writeConflictFile(rootDir: string, baseName: string, content: string, mode?: number): string {
+	const dir = path.join(rootDir, ".autoresearch", "conflicts");
+	fs.mkdirSync(dir, { recursive: true });
+	const fp = path.join(dir, `${baseName}.${Date.now()}.${crypto.randomBytes(3).toString("hex")}.new`);
+	fs.writeFileSync(fp, content, mode ? { mode } : "utf8");
+	return fp;
+}
+
 function writeGeneratedFileSafe(fp: string, content: string, mode?: number): void {
 	if (fs.existsSync(fp)) {
 		const old = fs.readFileSync(fp, "utf8");
 		if (!old.includes(GENERATED)) {
-			fs.writeFileSync(fp + ".new", content, mode ? { mode } : undefined);
-			throw new Error(`root file conflict: ${fp} has no generated marker; wrote ${fp}.new`);
+			const conflict = writeConflictFile(path.dirname(fp), path.basename(fp), content, mode);
+			throw new Error(`root file conflict: ${fp} has no generated marker; wrote ${conflict}`);
 		}
 	}
 	fs.writeFileSync(fp, content, mode ? { mode } : undefined);
@@ -200,8 +226,8 @@ function updateGeneratedBlockSafe(fp: string, block: string): void {
 	const re = new RegExp(`${begin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?${end.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
 	if (re.test(old)) fs.writeFileSync(fp, old.replace(re, content.trimEnd()), "utf8");
 	else {
-		fs.writeFileSync(fp + ".new", `# Autoresearch\n\n${content}`, "utf8");
-		throw new Error(`root file conflict: ${fp} has no generated block; wrote ${fp}.new`);
+		const conflict = writeConflictFile(path.dirname(fp), path.basename(fp), `# Autoresearch\n\n${content}`);
+		throw new Error(`root file conflict: ${fp} has no generated block; wrote ${conflict}`);
 	}
 }
 

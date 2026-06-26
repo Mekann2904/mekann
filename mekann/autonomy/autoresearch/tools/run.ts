@@ -34,6 +34,7 @@ import {
 	createRunArtifacts,
 	retainRuns,
 	retainRunsForPlan,
+	writeFileAtomicSync,
 } from "../layout.js";
 import { resolveMaxRunsPerPlan } from "../../../config.js";
 
@@ -206,12 +207,12 @@ export async function executeRun(
 
 	const metrics = result.parsedMetrics ?? (store.state.metricName === "duration_seconds" ? { duration_seconds: result.durationSeconds } : {});
 	try {
-		fs.writeFileSync(
+		writeFileAtomicSync(
 			path.join(artifactDir, "git.status.txt"),
 			execFileSync("git", ["status", "--short"], { cwd: ctx.cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }),
 			"utf8",
 		);
-		fs.writeFileSync(
+		writeFileAtomicSync(
 			path.join(artifactDir, "git.diff"),
 			execFileSync("git", ["diff", "--"], { cwd: ctx.cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }),
 			"utf8",

@@ -13,6 +13,14 @@ export interface WorktreeInfo {
 	path: string;
 }
 
+export interface SafeRemoveWorktreeOptions {
+	/** Branch name to require when the worktree is branch-backed. Omit for detached worktrees. */
+	branch?: string;
+	path: string;
+	/** Refuse to remove unless the resolved path is inside this directory. */
+	expectedRootPrefix?: string;
+}
+
 export function issueBranch(issueNumber: number): string {
 	return `issue-${issueNumber}`;
 }
@@ -148,6 +156,9 @@ export function worktreeDir(repoRoot: string, branch: string): string {
  * Otherwise, create a new branch from HEAD and add a worktree.
  */
 export function createWorktree(repoRoot: string, branch: string, worktreePath: string): WorktreeInfo {
+	assertValidBranch(repoRoot, branch);
+	assertValidWorktreePath(worktreePath, branch);
+
 	// If worktree directory already exists, only accept it when it is the expected git worktree.
 	if (fs.existsSync(worktreePath)) {
 		if (isExpectedWorktree(worktreePath, branch)) return { branch, path: worktreePath };
@@ -208,23 +219,7 @@ export function createWorktree(repoRoot: string, branch: string, worktreePath: s
  * Remove a worktree and its local branch.
  */
 export function removeWorktree(repoRoot: string, wt: WorktreeInfo): void {
-	if (!isRegisteredWorktree(repoRoot, wt)) {
-		throw new Error(`Refusing to remove unregistered worktree path: ${wt.path}`);
-	}
-
-	// Remove worktree
-	try {
-		execFileSync("git", ["worktree", "remove", "--force", wt.path], {
-			cwd: repoRoot,
-			encoding: "utf-8",
-			stdio: ["ignore", "pipe", "pipe"],
-		});
-	} catch {
-		// Fallback only after verifying the path is still the expected worktree.
-		if (fs.existsSync(wt.path) && isExpectedWorktree(wt.path, wt.branch)) {
-			fs.rmSync(wt.path, { recursive: true, force: true });
-		}
-	}
+	safeRemoveWorktree(repoRoot, wt);
 
 	// Remove local branch (safe delete — only if merged)
 	try {
@@ -252,6 +247,52 @@ export function removeWorktree(repoRoot: string, wt: WorktreeInfo): void {
 	}
 }
 
+export function safeRemoveWorktree(repoRoot: string, wt: SafeRemoveWorktreeOptions): void {
+	assertPathInsidePrefix(wt.path, wt.expectedRootPrefix);
+	if (!isRegisteredWorktree(repoRoot, wt)) {
+		throw new Error(`Refusing to remove unregistered worktree path: ${wt.path}`);
+	}
+
+	try {
+		execFileSync("git", ["worktree", "remove", "--force", wt.path], {
+			cwd: repoRoot,
+			encoding: "utf-8",
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+	} catch {
+		// Fallback only after verifying the path is still registered/expected and inside prefix.
+		assertPathInsidePrefix(wt.path, wt.expectedRootPrefix);
+		if (fs.existsSync(wt.path) && isRegisteredWorktree(repoRoot, wt) && (!wt.branch || isExpectedWorktree(wt.path, wt.branch))) {
+			fs.rmSync(wt.path, { recursive: true, force: true });
+		}
+	}
+}
+
+function assertValidBranch(repoRoot: string, branch: string): void {
+	if (path.isAbsolute(branch) || branch.includes("..")) throw new Error(`Invalid branch name: ${branch}`);
+	try {
+		execFileSync("git", ["check-ref-format", "--branch", branch], { cwd: repoRoot, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] });
+	} catch {
+		throw new Error(`Invalid branch name: ${branch}`);
+	}
+}
+
+function assertValidWorktreePath(worktreePath: string, branch: string): void {
+	if (!path.isAbsolute(worktreePath)) throw new Error(`Worktree path must be absolute: ${worktreePath}`);
+	if (path.resolve(worktreePath) !== worktreePath) throw new Error(`Worktree path must be normalized: ${worktreePath}`);
+	if (path.basename(worktreePath) !== branch) throw new Error(`Worktree path must end with branch name ${branch}: ${worktreePath}`);
+}
+
+function assertPathInsidePrefix(target: string, prefix?: string): void {
+	if (!prefix) return;
+	const resolvedTarget = path.resolve(target);
+	const resolvedPrefix = path.resolve(prefix);
+	const rel = path.relative(resolvedPrefix, resolvedTarget);
+	if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel)) {
+		throw new Error(`Refusing to remove worktree outside expected prefix: ${target}`);
+	}
+}
+
 function isExpectedWorktree(worktreePath: string, branch: string): boolean {
 	try {
 		const topLevel = execFileSync("git", ["-C", worktreePath, "rev-parse", "--show-toplevel"], { encoding: "utf-8" }).trim();
@@ -262,8 +303,8 @@ function isExpectedWorktree(worktreePath: string, branch: string): boolean {
 	}
 }
 
-function isRegisteredWorktree(repoRoot: string, wt: WorktreeInfo): boolean {
-	return listExistingWorktrees(repoRoot).some((existing) => existing.branch === wt.branch && path.resolve(existing.path) === path.resolve(wt.path));
+function isRegisteredWorktree(repoRoot: string, wt: SafeRemoveWorktreeOptions): boolean {
+	return listAllWorktrees(repoRoot).some((existing) => (!wt.branch || existing.branch === wt.branch) && path.resolve(existing.path) === path.resolve(wt.path));
 }
 
 /**
@@ -271,6 +312,10 @@ function isRegisteredWorktree(repoRoot: string, wt: WorktreeInfo): boolean {
  * Returns worktrees whose branch name matches `issue-<number>`.
  */
 export function listExistingWorktrees(repoRoot: string): WorktreeInfo[] {
+	return listAllWorktrees(repoRoot).filter((wt) => /^issue-\d+$/.test(wt.branch) && path.resolve(wt.path) !== path.resolve(repoRoot));
+}
+
+function listAllWorktrees(repoRoot: string): WorktreeInfo[] {
 	try {
 		const output = execFileSync("git", ["worktree", "list", "--porcelain"], {
 			cwd: repoRoot,
@@ -280,26 +325,23 @@ export function listExistingWorktrees(repoRoot: string): WorktreeInfo[] {
 		const worktrees: WorktreeInfo[] = [];
 		let currentPath = "";
 		let currentBranch = "";
+		const flush = () => {
+			if (currentPath) worktrees.push({ branch: currentBranch, path: currentPath });
+			currentPath = "";
+			currentBranch = "";
+		};
 
 		for (const line of output.split("\n")) {
 			if (line.startsWith("worktree ")) {
+				if (currentPath) flush();
 				currentPath = line.slice("worktree ".length);
 			} else if (line.startsWith("branch ")) {
 				currentBranch = line.slice("branch ".length).replace("refs/heads/", "");
-			} else if (line === "" && currentPath && currentBranch) {
-				// Only include issue-* branches, skip the main worktree
-				if (/^issue-\d+$/.test(currentBranch) && currentPath !== repoRoot) {
-					worktrees.push({ branch: currentBranch, path: currentPath });
-				}
-				currentPath = "";
-				currentBranch = "";
+			} else if (line === "" && currentPath) {
+				flush();
 			}
 		}
-		// Handle last entry
-		if (currentPath && currentBranch && /^issue-\d+$/.test(currentBranch) && currentPath !== repoRoot) {
-			worktrees.push({ branch: currentBranch, path: currentPath });
-		}
-
+		if (currentPath) flush();
 		return worktrees;
 	} catch {
 		return [];
