@@ -4,6 +4,7 @@ import { GoalStore } from "./state.js";
 import type { GoalAction } from "./context-events.js";
 import { GoalRuntime } from "./runtime.js";
 import { renderGoalSummary, renderNoGoal } from "./prompts.js";
+import { isPersistedSession } from "./session.js";
 
 export interface GoalCommandDeps {
   getStore(): GoalStore | null;
@@ -33,7 +34,7 @@ export function registerGoalCommand(pi: ExtensionAPI, deps: GoalCommandDeps): vo
         ctx.ui.notify(
           !pi.getFlag("goals")
             ? "Goals feature is disabled (enable with --goals flag)"
-            : !(ctx.sessionManager as any).isPersisted?.()
+            : !isPersistedSession(ctx)
               ? "Goals require a persisted session"
               : "Goal system not initialized",
           "warning",
