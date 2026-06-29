@@ -13,6 +13,7 @@ import { addDependencyStatus, listOpenIssues, type IssueDependencyStatus, type I
 import { getRepoInfo, createWorktree, removeWorktree, worktreeDir, listExistingWorktrees, issueBranch, parseIssueNumberFromBranch, resolveIssueWorktreePath, type WorktreeInfo, type RepoInfo } from "./worktree.js";
 import { mountIssueList } from "./app.js";
 import { launchPiSessionInKittySplit } from "../terminal/pi-session.js";
+import { KittyControl } from "../terminal/kitty/control.js";
 import { createOrchestrationDeps } from "./orchestration/deps.js";
 import type { OrchestrationDeps } from "./orchestration/collector.js";
 import { startOrchestration, type LaunchWorkPi } from "./orchestration/lifecycle.js";
@@ -191,10 +192,14 @@ async function runOpen(issueNumber: number): Promise<void> {
 	if (!ensureIssueCanStart(issueNumber, { ...dependencyStatus, labels })) return;
 
 	const existing = listExistingWorktrees(repoInfo.root).find((wt) => wt.branch === issueBranch(issueNumber));
-	const { skipped } = await bulkLaunchIssues(
+	const { skipped, alreadyOpen } = await bulkLaunchIssues(
 		[{ issueNumber, hasWorktree: Boolean(existing), worktreePath: existing?.path, labels }],
 		createBulkLaunchDeps(repoInfo),
 	);
+	if (alreadyOpen.length > 0) {
+		console.log(`Issue #${issueNumber} is already open; not relaunching.`);
+		return;
+	}
 	if (skipped.length > 0) {
 		console.error(`Could not open #${issueNumber}: ${skipped[0].reason}`);
 		process.exitCode = 1;
@@ -338,15 +343,18 @@ async function runInteractive(): Promise<void> {
 			// (worktree create or Pi launch) is reported in `skipped` and the rest
 			// still launch (issue #68). Surface the skip list, then exit non-zero
 			// only when nothing opened at all.
-			const { skipped } = await bulkLaunchIssues(requests, createBulkLaunchDeps(repoInfo));
+			const { skipped, alreadyOpen } = await bulkLaunchIssues(requests, createBulkLaunchDeps(repoInfo));
+			for (const number of alreadyOpen) {
+				console.log(`Issue #${number} is already open; not relaunching.`);
+			}
 			if (skipped.length > 0) {
 				console.error("Some issues could not be opened:");
 				for (const skip of skipped) {
 					console.error(`  #${skip.issueNumber}: ${skip.reason}`);
 				}
 			}
-			const launchedCount = requests.length - skipped.length;
-			process.exit(launchedCount > 0 ? 0 : 1);
+			const openedCount = requests.length - skipped.length;
+			process.exit(openedCount > 0 ? 0 : 1);
 		},
 		onCancel: () => {
 			renderer.destroy();
@@ -362,6 +370,7 @@ async function runInteractive(): Promise<void> {
  * widest Issue Pi anchor every call (ADR-0021: Main Pi is never the anchor).
  */
 function createBulkLaunchDeps(repoInfo: RepoInfo): BulkLaunchDeps {
+	const kitty = new KittyControl();
 	return {
 		createWorktree(issueNumber: number): string {
 			const branch = issueBranch(issueNumber);
@@ -384,6 +393,9 @@ function createBulkLaunchDeps(repoInfo: RepoInfo): BulkLaunchDeps {
 				thinking,
 				hold: process.env.MEKANN_ISSUE_DEBUG === "1",
 			});
+		},
+		async hasActiveWorkPi(issueNumber: number): Promise<boolean> {
+			return kitty.hasIssuePiPane(issueNumber);
 		},
 	};
 }
