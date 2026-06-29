@@ -8,18 +8,19 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { GoalStore, type Goal, type GoalStateEntry, CONTINUATION_COOLDOWN_MS } from "./state.js";
 import { continuationPrompt, budgetLimitPrompt, objectiveUpdatedPrompt } from "./prompts.js";
+import { MEKANN_GOAL_DEFAULTS } from "../../config.js";
 
 // ---------------------------------------------------------------------------
 // Compaction threshold
 // ---------------------------------------------------------------------------
 
 /**
- * Reserve tokens threshold for triggering compaction before continuation.
- * Matches Pi's default CompactionSettings.reserveTokens (16384).
- * When estimated context tokens exceed contextWindow − COMPACT_RESERVE_TOKENS,
- * we compact before sending the continuation prompt.
+ * Default compaction reserve (tokens). See {@link GoalRuntime}'s
+ * `getCompactReserveTokens` option — the effective value is resolved from
+ * `goal.compactReserveTokens` (mekann.json) so it can be re-aligned with Pi's
+ * `CompactionSettings.reserveTokens` instead of drifting (issue #167 / IC-211).
  */
-const COMPACT_RESERVE_TOKENS = 16384;
+const DEFAULT_COMPACT_RESERVE_TOKENS = MEKANN_GOAL_DEFAULTS.compactReserveTokens;
 
 // ---------------------------------------------------------------------------
 // GoalRuntime
@@ -50,11 +51,19 @@ export class GoalRuntime {
   continuationSuppressed = false;
   /** Whether budget steering is suppressed for the current turn. */
   private suppress_budget_steering = false;
+  /** Resolves the compaction reserve (tokens) used to gate continuation. */
+  private readonly getCompactReserveTokens: () => number;
 
-  constructor(store: GoalStore, pi: ExtensionAPI, goalEventCallback?: GoalEventCallback) {
+  constructor(
+    store: GoalStore,
+    pi: ExtensionAPI,
+    goalEventCallback?: GoalEventCallback,
+    options?: { getCompactReserveTokens?: () => number },
+  ) {
     this.store = store;
     this.pi = pi;
     this.goalEventCallback = goalEventCallback;
+    this.getCompactReserveTokens = options?.getCompactReserveTokens ?? (() => DEFAULT_COMPACT_RESERVE_TOKENS);
   }
 
   // ─── Accessors ────────────────────────────────────────────────
@@ -258,7 +267,7 @@ export class GoalRuntime {
     // See issue #13 for details.
     const contextUsage = ctx.getContextUsage();
     if (contextUsage?.tokens != null && contextUsage.contextWindow > 0) {
-      if (contextUsage.tokens > contextUsage.contextWindow - COMPACT_RESERVE_TOKENS) {
+      if (contextUsage.tokens > contextUsage.contextWindow - this.getCompactReserveTokens()) {
         // Defer continuation until after compaction completes.
         this.sendContinuationAfterCompaction(ctx, goal);
         return;

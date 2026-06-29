@@ -1,6 +1,7 @@
 import { boolSetting } from "../../settings/simpleSchema.js";
 import type { FeatureSettingsSchema, SettingSchema } from "../../settings/types.js";
 import { DEFAULT_OBJECTIVE_LENGTH, HARD_MAX_OBJECTIVE_LENGTH } from "./state.js";
+import { MEKANN_GOAL_DEFAULTS } from "../../config.js";
 
 const toolSurfaceValues = ["slash", "active", "always"] as const;
 
@@ -34,6 +35,22 @@ const maxObjectiveLengthSetting: SettingSchema<number> = {
 	},
 };
 
+const compactReserveTokensSetting: SettingSchema<number> = {
+	key: "compactReserveTokens",
+	type: "number",
+	defaultValue: MEKANN_GOAL_DEFAULTS.compactReserveTokens,
+	description: `goal continuation 前に compaction を発動する context token 予約幅。Pi の CompactionSettings.reserveTokens（既定 ${MEKANN_GOAL_DEFAULTS.compactReserveTokens}）と合わせて調整してください。restart 不要。`,
+	category: "Limits",
+	scopes: ["global", "workspace"],
+	restartRequired: false,
+	validate(value) {
+		const n = Number(value);
+		if (!Number.isFinite(n) || !Number.isInteger(n)) return ["整数である必要があります"];
+		if (n < 0 || n > 1_000_000) return ["0〜1000000 の範囲で指定してください"];
+		return [];
+	},
+};
+
 export const goalSettingsSchema: FeatureSettingsSchema = {
 	feature: "goal",
 	title: "Goal",
@@ -41,5 +58,6 @@ export const goalSettingsSchema: FeatureSettingsSchema = {
 		boolSetting("enabled", "General", true, "goal instructions、/goal command、goal tools を有効にします。false の場合、LLM-visible surface を登録しません。", true),
 		toolSurfaceSetting,
 		maxObjectiveLengthSetting,
+		compactReserveTokensSetting,
 	],
 };

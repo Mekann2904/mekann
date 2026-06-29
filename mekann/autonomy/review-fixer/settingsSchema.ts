@@ -13,7 +13,7 @@ export const reviewFixerSettingsSchema: FeatureSettingsSchema = {
   feature: "review-fixer",
   title: "Review Fixer",
   settings: [
-    boolSetting("enabled", "General", true, "Review fixer tool を有効にします。thermo-nuclear-code-quality-review に基づく同期 review + edit を child Pi で行います。"),
+    boolSetting("enabled", "General", true, "Review fixer tool を有効にします。thermo-nuclear-code-quality-review に基づく同期 review + edit を child Pi で行います。", true),
     {
       key: "maxFixRetries",
       type: "number",

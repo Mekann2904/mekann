@@ -148,6 +148,21 @@ export function resolveMaxRunsPerPlan(): number {
 	return MEKANN_AUTORESEARCH_RUNS_DEFAULTS.maxRunsPerPlan;
 }
 
+/**
+ * Goal feature defaults.
+ *
+ * `compactReserveTokens` is the context-token reserve that triggers
+ * compaction before a goal continuation is sent. It mirrors Pi's default
+ * `CompactionSettings.reserveTokens` (16384); keeping it here (and exposed as
+ * `goal.compactReserveTokens` in mekann.json) lets users re-align the goal
+ * continuation threshold if they change Pi's compaction reserve (issue #167 /
+ * IC-211). Previously this was a hard-coded `const` in goal/runtime.ts that
+ * silently drifted from the user's Pi setting.
+ */
+export const MEKANN_GOAL_DEFAULTS = {
+	compactReserveTokens: 16384,
+} as const;
+
 export const MEKANN_CODEX_DEFAULTS = {
 	baseUrl: "https://chatgpt.com/backend-api",
 	modelCacheTtlMs: 5 * 60 * 1000,

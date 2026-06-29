@@ -5,6 +5,7 @@ import type { FileFingerprint, PatchProposalResult, PublicSurfaceDelta, Semantic
 import { detectPublicSurfaceFromPatch, extractTouchedPathsFromPatchStrict, isNewFilePatch, normalizePublicSurfaceDeltas, safeRepoRelativePath } from "./fingerprint.js";
 import { keyOfTarget } from "./semantic.js";
 import { isPatchRefUnderDir } from "./pathSafety.js";
+import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
 
 export type PatchProposalUse = "candidate" | "apply";
 
@@ -77,7 +78,7 @@ function evaluatePatchProposal(input: PatchProposalPolicyInput): PatchProposalDe
   }
 
   const patchBytes = input.proposal.patch.bytes ?? Buffer.byteLength(patchText, "utf8");
-  const maxBytes = input.authority?.max_patch_bytes ?? 50_000;
+  const maxBytes = input.authority?.max_patch_bytes ?? MEKANN_SUBAGENT_DEFAULTS.maxPatchBytes;
   if (patchBytes > maxBytes) findings.push({ kind: "patch_too_large", details: { bytes: patchBytes, maxBytes } });
 
   if (input.requireAuthorityEnforced !== false && input.authorityEnforced === false) findings.push({ kind: "authority_not_enforced" });

@@ -5,7 +5,9 @@ import {
 	getCachedCodexModels,
 	invalidateCodexModelsCache,
 	clearCodexModelsCache,
+	normalizeReasoningEffortForModel,
 } from "./models.js";
+import type { CodexModel } from "./types.js";
 import { CodexError } from "./errors.js";
 
 // ---------------------------------------------------------------------------
@@ -88,6 +90,32 @@ describe("fetchCodexModels", () => {
 			fetchCodexModels({ ...defaultOpts, fetchImpl }),
 		).rejects.toThrow(/429/);
 	});
+
+	it("preserves unknown reasoning efforts instead of dropping them (issue #167 / IC-230)", async () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const fetchImpl = mockFetch({
+			status: 200,
+			body: {
+				models: [
+					{
+						slug: "m1",
+						supported_reasoning_efforts: [
+							{ effort: "low" },
+							{ effort: "ultra-new" },
+						],
+					},
+				],
+			},
+		});
+		const models = await fetchCodexModels({ ...defaultOpts, fetchImpl });
+		// Both efforts are kept; the unknown one is NOT silently dropped.
+		expect(models[0]?.supportedReasoningEfforts).toEqual(["low", "ultra-new"]);
+		// A warning is emitted for the unknown effort.
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining("unknown reasoning effort \"ultra-new\""),
+		);
+		warnSpy.mockRestore();
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -110,6 +138,42 @@ describe("selectDefaultModel", () => {
 
 	it("returns undefined for empty array", () => {
 		expect(selectDefaultModel([])).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// normalizeReasoningEffortForModel (issue #167 / IC-229)
+// ---------------------------------------------------------------------------
+
+describe("normalizeReasoningEffortForModel", () => {
+	it("passes through when the model lists no supported efforts", () => {
+		expect(normalizeReasoningEffortForModel("xhigh", undefined)).toBe("xhigh");
+		expect(normalizeReasoningEffortForModel("xhigh", { id: "m" })).toBe("xhigh");
+	});
+
+	it("returns the requested effort when supported", () => {
+		const model: CodexModel = { id: "m", supportedReasoningEfforts: ["low", "xhigh"] };
+		expect(normalizeReasoningEffortForModel("xhigh", model)).toBe("xhigh");
+	});
+
+	it("falls back to \"low\" with a warning when requested effort is unsupported", () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const model: CodexModel = { id: "m", supportedReasoningEfforts: ["low", "medium"] };
+		expect(normalizeReasoningEffortForModel("xhigh", model)).toBe("low");
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining("\"xhigh\" is not supported by model \"m\""),
+		);
+		warnSpy.mockRestore();
+	});
+
+	it("returns undefined with a warning when neither requested nor \"low\" is supported", () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const model: CodexModel = { id: "m", supportedReasoningEfforts: ["medium", "high"] };
+		expect(normalizeReasoningEffortForModel("xhigh", model)).toBeUndefined();
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining("\"low\" is unavailable"),
+		);
+		warnSpy.mockRestore();
 	});
 });
 
