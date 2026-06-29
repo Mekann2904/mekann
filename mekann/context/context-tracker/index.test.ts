@@ -1,6 +1,8 @@
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import http from "node:http";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { observeToolRegistrations } from "../tool-registration-observer.js";
-import { getContextIntelligenceReport, getContextMonitorSnapshot, recordContextMonitorSample } from "./server.js";
+import { ensureContextMonitorServer, getContextIntelligenceReport, getContextMonitorSnapshot, recordContextMonitorSample } from "./server.js";
+import { esc } from "../context-control/views/dashboard.js";
 import { state } from "../context-control/state.js";
 import { buildContextBudgetPlan } from "../context-control/planner.js";
 import { toolSurfaceAnalysis } from "../context-control/analysis.js";
@@ -9,6 +11,7 @@ function resetContextTrackerState(): void {
   state.tools.clear();
   state.toolSchemaTotalBytes = 0;
   state.samples.splice(0);
+  state.decisions.splice(0);
   state.nextId = 1;
 }
 
@@ -225,5 +228,130 @@ describe("context tool registration observation", () => {
       expect.objectContaining({ kind: "retrieve", target: "cacheable-context:overflow-fragments", priority: "medium" }),
       expect.objectContaining({ kind: "retrieve", target: "system-prompt:optional-guidance" }),
     ]));
+  });
+});
+
+describe("dashboard esc()", () => {
+  it("escapes the OWASP five-character set including single quotes", () => {
+    expect(esc("a&b<c>d\"e'f")).toBe("a&amp;b&lt;c&gt;d&quot;e&#39;f");
+  });
+
+  it("neutralises a single-quote attribute-breakout XSS payload", () => {
+    const payload = `'; onerror=alert(1); title='x`;
+    const out = esc(payload);
+    expect(out).not.toContain("'");
+    expect(out).toContain("&#39;");
+    // The payload can no longer break out of a single-quoted attribute.
+    expect(out).toBe(payload.replace(/[&<>'"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]!)));
+  });
+
+  it("preserves the dash placeholder for missing values", () => {
+    expect(esc(null)).toBe("—");
+    expect(esc(undefined)).toBe("—");
+  });
+});
+
+// --- HTTP security --------------------------------------------------
+
+function request(port: number, opts: { method?: string; path?: string; host?: string; origin?: string; body?: string }): Promise<{ status: number; body: string; json?: any }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        method: opts.method ?? "GET",
+        path: opts.path ?? "/",
+        headers: {
+          ...(opts.host !== undefined ? { host: opts.host } : {}),
+          ...(opts.origin !== undefined ? { origin: opts.origin } : {}),
+        },
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(Buffer.from(c)));
+        res.on("end", () => {
+          const body = Buffer.concat(chunks).toString("utf8");
+          let parsed: any;
+          try { parsed = JSON.parse(body); } catch { parsed = undefined; }
+          resolve({ status: res.statusCode ?? 0, body, json: parsed });
+        });
+        res.on("error", reject);
+      },
+    );
+    req.on("error", reject);
+    if (opts.body !== undefined) req.write(opts.body);
+    req.end();
+  });
+}
+
+describe("context-tracker HTTP security", () => {
+  let port: number;
+
+  beforeEach(async () => {
+    resetContextTrackerState();
+    const started = await ensureContextMonitorServer(0);
+    port = started.port;
+  });
+
+  afterEach(async () => {
+    const server = state.server;
+    state.server = undefined;
+    state.port = undefined;
+    resetContextTrackerState();
+    if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it("rejects non-loopback Host headers (DNS-rebinding mitigation)", async () => {
+    const res = await request(port, { path: "/health", host: "evil.example.com" });
+    expect(res.status).toBe(403);
+    expect(res.json).toEqual({ error: "forbidden_host" });
+  });
+
+  it("accepts loopback Host headers", async () => {
+    for (const host of ["127.0.0.1", `localhost:${port}`, `[::1]:${port}`]) {
+      const res = await request(port, { path: "/health", host });
+      expect(res.status).toBe(200);
+      expect(res.json).toEqual({ ok: true });
+    }
+  });
+
+  it("rejects non-GET methods on read-only endpoints", async () => {
+    for (const method of ["POST", "PUT", "DELETE"]) {
+      const res = await request(port, { method, path: "/health" });
+      expect(res.status).toBe(405);
+      expect(res.json).toEqual({ error: "method_not_allowed", method });
+    }
+  });
+
+  it("rejects GET on the POST-only decision endpoint", async () => {
+    const res = await request(port, { method: "GET", path: "/llm/context-decision" });
+    expect(res.status).toBe(405);
+    expect(res.json).toEqual({ error: "method_not_allowed", method: "GET" });
+  });
+
+  it("rejects POST to the decision endpoint without an Origin header", async () => {
+    const res = await request(port, { method: "POST", path: "/llm/context-decision", body: "{}" });
+    expect(res.status).toBe(403);
+    expect(res.json).toEqual({ error: "forbidden_origin" });
+  });
+
+  it("rejects POST to the decision endpoint with a foreign Origin", async () => {
+    const res = await request(port, { method: "POST", path: "/llm/context-decision", origin: "http://evil.example.com", body: "{}" });
+    expect(res.status).toBe(403);
+    expect(res.json).toEqual({ error: "forbidden_origin" });
+  });
+
+  it("accepts same-origin POST to the decision endpoint", async () => {
+    const res = await request(port, { method: "POST", path: "/llm/context-decision", origin: `http://127.0.0.1:${port}`, body: "{}" });
+    expect(res.status).toBe(200);
+    expect(res.json).toEqual({ ok: true });
+  });
+
+  it("returns 413 without leaking internal detail for oversized bodies", async () => {
+    const big = "x".repeat(65 * 1024 + 1);
+    const res = await request(port, { method: "POST", path: "/llm/context-decision", origin: `http://127.0.0.1:${port}`, body: big });
+    expect(res.status).toBe(413);
+    expect(res.json).toEqual({ error: "payload_too_large" });
+    expect(res.body).not.toContain("request body exceeds");
   });
 });
