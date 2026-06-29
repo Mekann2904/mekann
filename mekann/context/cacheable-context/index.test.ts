@@ -4,7 +4,7 @@ import * as os from "node:os";
 import path from "node:path";
 import cacheableContextExtension from "./index.js";
 import { clearPromptProvidersForTests, collectPromptFragments } from "../../core/prompt-core/index.js";
-import { readManifest } from "./builder.js";
+import { buildCacheableContext, readManifest, type CacheableContextConfig } from "./builder.js";
 import { getWorkspaceMekannSettingsPath, invalidateSettingsCache } from "../../settings/store.js";
 
 async function tempRepo(): Promise<string> {
@@ -77,5 +77,99 @@ describe("cacheable-context prompt surface", () => {
     expect(fragments[0].content).not.toContain("Repository agent rules from AGENTS.md");
     expect(fragments[0].content).not.toContain("A working-memory event store");
     expect(fragments[0].content).toContain(".mekann/cacheable-context/manifest.json");
+  });
+});
+
+function baseCfg(overrides: Partial<CacheableContextConfig> = {}): CacheableContextConfig {
+  return {
+    contextMode: "distilled",
+    includeAgents: true,
+    includeDomainDocs: true,
+    includeAdrIndex: true,
+    includeCodeStructure: false,
+    maxPrefixChars: 32000,
+    maxContextTerms: 100,
+    maxContextTermBytes: 1000,
+    maxAdrEntries: 80,
+    ...overrides,
+  };
+}
+
+describe("cacheable-context glossary and prefix robustness (IC-202/205)", () => {
+  it("distilled mode keeps a long Japanese definition and its _Avoid: line intact when under budget", async () => {
+    const cwd = await tempRepo();
+    // ~612 bytes, under the default 1000-byte per-term budget.
+    const longDef = "これはプロジェクトの用語定義です。".repeat(12);
+    await fsp.writeFile(
+      path.join(cwd, "CONTEXT.md"),
+      `# Context\n\n## Language\n\n**日本語用語**:\n${longDef}\n_Avoid_: 英語名, 別の呼び方\n`,
+      "utf8",
+    );
+
+    await buildCacheableContext(cwd, baseCfg({ contextMode: "distilled" }));
+    const manifest = await readManifest(cwd);
+    const context = manifest?.fragments.find((f) => f.id === "030-context")?.content ?? "";
+
+    expect(context).toContain("日本語用語");
+    expect(context).toContain(longDef);
+    expect(context).toContain("Avoid: 英語名, 別の呼び方");
+    expect(context).not.toContain("[...]");
+  });
+
+  it("distilled mode truncates an over-budget definition byte-safely with [...] while keeping _Avoid:", async () => {
+    const cwd = await tempRepo();
+    // ~1530 bytes, over the default 1000-byte per-term budget.
+    const longDef = "これはプロジェクトの用語定義です。".repeat(30);
+    await fsp.writeFile(
+      path.join(cwd, "CONTEXT.md"),
+      `# Context\n\n## Language\n\n**長い用語**:\n${longDef}\n_Avoid_: 短縮名\n`,
+      "utf8",
+    );
+
+    await buildCacheableContext(cwd, baseCfg({ contextMode: "distilled" }));
+    const manifest = await readManifest(cwd);
+    const context = manifest?.fragments.find((f) => f.id === "030-context")?.content ?? "";
+
+    expect(context).toContain("長い用語");
+    expect(context).toContain("[...]");
+    // The forbidden-synonym line survives even though the definition was truncated.
+    expect(context).toContain("Avoid: 短縮名");
+    // Byte-safe cut: no stray replacement character from a mid-character split.
+    expect(context).not.toContain("\uFFFD");
+    const bodyMatch = context.match(/- 長い用語: ([\s\S]+?) \[\.\.\./);
+    expect(bodyMatch).toBeTruthy();
+    expect(Buffer.byteLength(bodyMatch![1], "utf8")).toBeLessThanOrEqual(1000);
+  });
+
+  it("prefix generation truncates the overflowing fragment in place instead of abandoning small remaining budget", async () => {
+    const cwd = await tempRepo();
+    const big = "Project context detail line that is fairly long. ".repeat(200);
+    await fsp.writeFile(path.join(cwd, "CONTEXT.md"), `# Context\n\n${big}\n`, "utf8");
+
+    // Only the policy fragment (~460 chars) precedes the large context fragment.
+    // With maxPrefixChars just above the policy size, the context fragment
+    // overflows with <200 chars remaining — exactly where the old code broke and
+    // abandoned the remaining space.
+    await buildCacheableContext(
+      cwd,
+      baseCfg({
+        contextMode: "full",
+        includeAgents: false,
+        includeDomainDocs: false,
+        includeAdrIndex: false,
+        maxPrefixChars: 600,
+      }),
+    );
+    const prefix = await fsp.readFile(path.join(cwd, ".mekann", "cacheable-context", "prefix.md"), "utf8");
+
+    // The overflowing fragment is truncated in place with a marker so the
+    // remaining budget is used; both fragments contribute content.
+    expect(prefix).toContain("[Fragment truncated by maxPrefixChars]");
+    expect(prefix).toContain("Mekann repository context policy");
+    expect(prefix).toContain("Project context detail line");
+    expect(prefix).not.toContain("\uFFFD");
+    // Policy (~460) + join + truncated context tail => well above policy alone,
+    // proving the remaining budget was filled rather than abandoned.
+    expect(prefix.length).toBeGreaterThan(540);
   });
 });
