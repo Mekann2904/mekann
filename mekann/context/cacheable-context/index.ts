@@ -21,6 +21,14 @@ function cfg(): CacheableContextConfig {
   };
 }
 
+/**
+ * Maximum number of distinct cwds whose last-tracked prefix hash we remember.
+ * Bounds module-level memory in long-running processes that handle many cwds
+ * (autopilot issue worktrees, subagents, …). FIFO eviction drops the oldest.
+ * See issue #165 (IC-204).
+ */
+const MAX_TRACKED_CWDS = 256;
+
 const lastTrackedPrefixByCwd = new Map<string, string>();
 
 function trackCacheableContext(cwd: string, manifest: Manifest, currentCfg: CacheableContextConfig): void {
@@ -28,6 +36,11 @@ function trackCacheableContext(cwd: string, manifest: Manifest, currentCfg: Cach
   const key = `${manifest.prefixHash}:${manifest.configHash}`;
   if (lastTrackedPrefixByCwd.get(cwd) === key) return;
   lastTrackedPrefixByCwd.set(cwd, key);
+  while (lastTrackedPrefixByCwd.size > MAX_TRACKED_CWDS) {
+    const oldest = lastTrackedPrefixByCwd.keys().next().value;
+    if (oldest === undefined) break;
+    lastTrackedPrefixByCwd.delete(oldest);
+  }
   void recordContextObservation({
     cwd,
     phase: "cacheable_context",
