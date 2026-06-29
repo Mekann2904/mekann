@@ -93,36 +93,79 @@ export async function getIssueLabels(remote: string, issueNumber: number): Promi
 	return normalizeIssue(issue).labels;
 }
 
+/**
+ * Whether a `gh` CLI failure looks like a transient OAuth-authentication error.
+ *
+ * `gh` stores its OAuth token in the OS keychain and refreshes it on expiry. The
+ * refresh token rotates, so when several `gh` processes fire concurrently (as
+ * the autopilot snapshot does — one `gh api` per candidate) a sibling process
+ * completing a refresh mid-flight invalidates this process's token, surfacing as
+ * `gh: Bad credentials (HTTP 401)`. The race self-heals within a couple of
+ * seconds once some process finishes the refresh, so it is safe — and necessary
+ * — to retry rather than fail the whole snapshot. Non-auth failures (404, 403
+ * rate-limit, ENOENT, network) are left to the caller's safe-side handling.
+ */
+export function isTransientGhAuthError(error: unknown): boolean {
+	// `gh`/`execFile` always reject with an `Error`, but accept any thrown
+	// value defensively: a string, an Error, or an object carrying `.message`.
+	const message =
+		error != null && typeof error === "object" && typeof (error as { message?: unknown }).message === "string"
+			? (error as { message: string }).message
+			: String(error ?? "");
+	return /\b401\b|Bad credentials|unauthori[sz]ed/i.test(message);
+}
+
+/** Max retries (after the first attempt) when `gh` hits a transient auth error. */
+const TRANSIENT_AUTH_MAX_RETRIES = 2;
+/** Base delay (ms) between transient-auth retries; grows per attempt. */
+const TRANSIENT_AUTH_BASE_DELAY_MS = 1500;
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function getIssueDependencyStatus(remote: string, issueNumber: number): Promise<IssueDependencyStatus> {
 	const { execFile } = await import("node:child_process");
 	const { promisify } = await import("node:util");
 	const execFileAsync = promisify(execFile);
 
-	try {
-		const { stdout } = await execFileAsync("gh", [
-			"api",
-			`/repos/${remote}/issues/${issueNumber}/dependencies/blocked_by`,
-		], { timeout: 10000 });
+	const args = ["api", `/repos/${remote}/issues/${issueNumber}/dependencies/blocked_by`];
 
-		const dependencies = JSON.parse(stdout);
-		const blockedBy: IssueDependency[] = (Array.isArray(dependencies) ? dependencies : []).map((issue: any) => ({
-			number: issue.number,
-			title: issue.title ?? "",
-			state: normalizeIssueState(issue.state),
-			url: issue.html_url ?? issue.url,
-		})).filter((issue) => Number.isInteger(issue.number));
+	let lastError: unknown;
+	for (let attempt = 0; attempt <= TRANSIENT_AUTH_MAX_RETRIES; attempt++) {
+		try {
+			const { stdout } = await execFileAsync("gh", args, { timeout: 10000 });
 
-		return {
-			blockedBy,
-			openBlockers: blockedBy.filter((issue) => issue.state === "open" || issue.state === "unknown"),
-		};
-	} catch (err) {
-		return {
-			blockedBy: [],
-			openBlockers: [],
-			error: `Failed to read issue dependencies: ${(err as Error).message}`,
-		};
+			const dependencies = JSON.parse(stdout);
+			const blockedBy: IssueDependency[] = (Array.isArray(dependencies) ? dependencies : []).map((issue: any) => ({
+				number: issue.number,
+				title: issue.title ?? "",
+				state: normalizeIssueState(issue.state),
+				url: issue.html_url ?? issue.url,
+			})).filter((issue) => Number.isInteger(issue.number));
+
+			return {
+				blockedBy,
+				openBlockers: blockedBy.filter((issue) => issue.state === "open" || issue.state === "unknown"),
+			};
+		} catch (err) {
+			lastError = err;
+			// Absorb the OAuth-refresh race with a bounded retry instead of failing
+			// the snapshot; see isTransientGhAuthError. Other errors break out so
+			// the safe-side error result below still applies.
+			if (isTransientGhAuthError(err) && attempt < TRANSIENT_AUTH_MAX_RETRIES) {
+				await sleep(TRANSIENT_AUTH_BASE_DELAY_MS * (attempt + 1));
+				continue;
+			}
+			break;
+		}
 	}
+
+	return {
+		blockedBy: [],
+		openBlockers: [],
+		error: `Failed to read issue dependencies: ${(lastError as Error)?.message ?? String(lastError)}`,
+	};
 }
 
 export async function addDependencyStatus(remote: string, issue: GitHubIssue): Promise<GitHubIssue & IssueDependencyStatus> {
