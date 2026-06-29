@@ -17,6 +17,7 @@ function cfg(): CacheableContextConfig {
     includeCodeStructure: c.includeCodeStructure === true,
     maxPrefixChars: Number(c.maxPrefixChars ?? 32000) || 32000,
     maxContextTerms: Number(c.maxContextTerms ?? 100) || 100,
+    maxContextTermBytes: Number(c.maxContextTermBytes ?? 1000) || 1000,
     maxAdrEntries: Number(c.maxAdrEntries ?? 80) || 80,
   };
 }

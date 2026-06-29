@@ -42,6 +42,7 @@ export const cacheableContextSettingsSchema: FeatureSettingsSchema = {
     bool("includeCodeStructure", "Content", false, "軽量 code structure fragment を含めます。初期MVPでは既定で無効です。"),
     num("maxPrefixChars", "Limits", 32000, 1000, 100000, "生成 prefix の最大文字数。超過時は後続 fragment を省略します。"),
     num("maxContextTerms", "Limits", 100, 1, 1000, "distilled CONTEXT.md に含める最大 term 数。"),
+    num("maxContextTermBytes", "Limits", 1000, 60, 8000, "distilled CONTEXT.md の各用語定義の最大バイト数(UTF-8)。超過時は byte-safe で切り詰め [...] マーカを付与します。CJK でも文字境界で安全に切り、後続の _Avoid: 行は保持されます。"),
     num("maxAdrEntries", "Limits", 80, 1, 1000, "ADR index に含める最大 ADR 数。"),
   ],
 };
