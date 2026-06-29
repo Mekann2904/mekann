@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { emptySettings, getGlobalMekannSettingsPath, getWorkspaceMekannSettingsPath, invalidateSettingsCache, loadSettings, saveSettingsChecked, setFeatureValue } from "./store.js";
+import { emptySettings, getGlobalMekannSettingsPath, getWorkspaceMekannSettingsPath, invalidateSettingsCache, loadSettings, loadSettingsReadonly, saveSettingsChecked, setFeatureValue } from "./store.js";
 import { featureConfig, featureValue } from "./featureConfig.js";
 import { featureRawConfig } from "./enabled.js";
 
@@ -146,7 +146,7 @@ describe("settings cache disk-read efficiency", () => {
     }
   });
 
-  it("featureConfig no longer calls loadSettings twice for the compatibility fallback (4 -> 2)", async () => {
+  it("featureConfig reads each settings file once via the read-only accessor (2 loads, not 4)", async () => {
     const store = await import("./store.js");
     const home = mkdtempSync(join(tmpdir(), "mekann-dedup-home-"));
     const cwd = mkdtempSync(join(tmpdir(), "mekann-dedup-cwd-"));
@@ -157,15 +157,76 @@ describe("settings cache disk-read efficiency", () => {
     writeFileSync(globalPath, JSON.stringify(emptySettings(), null, 2) + "\n", "utf8");
     writeFileSync(workspacePath, JSON.stringify(emptySettings(), null, 2) + "\n", "utf8");
     try {
-      // On a cold cache a single featureConfig() previously invoked loadSettings
-      // 4 times (resolveEffectiveFeatureConfig read global+workspace, then the
-      // compatibility fallback read them again). After dedup it is exactly 2.
-      const spy = vi.spyOn(store, "loadSettings");
+      // featureConfig resolves the global + workspace settings exactly once
+      // each (loadBoth) and reuses them for both schema resolution and the
+      // schema-less compatibility fallback. Previously this was 4 disk reads;
+      // the dedup keeps it at 2. featureConfig is a verified read-only hot path
+      // so it routes through loadSettingsReadonly (issue #168 / IC-169).
+      const spy = vi.spyOn(store, "loadSettingsReadonly");
       featureConfig("output-gate", cwd, home);
       expect(spy.mock.calls.length).toBe(2);
     } finally {
       rmSync(home, { recursive: true, force: true });
       rmSync(cwd, { recursive: true, force: true });
     }
+  });
+});
+
+describe("settings store read-only accessor (issue #168 / IC-169)", () => {
+  // loadSettingsReadonly serves verified non-mutating hot paths. It returns the
+  // shared canonical cache entry with zero cloning, so cache hits are a Map
+  // lookup instead of a recursive JSON clone. Mutating callers keep using the
+  // cloning loadSettings.
+  afterEach(() => invalidateSettingsCache());
+
+  it("returns the same canonical reference across reads (no clone)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mekann-readonly-ref-"));
+    try {
+      const path = join(dir, "mekann.json");
+      const settings = setFeatureValue(emptySettings(), "output-gate", "maxInlineBytes", 42);
+      writeFileSync(path, JSON.stringify(settings, null, 2) + "\n", "utf8");
+
+      const a = loadSettingsReadonly(path);
+      const b = loadSettingsReadonly(path);
+      // Same shared object (and nested settings) — no per-read allocation.
+      expect(a).toBe(b);
+      expect(a.settings).toBe(b.settings);
+      expect(a.settings.features["output-gate"]?.maxInlineBytes).toBe(42);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("stays independent from the cloning loadSettings (mutation safety preserved)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mekann-readonly-clone-"));
+    try {
+      const path = join(dir, "mekann.json");
+      const settings = setFeatureValue(emptySettings(), "output-gate", "maxInlineBytes", 42);
+      writeFileSync(path, JSON.stringify(settings, null, 2) + "\n", "utf8");
+
+      const readonly = loadSettingsReadonly(path);
+      const mutating = loadSettings(path);
+
+      // The mutating accessor hands back an independent clone; the read-only
+      // accessor hands back the canonical object.
+      expect(mutating).not.toBe(readonly);
+      expect(mutating.settings).not.toBe(readonly.settings);
+      // Poison the clone only; the canonical object must be unaffected.
+      (mutating.settings.features["output-gate"] as Record<string, unknown>).poisoned = true;
+      const again = loadSettingsReadonly(path);
+      expect(again.settings.features["output-gate"]).not.toHaveProperty("poisoned");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("reflects saveSettingsChecked updates without a manual invalidation", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mekann-readonly-save-"));
+    try {
+      const path = join(dir, "mekann.json");
+      const loaded = loadSettings(path);
+      saveSettingsChecked(path, setFeatureValue(emptySettings(), "sandbox", "bashMode", "ask"), loaded.hash);
+
+      const readonly = loadSettingsReadonly(path);
+      expect(readonly.settings.features.sandbox?.bashMode).toBe("ask");
+      // Read-only reads after the save keep returning the refreshed canonical value.
+      expect(loadSettingsReadonly(path).settings).toBe(readonly.settings);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });

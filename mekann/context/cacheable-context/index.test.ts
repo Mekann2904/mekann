@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import path from "node:path";
@@ -77,6 +77,25 @@ describe("cacheable-context prompt surface", () => {
     expect(fragments[0].content).not.toContain("Repository agent rules from AGENTS.md");
     expect(fragments[0].content).not.toContain("A working-memory event store");
     expect(fragments[0].content).toContain(".mekann/cacheable-context/manifest.json");
+  });
+
+  it("hashes sources at most once per cwd across repeated getFragments calls (issue #168 / IC-203)", async () => {
+    const cwd = await tempRepo();
+    const pi = { on() {}, registerCommand() {} } as any;
+    cacheableContextExtension(pi);
+
+    // ensureBuilt calls collectSourceHashes (reads every source file + sha256)
+    // to decide freshness. Repeating it on every prompt-provider request added
+    // jitter to the hot prompt path. The per-cwd guard must run it once for the
+    // first getFragments and skip it on subsequent ones.
+    const builder = await import("./builder.js");
+    const spy = vi.spyOn(builder, "collectSourceHashes");
+
+    await collectPromptFragments({ cwd });
+    await collectPromptFragments({ cwd });
+    await collectPromptFragments({ cwd });
+
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 });
 
