@@ -30,6 +30,22 @@ import type { QueuedSpawnDelegation, SpawnDelegationAdapters } from "./subagentL
 const MAILBOX_CONTENT_MAX_CHARS = 2_000;
 const SDK_BASE_TOOL_NAMES = ["read", "grep", "find", "ls", "bash", "edit", "write"] as const;
 
+/**
+ * Compute a short IPC socket path for an external child Pi. macOS limits
+ * `sun_path` to ~104 bytes; `pi-subagents/<agentId>.sock` under a long TMPDIR
+ * (e.g. `/var/folders/.../T/...`) approaches that limit and `listen` fails
+ * with `ENAMETOOLONG` (issue #152). Logs stay under the human-readable logDir
+ * (no length limit), while the socket lives in a short dedicated dir keyed by
+ * a collision-resistant hash of agentId so the total path stays well under
+ * the limit regardless of agentId or TMPDIR length. The path is opaque and
+ * shared only between this hub and the child it launches.
+ */
+export function buildExternalSocketPath(agentId: string): string {
+  const dir = path.join(os.tmpdir(), "pi-sub");
+  const shortId = crypto.createHash("sha1").update(agentId).digest("hex").slice(0, 16);
+  return path.join(dir, `${shortId}.sock`);
+}
+
 export interface SubagentSpawnerDeps {
   adapters: SpawnDelegationAdapters;
   registry: AgentRegistry;
@@ -282,7 +298,7 @@ export class SubagentSpawner {
     adapters.externalPiSlots.add(agentId);
 
     const logDir = adapters.logDir ?? path.join(os.tmpdir(), "pi-subagents");
-    const socketPath = path.join(logDir, `${agentId}.sock`);
+    const socketPath = buildExternalSocketPath(agentId);
     const logPath = path.join(logDir, `${agentId}.kitty-pi.log`);
     const displayKind = adapters.displayMode === "kitty-split" ? "kitty-split" as const : "kitty-pi" as const;
     const display: AgentDisplayRef = { kind: displayKind, status: "opening", agentId, title: `pi subagent ${canonicalPath}`, cwd: ctx.cwd, socketPath, logPath };

@@ -435,7 +435,14 @@ export interface SubagentAuthority {
 }
 
 export type SemanticTargetKind = "symbol" | "type" | "api_route" | "graphql_field" | "db_table" | "db_column" | "config_key" | "feature" | "event_payload" | "cli_command" | "file_format" | "test_contract" | "file";
-export interface SemanticTarget { kind: SemanticTargetKind; name: string; }
+/**
+ * A semantic touchpoint declared by a patch proposal. `module` / `filePath`
+ * are optional disambiguators: two symbols that share `kind:name` but live in
+ * different modules/files are distinct targets and must not be treated as a
+ * conflict (issue #152 / IC-158, IC-161). When absent, the key degrades to
+ * `kind:name` for backward compatibility.
+ */
+export interface SemanticTarget { kind: SemanticTargetKind; name: string; module?: string; filePath?: string; }
 export interface SemanticReadWriteSet { reads: SemanticTarget[]; writes: SemanticTarget[]; }
 export type Compatibility = "backward_compatible" | "breaking" | "unknown";
 export type SemanticEffect =
