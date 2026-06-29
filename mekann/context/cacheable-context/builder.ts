@@ -28,6 +28,27 @@ function stableJson(value: unknown): string {
 }
 function trimLines(text: string): string { return text.split(/\r?\n/).map((l) => l.trimEnd()).join("\n").trim() + "\n"; }
 
+/**
+ * Reads an ADR status from multiple template conventions (issue #162, IC-206).
+ *
+ * Supports `Status:`/`State:`/`Accepted:`/`Decided:` headers (MADR/Nygard/etc.),
+ * including the `* Status:` / `- Status:` bulleted MADR form. The first key that
+ * yields a non-empty value wins, in the order most likely to carry the status.
+ */
+const ADR_STATUS_PATTERNS: readonly RegExp[] = [
+  /^(?:[-*]\s+)?Status\s*:\s*(.+)$/m,
+  /^(?:[-*]\s+)?State\s*:\s*(.+)$/m,
+  /^(?:[-*]\s+)?Accepted\s*:\s*(.+)$/m,
+  /^(?:[-*]\s+)?Decided\s*:\s*(.+)$/m,
+];
+export function readAdrStatus(text: string): string | undefined {
+  for (const re of ADR_STATUS_PATTERNS) {
+    const m = text.match(re);
+    if (m?.[1]?.trim()) return m[1].trim();
+  }
+  return undefined;
+}
+
 function fragment(id: string, source: string, content: string, stability: Fragment["stability"] = "stable"): Fragment {
   const normalized = trimLines(content);
   return { id, source, content: normalized, hash: sha256(normalized), chars: normalized.length, stability };
@@ -47,7 +68,16 @@ Do not scan vendor/oss unless the user explicitly asks about vendored external p
 }
 
 function summarizeAgents(text: string): string {
-  const lines = text.split(/\r?\n/).filter((l) => /^###\s+|^[-*]\s+|^Issues and PRDs|^This repo uses|^.*See `/.test(l.trim()));
+  // Keep structural markdown (any heading depth + list items) so a Japanese
+  // AGENTS.md that uses `#`/`##` headings or list markers is not reduced to the
+  // slice(0,1200) fallback. Language-agnostic (issue #162, IC-201).
+  const lines = text.split(/\r?\n/).filter((l) => {
+    const t = l.trim();
+    return (
+      /^(?:#{1,6}\s+|[-*+]\s+|\d+\.\s+)/.test(t) ||
+      /^Issues and PRDs|^This repo uses|^.*See `/.test(t)
+    );
+  });
   const body = lines.length ? lines.join("\n") : text.slice(0, 1200);
   return `## Repository agent rules from AGENTS.md\n\n${body}`;
 }
@@ -124,7 +154,7 @@ async function adrFragment(cwd: string, maxEntries: number): Promise<Fragment | 
     const p = path.join(dir, name);
     const text = await fs.readFile(p, "utf8");
     const title = text.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? name.replace(/\.md$/, "");
-    const status = text.match(/^Status:\s*(.+)$/m)?.[1]?.trim();
+    const status = readAdrStatus(text);
     const id = name.match(/^(\d+)/)?.[1] ? `ADR-${name.match(/^(\d+)/)![1]}` : name.replace(/\.md$/, "");
     entries.push(`- ${id}${status ? ` ${status}` : ""}: ${title}`);
   }

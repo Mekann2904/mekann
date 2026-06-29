@@ -48,6 +48,23 @@ function formatSummaryLine(summary: ResolutionSummary): string {
 }
 
 /**
+ * Structured (JSON) serialization of an orchestration summary for localized or
+ * structured display, as an alternative to the compact {@link formatSummaryLine}
+ * (issue #162, IC-248). Keys are stable identifiers, not localized prose, so a
+ * renderer can map them to any locale; values are the issue-number arrays.
+ */
+export function formatSummaryJson(summary: ResolutionSummary): string {
+	return JSON.stringify({
+		done: summary.done,
+		active: summary.active,
+		blocked: summary.blocked,
+		notReady: summary.notReady,
+		startable: summary.startable,
+		total: summary.total,
+	});
+}
+
+/**
  * Start orchestration for a parent PRD/epic issue.
  *
  * Resolves the first startable child (by ascending issue number) and launches
