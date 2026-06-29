@@ -140,7 +140,7 @@ function buildOrchestrationLauncher(parent: number, repoRoot: string): LaunchWor
 }
 
 /**
- * Orchestrate a parent issue's sub-issues when it has any; otherwise do nothing
+ * Orchestrate a parent issue's sub-issues when sub-issues exist; otherwise do nothing
  * and let the caller open the issue directly.
  *
  * Single source of truth for the parent/leaf decision, shared by `/issue
