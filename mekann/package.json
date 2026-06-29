@@ -5,7 +5,7 @@
   "main": "index.ts",
   "type": "module",
   "scripts": {
-    "test": "vitest run mekann.test.ts settings/settings.test.ts utils/**/*.test.ts context/cacheable-context/index.test.ts context/command-normalization/index.test.ts"
+    "test": "vitest run mekann.test.ts settings/settings.test.ts utils/**/*.test.ts context/cacheable-context/index.test.ts context/command-normalization/index.test.ts context/tool-registration-observer.test.ts"
   },
   "keywords": [
     "pi-extension"
