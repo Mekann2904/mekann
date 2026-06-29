@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { continueOrchestration, startOrchestration, type LaunchWorkPi } from "./lifecycle.js";
 import type { OrchestrationDeps, ChildBrief } from "./collector.js";
+import type { GatePolicy } from "./gate.js";
 
-function fakeDeps(map: Record<number, Partial<{ openBlockers: number[]; merged: boolean; prExists: boolean; hasWorktree: boolean; hasActiveWorkPi: boolean; readyForAgent: boolean }>>): OrchestrationDeps {
+function fakeDeps(map: Record<number, Partial<{ openBlockers: number[]; merged: boolean; prExists: boolean; prClosed: boolean; prDraft: boolean; hasWorktree: boolean; hasActiveWorkPi: boolean; readyForAgent: boolean }>>): OrchestrationDeps {
 	return {
 		async listSubIssues(): Promise<ChildBrief[]> {
 			return Object.keys(map).map((n) => ({ number: Number(n), title: `#${n}`, url: `https://example/${n}` }));
@@ -14,7 +15,12 @@ function fakeDeps(map: Record<number, Partial<{ openBlockers: number[]; merged: 
 			return map[n]?.readyForAgent === false ? [] : ["ready-for-agent"];
 		},
 		async getPrMergeStatus(n: number) {
-			return { merged: map[n]?.merged ?? false, exists: map[n]?.prExists ?? false };
+			return {
+				merged: map[n]?.merged ?? false,
+				closed: map[n]?.prClosed ?? false,
+				isDraft: map[n]?.prDraft ?? false,
+				exists: map[n]?.prExists ?? map[n]?.merged ?? false,
+			};
 		},
 		hasWorktree(n: number) {
 			return map[n]?.hasWorktree ?? false;
@@ -137,6 +143,94 @@ describe("continueOrchestration (approval gate)", () => {
 		const deps = fakeDeps({ 67: {} });
 		const outcome = await continueOrchestration(66, 999, "/repo", deps, launch);
 		expect(outcome.kind).toBe("not-merged");
+		expect(launch).not.toHaveBeenCalled();
+	});
+});
+
+describe("continueOrchestration (default gate stays backward-compatible)", () => {
+	it("defaults to the 'merged' policy when none is passed", async () => {
+		const launch = vi.fn(noLaunch);
+		const deps = fakeDeps({ 67: { merged: false, prExists: true }, 68: {} });
+		const outcome = await continueOrchestration(66, 67, "/repo", deps, launch);
+		expect(outcome).toMatchObject({ kind: "not-merged", policy: "merged", stopReason: "not-merged" });
+		expect(launch).not.toHaveBeenCalled();
+	});
+
+	it("reports the policy + stopReason on a not-merged stop and includes the resume hint", async () => {
+		const launch = vi.fn(noLaunch);
+		const deps = fakeDeps({ 67: { merged: false, prExists: true }, 68: {} });
+		const outcome = await continueOrchestration(66, 67, "/repo", deps, launch, "merged");
+		if (outcome.kind !== "not-merged") throw new Error("expected not-merged");
+		expect(outcome.policy).toBe("merged");
+		expect(outcome.stopReason).toBe("not-merged");
+		expect(outcome.message).toContain("/issue 66");
+	});
+});
+
+describe("continueOrchestration (policy 'on-closed-skip')", () => {
+	const policy: GatePolicy = "on-closed-skip";
+
+	it("stops closed (with reason) when the PR is closed without merge", async () => {
+		const launch = vi.fn(noLaunch);
+		const deps = fakeDeps({ 67: { merged: false, prExists: true, prClosed: true }, 68: {} });
+		const outcome = await continueOrchestration(66, 67, "/repo", deps, launch, policy);
+		expect(outcome).toMatchObject({ kind: "not-merged", policy, stopReason: "closed" });
+		expect(outcome.message).toContain("closed");
+		expect(launch).not.toHaveBeenCalled();
+	});
+
+	it("waits (open) instead of stopping when the PR is still open", async () => {
+		const launch = vi.fn(noLaunch);
+		const deps = fakeDeps({ 67: { merged: false, prExists: true }, 68: {} });
+		const outcome = await continueOrchestration(66, 67, "/repo", deps, launch, policy);
+		expect(outcome).toMatchObject({ kind: "waiting", policy, waitReason: "open" });
+		expect(launch).not.toHaveBeenCalled();
+	});
+
+	it("waits (open) for a draft PR rather than stopping", async () => {
+		const launch = vi.fn(noLaunch);
+		const deps = fakeDeps({ 67: { merged: false, prExists: true, prDraft: true }, 68: {} });
+		const outcome = await continueOrchestration(66, 67, "/repo", deps, launch, policy);
+		expect(outcome).toMatchObject({ kind: "waiting", waitReason: "open" });
+		expect(launch).not.toHaveBeenCalled();
+	});
+
+	it("continues to the next child when the PR is merged", async () => {
+		const launch = vi.fn(noLaunch);
+		const deps = fakeDeps({ 67: { merged: true }, 68: {} });
+		const outcome = await continueOrchestration(66, 67, "/repo", deps, launch, policy);
+		expect(outcome.kind).toBe("started");
+		if (outcome.kind !== "started") return;
+		expect(outcome.childNumber).toBe(68);
+	});
+});
+
+describe("continueOrchestration (policy 'on-draft-wait')", () => {
+	const policy: GatePolicy = "on-draft-wait";
+
+	it("continues to the next child for an open, non-draft PR (lenient approval)", async () => {
+		const launch = vi.fn(noLaunch);
+		const deps = fakeDeps({ 67: { merged: false, prExists: true }, 68: {} });
+		const outcome = await continueOrchestration(66, 67, "/repo", deps, launch, policy);
+		expect(outcome.kind).toBe("started");
+		if (outcome.kind !== "started") return;
+		expect(outcome.childNumber).toBe(68);
+		expect(outcome.message).toContain("on-draft-wait");
+	});
+
+	it("waits (draft) when the PR is still a draft", async () => {
+		const launch = vi.fn(noLaunch);
+		const deps = fakeDeps({ 67: { merged: false, prExists: true, prDraft: true }, 68: {} });
+		const outcome = await continueOrchestration(66, 67, "/repo", deps, launch, policy);
+		expect(outcome).toMatchObject({ kind: "waiting", policy, waitReason: "draft" });
+		expect(launch).not.toHaveBeenCalled();
+	});
+
+	it("stops closed when the PR is closed without merge", async () => {
+		const launch = vi.fn(noLaunch);
+		const deps = fakeDeps({ 67: { merged: false, prExists: true, prClosed: true }, 68: {} });
+		const outcome = await continueOrchestration(66, 67, "/repo", deps, launch, policy);
+		expect(outcome).toMatchObject({ kind: "not-merged", policy, stopReason: "closed" });
 		expect(launch).not.toHaveBeenCalled();
 	});
 });
