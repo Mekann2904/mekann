@@ -100,7 +100,7 @@ export function writeFileAtomicSync(fp: string, data: string | Buffer, options?:
 	fs.mkdirSync(path.dirname(fp), { recursive: true });
 	const tmp = path.join(path.dirname(fp), `.${path.basename(fp)}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`);
 	try {
-		fs.writeFileSync(tmp, data, options as any);
+		fs.writeFileSync(tmp, data, options);
 		fs.renameSync(tmp, fp);
 	} catch (e) {
 		try { fs.rmSync(tmp, { force: true }); } catch {}
