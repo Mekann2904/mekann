@@ -49,6 +49,13 @@ export interface BulkLaunchDeps {
 	 * issue carries `ready-for-human` (ADR-0025 slice E).
 	 */
 	launchPiSession: (issueNumber: number, worktreePath: string, labels: string[]) => Promise<void>;
+	/**
+	 * Whether a Work Pi pane for the issue is already open. When true, the
+	 * issue is recorded as `alreadyOpen` and NOT relaunched — the canonical
+	 * double-launch prevention that the orchestration state model encodes as
+	 * the `active` verdict (see orchestration/autopilot/state.ts).
+	 */
+	hasActiveWorkPi: (issueNumber: number) => Promise<boolean>;
 }
 
 /** An issue that could not be opened, with the error that stopped it. */
@@ -62,6 +69,8 @@ export interface SkippedIssue {
 export interface BulkLaunchResult {
 	/** Issue numbers that completed worktree resolution and Pi launch. */
 	launched: number[];
+	/** Issue numbers whose Work Pi was already open; not relaunched (double-launch prevention). */
+	alreadyOpen: number[];
 	/** Issue numbers that failed to open, each with its failure reason. */
 	skipped: SkippedIssue[];
 }
@@ -82,10 +91,18 @@ export async function bulkLaunchIssues(
 	deps: BulkLaunchDeps,
 ): Promise<BulkLaunchResult> {
 	const launched: number[] = [];
+	const alreadyOpen: number[] = [];
 	const skipped: SkippedIssue[] = [];
 
 	for (const issue of issues) {
 		try {
+			// Double-launch prevention: a Work Pi already open for this issue means
+			// the launch goal is already met. Record and skip WITHOUT relaunching
+			// (mirrors the `active` verdict in the orchestration state model).
+			if (await deps.hasActiveWorkPi(issue.issueNumber)) {
+				alreadyOpen.push(issue.issueNumber);
+				continue;
+			}
 			const worktreePath =
 				issue.hasWorktree && issue.worktreePath
 					? issue.worktreePath
@@ -100,5 +117,5 @@ export async function bulkLaunchIssues(
 		}
 	}
 
-	return { launched, skipped };
+	return { launched, alreadyOpen, skipped };
 }
