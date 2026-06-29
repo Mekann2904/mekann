@@ -1,13 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as fsp from "node:fs/promises";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { artifactsDir, buildPreview, countLines, createArtifactId, ensureOutputGateDirs, gateTextForLlm, manifestPath, nextArtifactId, outputGateDir, readManifest, resolveArtifactPath, retainArtifacts, safeUtf8Slice, sanitizeManifestSource, saveArtifact, sha256, shouldGateOutput } from "./store.js";
+import { registerOutputGateBypassTools, resetOutputGateBypassTools } from "./bypass.js";
 
 async function tmp(): Promise<string> { return fsp.mkdtemp(path.join(os.tmpdir(), "og-store-")); }
 
 describe("output-gate store", () => {
+	beforeEach(() => resetOutputGateBypassTools());
+
 	it("creates artifact ids with expected format", () => {
 		expect(createArtifactId(123456789, 35)).toMatch(/^og_[a-z0-9]+_[a-z0-9]+$/);
 	});
@@ -150,6 +153,46 @@ describe("output-gate store", () => {
 		expect(fs.existsSync(abs!)).toBe(true);
 	});
 
+	it("resolveArtifactPath returns undefined for an absolute path outside cwd (IC-275)", async () => {
+		const cwd = await tmp();
+		const entry = { id: "og_abs_1", toolName: "bash", createdAt: 1, cwd, bytes: 1, lines: 1, sha256: "abc", path: "/etc/passwd", redacted: true };
+		expect(resolveArtifactPath(cwd, entry as any)).toBeUndefined();
+	});
+
+	it("resolveArtifactPath refuses a symlinked file that escapes artifacts/ (IC-275)", async () => {
+		const cwd = await tmp();
+		await ensureOutputGateDirs(cwd);
+		// A file outside the workspace that must never be touched.
+		const outside = path.join(cwd, "outside-secret.txt");
+		await fsp.writeFile(outside, "top-secret");
+		// A symlink inside artifacts/ pointing at it.
+		const linkPath = path.join(artifactsDir(cwd), "og_symlink_1.txt");
+		await fsp.symlink(outside, linkPath);
+		const entry = { id: "og_symlink_1", toolName: "bash", createdAt: 1, cwd, bytes: 1, lines: 1, sha256: "abc", path: path.relative(cwd, linkPath), redacted: true };
+		// Must NOT resolve: realpath escapes artifacts/.
+		expect(resolveArtifactPath(cwd, entry as any)).toBeUndefined();
+		// And the external file must be untouched.
+		expect(fs.existsSync(outside)).toBe(true);
+		expect(fs.readFileSync(outside, "utf8")).toBe("top-secret");
+	});
+
+	it("resolveArtifactPath refuses a symlinked directory that escapes artifacts/ (IC-275)", async () => {
+		const cwd = await tmp();
+		// An external directory with a file the manifest will try to address.
+		const outsideDir = path.join(cwd, "outside-dir");
+		await fsp.mkdir(outsideDir);
+		const outsideFile = path.join(outsideDir, "evil.txt");
+		await fsp.writeFile(outsideFile, "protected");
+		await ensureOutputGateDirs(cwd);
+		// A symlinked subdirectory under artifacts/ pointing outside.
+		const linkDir = path.join(artifactsDir(cwd), "linkdir");
+		await fsp.symlink(outsideDir, linkDir);
+		const entry = { id: "og_linkdir_1", toolName: "bash", createdAt: 1, cwd, bytes: 1, lines: 1, sha256: "abc", path: path.relative(cwd, path.join(linkDir, "evil.txt")), redacted: true };
+		// Lexically under artifacts/ but realpath escapes — must refuse.
+		expect(resolveArtifactPath(cwd, entry as any)).toBeUndefined();
+		expect(fs.existsSync(outsideFile)).toBe(true);
+	});
+
 	it("saveArtifact rejects invalid artifact id", async () => {
 		const cwd = await tmp();
 		await expect(saveArtifact({ cwd, toolName: "bash", text: "x", idGenerator: () => "invalid-id" })).rejects.toThrow("Invalid output-gate artifact id");
@@ -213,15 +256,34 @@ describe("output-gate store", () => {
 	});
 
 	it("shouldGateOutput returns false when toolName is search_tool_outputs", () => {
-		expect(shouldGateOutput("x".repeat(100), { toolName: "search_tool_outputs" })).toBe(false);
+		// IC-273: bypass is now opt-in metadata declared at the tool's
+		// registration site. With a large payload (> maxInlineBytes) the size
+		// check alone would gate, so only the registry exemption keeps it inline.
+		registerOutputGateBypassTools(["search_tool_outputs"]);
+		expect(shouldGateOutput("x".repeat(100), { toolName: "search_tool_outputs", maxInlineBytes: 10 })).toBe(false);
 	});
 
 	it("shouldGateOutput returns false when toolName is search_context_events", () => {
-		expect(shouldGateOutput("x".repeat(100), { toolName: "search_context_events" })).toBe(false);
+		registerOutputGateBypassTools(["search_context_events"]);
+		expect(shouldGateOutput("x".repeat(100), { toolName: "search_context_events", maxInlineBytes: 10 })).toBe(false);
 	});
 
 	it("shouldGateOutput returns false when toolName is summarize_session_context", () => {
-		expect(shouldGateOutput("x".repeat(100), { toolName: "summarize_session_context" })).toBe(false);
+		registerOutputGateBypassTools(["summarize_session_context"]);
+		expect(shouldGateOutput("x".repeat(100), { toolName: "summarize_session_context", maxInlineBytes: 10 })).toBe(false);
+	});
+
+	it("shouldGateOutput gates large output from tools that did not register bypass (no silent name exemption)", () => {
+		// A brand-new search/aggregation tool that forgot to declare bypass is
+		// still gated — the cycle is only avoided by explicit opt-in.
+		expect(shouldGateOutput("x".repeat(100), { toolName: "new_search_tool", maxInlineBytes: 10 })).toBe(true);
+	});
+
+	it("shouldGateOutput gates large output even when it starts with the [output-gate] prefix (IC-274)", () => {
+		// Self-reference detection is metadata-based, not a text prefix: a
+		// legitimately large output that happens to start with "[output-gate]"
+		// is still gated.
+		expect(shouldGateOutput("[output-gate] Large bash output stored." + "x".repeat(100), { maxInlineBytes: 10 })).toBe(true);
 	});
 
 	it("shouldGateOutput returns true for text exceeding default threshold", () => {
@@ -322,6 +384,32 @@ describe("output-gate retainArtifacts", () => {
 		const result = await retainArtifacts(cwd, 10);
 		expect(result.removed).toBe(0);
 		expect(result.kept).toEqual([]);
+	});
+
+	it("never unlinks a manifest entry whose realpath escapes artifacts/ (IC-275)", async () => {
+		const cwd = await tmp();
+		await ensureOutputGateDirs(cwd);
+		// A file outside the workspace that must survive retention.
+		const outside = path.join(cwd, "outside-secret.txt");
+		await fsp.writeFile(outside, "top-secret");
+		// Tampered manifest: a symlink inside artifacts/ pointing outside, plus a
+		// legitimate newest entry so retainArtifacts tries to drop the symlink one.
+		const linkPath = path.join(artifactsDir(cwd), "og_mal_1.txt");
+		await fsp.symlink(outside, linkPath);
+		const malicious = { schemaVersion: "output-gate/v1", id: "og_mal_1", toolName: "bash", createdAt: 1000, cwd, bytes: 1, lines: 1, sha256: "abc", path: path.relative(cwd, linkPath), redacted: true };
+		await saveArtifact({ cwd, toolName: "bash", text: "new", idGenerator: () => "og_mal_2", now: () => 2000 });
+		// Inject the malicious row ahead of the legit one in the manifest.
+		const manifestFile = manifestPath(cwd);
+		const legit = (await readManifest(cwd))[0];
+		await fsp.writeFile(manifestFile, `${JSON.stringify(malicious)}\n${JSON.stringify(legit)}\n`, "utf8");
+
+		const result = await retainArtifacts(cwd, 1);
+
+		expect(result.kept).toHaveLength(1);
+		expect(result.kept[0].id).toBe("og_mal_2");
+		// The external file the symlink pointed at must still exist untouched.
+		expect(fs.existsSync(outside)).toBe(true);
+		expect(fs.readFileSync(outside, "utf8")).toBe("top-secret");
 	});
 });
 

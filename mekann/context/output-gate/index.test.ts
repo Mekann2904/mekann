@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as fsp from "node:fs/promises";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -6,10 +6,13 @@ import * as path from "node:path";
 import outputGateExtension, { buildStoredOutputStub, extractTextContent, shouldGateOutput } from "./index.js";
 import { searchToolOutputs } from "./search.js";
 import { saveArtifact, gateTextForLlm, readManifest } from "./store.js";
+import { resetOutputGateBypassTools } from "./bypass.js";
 
 async function tmp(): Promise<string> { return fsp.mkdtemp(path.join(os.tmpdir(), "og-index-")); }
 
 describe("output-gate extension helpers", () => {
+	beforeEach(() => resetOutputGateBypassTools());
+
 	it("shouldGateOutput false for small text", () => {
 		expect(shouldGateOutput("small", { maxInlineBytes: 10 })).toBe(false);
 	});
@@ -18,8 +21,11 @@ describe("output-gate extension helpers", () => {
 		expect(shouldGateOutput("x".repeat(11), { maxInlineBytes: 10 })).toBe(true);
 	});
 
-	it("existing output-gate stub is not gated again", () => {
-		expect(shouldGateOutput("[output-gate] Large bash output stored." + "x".repeat(100), { maxInlineBytes: 10 })).toBe(false);
+	it("gates large output even when it starts with the [output-gate] prefix (IC-274)", () => {
+		// Self-reference detection is metadata-based (details.outputGate.stored,
+		// see OutputGateController), not a fragile text prefix: a legitimately
+		// large output that happens to start with "[output-gate]" is still gated.
+		expect(shouldGateOutput("[output-gate] Large bash output stored." + "x".repeat(100), { maxInlineBytes: 10 })).toBe(true);
 	});
 
 	it("extracts text content from Pi tool content", () => {
