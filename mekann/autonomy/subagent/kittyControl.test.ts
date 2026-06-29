@@ -86,7 +86,14 @@ describe("KittyController", () => {
         const promptPath = path.join(tmp, "subagent.prompt.md");
         expect(readFileSync(promptPath, "utf8")).toBe("initial prompt body");
         expect(result.windowId).toContain(`@${promptPath}`);
-        expect(result.windowId).toContain("PI_SUBAGENT_INITIAL_MESSAGE=''");
+        // The prompt is delivered as the @file argv token above; the
+        // PI_SUBAGENT_INITIAL_MESSAGE marker is passed EMPTY via kitty --env (not
+        // a shell-quoted export) so the child extension does not re-send it.
+        expect(result.windowId).toContain("--env");
+        expect(result.windowId).toContain("PI_SUBAGENT_INITIAL_MESSAGE=");
+        // Must not be the old shell-quoted form (`=''`), which would mean the
+        // value was inlined into a shell string.
+        expect(result.windowId).not.toMatch(/PI_SUBAGENT_INITIAL_MESSAGE='/);
       } finally {
         try { rmSync(tmp, { recursive: true }); } catch {}
       }

@@ -151,6 +151,14 @@ export interface CodexModelsCacheEntry {
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
+/**
+ * Maximum number of cache entries retained across provider/baseUrl/account
+ * combinations. FIFO eviction drops the oldest so provider/account churn in
+ * long-running sessions cannot grow the cache unboundedly.
+ * See issue #165 (IC-226).
+ */
+const MAX_CACHE_ENTRIES = 64;
+
 const cache = new Map<string, CodexModelsCacheEntry>();
 const inflight = new Map<string, Promise<CodexModelsCacheEntry>>();
 
@@ -198,6 +206,9 @@ export async function getCachedCodexModels(
 			modelIds: new Set(models.map((m) => m.id)),
 		};
 		cache.set(key, entry);
+		// Sweep TTL-expired entries and trim to MAX_CACHE_ENTRIES *after* the
+		// insert so the cache size is always bounded (issue #165, IC-226).
+		sweepCodexModelsCache(Date.now());
 		return entry;
 	})();
 
@@ -228,4 +239,27 @@ export function invalidateCodexModelsCache(opts: {
 export function clearCodexModelsCache(): void {
 	cache.clear();
 	inflight.clear();
+}
+
+/**
+ * Remove TTL-expired entries and trim the cache to `MAX_CACHE_ENTRIES`.
+ * Invoked after every fresh fetch+insert (the cache-miss path), so expired
+ * entries are reclaimed even when their key is never re-requested again
+ * (e.g. after a provider/account switch). Exported for tests.
+ * See issue #165 (IC-226).
+ */
+export function sweepCodexModelsCache(now: number = Date.now()): void {
+	for (const [k, entry] of cache) {
+		if (entry.expiresAt <= now) cache.delete(k);
+	}
+	while (cache.size > MAX_CACHE_ENTRIES) {
+		const oldest = cache.keys().next().value;
+		if (oldest === undefined) break;
+		cache.delete(oldest);
+	}
+}
+
+/** Current cache size (test/diagnostic introspection). See issue #165. */
+export function codexModelsCacheSize(): number {
+	return cache.size;
 }

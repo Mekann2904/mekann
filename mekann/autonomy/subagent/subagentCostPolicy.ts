@@ -61,7 +61,9 @@ export function evaluateSpawnCost(input: SpawnCostPolicyInput): SpawnCostAdvice 
   if (input.queuedSubagents > 0) reasons.push(`${input.queuedSubagents} queued subagent(s) already exist`);
 
   const text = `${p.task_name}\n${p.message}`.toLowerCase();
-  if (/\b(simple|quick|small|one[- ]file|single[- ]file|just|only)\b/.test(text)) reasons.push("task wording looks small; direct tools may be cheaper");
+  // 小タスク表現。ASCII 系は `\b`、CJK 系は substring のみ (issue #147)。
+  // 「簡単/小さい/少し」等の日本語が `\b(...)` だけだと抜けてコスト助言が出ない。
+  if (/\b(?:simple|quick|small|one[- ]file|single[- ]file|just|only)\b|簡単|小さ|少し|ちょっと|単純|軽い|すぐ/.test(text)) reasons.push("task wording looks small; direct tools may be cheaper");
   if ((p.cost_intent ?? "standard") === "expensive" && roiCategory !== "fault_localization" && roiCategory !== "candidate_generation") reasons.push("cost_intent=expensive without a high-ROI roi_category");
 
   if (reasons.length === 0) return { level: "none", reasons: [] };

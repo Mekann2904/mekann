@@ -4,7 +4,10 @@ import type { StoredContextObservation } from "./observation.js";
 export interface ToolSchemaRecord {
   name: string;
   schemaBytes: number;
+  /** First registration time for this tool name (ms epoch). */
   registeredAt: number;
+  /** Last time the schema bytes were (re)recorded for this tool name (ms epoch). */
+  lastUpdatedAt: number;
 }
 
 export type ContextMonitorSample = StoredContextObservation;

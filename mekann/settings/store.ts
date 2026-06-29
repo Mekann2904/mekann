@@ -130,6 +130,29 @@ export function invalidateSettingsCache(path?: string): void {
   }
 }
 
+/**
+ * Internal: the canonical cached entry for `path`, reading disk on a miss.
+ *
+ * The cache stores ONE canonical `LoadedSettings` per resolved path. Mutating
+ * callers (`loadSettings`) get a defensive clone of it via `snapshotLoaded`;
+ * verified read-only hot paths (`loadSettingsReadonly`) get the canonical
+ * object directly with zero allocation. Storing a single canonical object —
+ * instead of a per-read clone — is what makes the read-only accessor safe to
+ * share (issue #168 / IC-169).
+ */
+function canonicalLoaded(cacheKey: string, path: string): LoadedSettings {
+  const cached = settingsCache.get(cacheKey);
+  if (cached) return cached;
+  const loaded = readSettingsFromDisk(path);
+  settingsCache.set(cacheKey, loaded);
+  // Watch existing files so external edits (editor / CLI / other Pi) invalidate
+  // the cache (issue #150). Non-existent files can't be watched; once created
+  // (typically via `saveSettingsChecked`, which refreshes the cache itself) the
+  // next read starts a watcher.
+  if (loaded.exists) startSettingsWatcher(cacheKey, path);
+  return loaded;
+}
+
 export function normalizeSettings(raw: unknown): MekannSettingsFile {
   if (!raw || typeof raw !== "object") return emptySettings();
   const r = raw as Record<string, unknown>;
@@ -152,23 +175,35 @@ function readSettingsFromDisk(path: string): LoadedSettings {
 }
 
 /**
- * Load settings for `path`, memoizing the (synchronous) disk read for the
- * process. Repeated calls with the same path return a snapshot of the cached
- * result without touching disk. Writes via `saveSettingsChecked` refresh the
- * cache; call `invalidateSettingsCache` to force a fresh disk read.
+ * Load settings for `path`, returning an independent snapshot each call so
+ * caller mutations never poison the shared cache. The disk read is memoized for
+ * the process: repeated calls with the same path return a fresh clone of the
+ * cached result without touching disk. Writes via `saveSettingsChecked` refresh
+ * the cache; call `invalidateSettingsCache` to force a fresh disk read.
+ *
+ * Use this for any code path that may MUTATE the returned settings (aliasing and
+ * reassigning a feature entry, in-place edits before `saveSettingsChecked`).
  */
 export function loadSettings(path: string): LoadedSettings {
-  const cacheKey = resolvePath(path);
-  const cached = settingsCache.get(cacheKey);
-  if (cached) return snapshotLoaded(cached);
-  const loaded = readSettingsFromDisk(path);
-  settingsCache.set(cacheKey, snapshotLoaded(loaded));
-  // Watch existing files so external edits (editor / CLI / other Pi) invalidate
-  // the cache. Non-existent files can't be watched; once created (typically via
-  // `saveSettingsChecked`, which refreshes the cache itself) the next read
-  // starts a watcher.
-  if (loaded.exists) startSettingsWatcher(cacheKey, path);
-  return snapshotLoaded(loaded);
+  return snapshotLoaded(canonicalLoaded(resolvePath(path), path));
+}
+
+/**
+ * Read-only accessor for verified non-mutating hot paths (feature gating,
+ * sandbox bash mode/allowlist, output-gate thresholds). Returns the shared
+ * canonical cache entry directly — NO recursive clone — so repeated reads cost
+ * a Map lookup and zero allocation instead of a deep JSON clone on every call
+ * (issue #168 / IC-169).
+ *
+ * Contract: callers MUST NOT mutate the returned `settings` or any nested
+ * object/array. The returned object is shared across every reader for this
+ * path; mutating it would poison the cache for the whole process. Any caller
+ * that cannot guarantee read-only access must use the cloning `loadSettings`
+ * instead. `saveSettingsChecked`/`invalidateSettingsCache` remain the only
+ * supported ways to refresh the value.
+ */
+export function loadSettingsReadonly(path: string): LoadedSettings {
+  return canonicalLoaded(resolvePath(path), path);
 }
 
 /**
