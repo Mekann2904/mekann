@@ -24,7 +24,7 @@ export function registerReviewFixerPromptProvider(): void {
           "- blocked issue では review_fixer を実行しないこと。",
           "",
           "review_fixer は child Pi を起動するため、実行中は他の操作ができません。",
-          "review_fixer が完了したら、結果確認として返された structured result の findings / changes / verification を確認してから次の step に進んでください。",
+          "review_fixer が完了したら、結果確認として返された review-fixer.result.v1 の status / findings / changes / verification を確認してから次の step に進んでください。busy・launch budget exceeded・malformed result・failed の場合は自動再実行せず、人間に確認してください。",
         ].join("\n"),
       }];
     },

@@ -35,6 +35,8 @@ export interface MekannSubagentConfigDefaults {
 	allowNestedSubagents: boolean;
 	/** Max times a single agent result can be re-run via `agent_results action=retry` (issue #83 / C-014). */
 	maxResultRetries: number;
+	/** Max mailbox items/events retained before eviction (issue #152 / IC). */
+	mailboxRetention: number;
 	defaultReasoningEffort: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 	toolSurface: "delegate-only" | "async-tools";
 }
@@ -57,6 +59,7 @@ export const MEKANN_SUBAGENT_DEFAULTS: MekannSubagentConfigDefaults = {
 	externalPiSlots: 1,
 	allowNestedSubagents: false,
 	maxResultRetries: 3,
+	mailboxRetention: 10_000,
 	defaultReasoningEffort: "low",
 	toolSurface: "delegate-only",
 };
@@ -80,6 +83,15 @@ export const HARD_MAX_SUBAGENTS = 4;
  * to keep the schema ceiling and the enforced ceiling from drifting apart.
  */
 export const HARD_MAX_RESULT_RETRIES = 10;
+
+/**
+ * Hard ceiling on the number of pending results a single `apply` call will
+ * process (issue #152 / IC-159). Previously `max_results ?? Infinity` applied
+ * every pending result in one batch, which on a large backlog could mutate a
+ * huge number of files in one trust-transition. The effective batch size is
+ * clamped to `[1, HARD_MAX_APPLY_BATCH]` regardless of the requested value.
+ */
+export const HARD_MAX_APPLY_BATCH = 500;
 
 export const MEKANN_SANDBOX_DEFAULTS = {
 	llmOutputMaxBytes: 50 * 1024,

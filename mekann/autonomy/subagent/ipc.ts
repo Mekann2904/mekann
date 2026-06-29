@@ -28,11 +28,19 @@ const MAX_JSONL_LINE_BYTES = 1024 * 1024;
 
 function attachParser<T>(sock: net.Socket, emit: (m: T) => void, onParseError: (message: string) => void): void {
   let buf = "";
+  // Once we have given up on a socket (oversize line / parse error / close),
+  // ignore any further data events so a destroy that races with an in-flight
+  // "data" chunk cannot trigger additional emit/onParseError calls. This makes
+  // the post-destroy handler behavior well-defined (issue #152 / IC-082).
+  let closed = false;
   sock.setEncoding("utf8");
+  sock.on("close", () => { closed = true; });
   sock.on("data", (chunk) => {
+    if (closed) return;
     buf += chunk;
     if (Buffer.byteLength(buf, "utf8") > MAX_JSONL_LINE_BYTES) {
       onParseError(`IPC line exceeds ${MAX_JSONL_LINE_BYTES} bytes`);
+      closed = true;
       sock.destroy();
       return;
     }
@@ -44,6 +52,7 @@ function attachParser<T>(sock: net.Socket, emit: (m: T) => void, onParseError: (
       if (!line) continue;
       if (Buffer.byteLength(line, "utf8") > MAX_JSONL_LINE_BYTES) {
         onParseError(`IPC line exceeds ${MAX_JSONL_LINE_BYTES} bytes`);
+        closed = true;
         sock.destroy();
         return;
       }

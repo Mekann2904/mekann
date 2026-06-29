@@ -115,7 +115,7 @@ Mekann をフル機能で使う推奨構成は次のとおりです。
 | GitHub CLI | `gh >= 2.94.0` |
 | GitHub auth | `gh auth login`、または `GITHUB_TOKEN` / `GH_TOKEN` |
 
-Kitty は `/issue`、subagent / review-fixer の split、dashboard の画像表示で使われます。非 Kitty 環境でも一部機能は fallback しますが、Mekann の terminal integration は Kitty を推奨端末として最適化されています。macOS sandbox integration を使う場合は macOS が必要です。
+Kitty は `/issue`、subagent / review-fixer の split、dashboard の画像表示で使われます。現在 terminal integration（external split / external UI）は **Kitty 専用** です。iTerm2 / WezTerm 向けのアダプタは未実装のため、非 Kitty 環境ではこれらの split・UI 機能は利用できません（Terminal action の pass-through で代替する機能を除く）。macOS sandbox integration を使う場合は macOS が必要です。
 
 Node.js `>=22.19.0` が必要です。再現性を重視する場合は `.nvmrc` に合わせて `nvm use` を実行してください。依存関係をインストールしたうえで、Pi の extension 設定に本リポジトリの `mekann` ディレクトリを追加します。
 
