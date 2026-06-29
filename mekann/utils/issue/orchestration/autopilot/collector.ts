@@ -8,6 +8,7 @@
  * Candidate set = open issues labeled `ready-for-agent` (ADR-0025 slice A/C).
  */
 
+import { mapWithConcurrency } from "../../../concurrency.js";
 import type { AutopilotChildState } from "./state.js";
 import type { ChildBrief } from "../collector.js";
 
@@ -33,6 +34,15 @@ export interface AutopilotDeps {
 }
 
 /**
+ * Max candidates fanned out to gh/kitty at once. Each candidate issues a
+ * `gh api blocked_by` + `gh pr list`; a plain Promise.all fires them all at
+ * once, widening the OAuth-refresh race window (see
+ * {@link getIssueDependencyStatus}) and sitting closer to GitHub's secondary
+ * rate limit. Mirrors cli.ts (DEPENDENCY_FETCH_CONCURRENCY).
+ */
+const SNAPSHOT_FETCH_CONCURRENCY = 10;
+
+/**
  * Collect an integrated snapshot of every `ready-for-agent` candidate.
  *
  * Cross-source lookups per candidate run concurrently; order is preserved from
@@ -40,8 +50,10 @@ export interface AutopilotDeps {
  */
 export async function collectAutopilotSnapshot(deps: AutopilotDeps): Promise<AutopilotChildState[]> {
 	const children = await deps.listReadyForAgentIssues();
-	const states = await Promise.all(
-		children.map(async (child): Promise<AutopilotChildState> => {
+	return mapWithConcurrency(
+		children,
+		SNAPSHOT_FETCH_CONCURRENCY,
+		async (child): Promise<AutopilotChildState> => {
 			const [dependency, prExists, hasWorktree, hasActiveWorkPi] = await Promise.all([
 				deps.getDependencyStatus(child.number),
 				deps.getPrExists(child.number),
@@ -58,7 +70,6 @@ export async function collectAutopilotSnapshot(deps: AutopilotDeps): Promise<Aut
 				hasWorktree,
 				hasActiveWorkPi,
 			};
-		}),
+		},
 	);
-	return states;
 }

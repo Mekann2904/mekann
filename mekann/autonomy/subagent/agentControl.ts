@@ -38,6 +38,12 @@ import { SubagentHub } from "./ipc.js";
 import type { AgentDisplayRef, AgentDisplayResult, ResultContract, SubagentAuthority } from "./types.js";
 import type { SubagentResultStore } from "./resultStore.js";
 import { ApplyQueue } from "./applyQueue.js";
+
+/** Structural sink for a pi runtime logger (not exposed on ExtensionAPI). */
+interface LoggerSink {
+  warn?(message: string): void;
+  error?(message: string): void;
+}
 import { SubagentLifecycle } from "./subagentLifecycle.js";
 import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
 import { featureRawConfig } from "../../settings/enabled.js";
@@ -589,7 +595,9 @@ export class AgentControl {
 
   private reportShutdownFailures(failures: Array<{ agentPath: string; error: string }>): void {
     const summary = failures.map((f) => `${f.agentPath}: ${f.error}`).join("; ");
-    const logger = (this.pi as any)?.log ?? (this.pi as any)?.logger;
+    // ExtensionAPI exposes no logger surface, but pi attaches one at runtime.
+    const piLogger = this.pi as unknown as { log?: LoggerSink; logger?: LoggerSink };
+    const logger = piLogger?.log ?? piLogger?.logger;
     const message = `[subagent] shutdown encountered ${failures.length} failure(s): ${summary}`;
     if (typeof logger?.warn === "function") logger.warn(message);
     else if (typeof logger?.error === "function") logger.error(message);
