@@ -37,11 +37,22 @@ cd mekann/safety/modes && npx vitest run --coverage
 
 **Coverage gate**: 85% line coverage
 
-### sandbox (283 tests)
+### sandbox (494 tests)
+
+`tests/macSeatbelt.test.ts`（旧 2212 行）は issue #190 でトピック別に分割済み:
 
 | File | Tests | Description |
 |------|-------|-------------|
-| `tests/macSeatbelt.test.ts` | 156 | SBPL generation, env isolation, policy validation, macOS integration |
+| `tests/sbpl-generation.test.ts` | 33 | buildMacSeatbeltPolicy の SBPL 文字列（許可/拒否、保護パス、network、homebrew） |
+| `tests/sbpl-helpers.test.ts` | 8 | escapeSbplString / pathLiteral / pathSubpath |
+| `tests/sandbox-env.test.ts` | 29 | buildSandboxEnv（PATH 固定、HOME isolation、secret 除外、TMPDIR、LC_ALL、TERM/LANG） |
+| `tests/policy-builders.test.ts` | 6 | parseSandboxMode / modeLabel / ポリシービルダー |
+| `tests/path-safety.test.ts` | 17 | isProtectedPath / assertPathInsideRoot / resolveRealPaths / validateWorkspaceRoot |
+| `tests/policy-validation.test.ts` | 34 | validatePolicy（workspaceRoots/writableRoots 安全性、.git ポインタ解決） |
+| `tests/sandbox-approvals.test.ts` | 8 | shouldRequestApproval / yoloApprovalMessage |
+| `tests/runSandboxedShellMac.test.ts` | 41 | runSandboxedShellMac（空コマンド拒否 + macOS 統合テスト一式） |
+| `tests/truncateForLlm.test.ts` | 9 | truncateForLlm（LLM 向け出力切り詰め） |
+| `tests/package-json.test.ts` | 3 | sandbox パッケージの依存関係構成 |
 | `tests/approvals.test.ts` | 43 | UX approval layer (NOT a security boundary) |
 | `tests/permissions.test.ts` | 43 | Policy builders, parseSandboxMode, modeLabel |
 | `tests/pathPolicy.test.ts` | 21 | Path validation, symlink escape detection |
