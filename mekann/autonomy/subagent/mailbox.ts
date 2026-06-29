@@ -7,7 +7,22 @@
 
 import type { LifecycleEvent, MailboxItem } from "./types.js";
 
-const MAX_RETAINED_RECORDS = 10_000;
+const DEFAULT_MAX_RETAINED_RECORDS = 10_000;
+
+/** Result of a mailbox wait. `timed_out` is authoritative: it is `true` only
+ * when the wait settled because the deadline elapsed, so callers can
+ * distinguish a genuine timeout from an empty-but-successful notification
+ * (issue #152 / IC-029). */
+export interface MailboxWaitResult {
+  events: LifecycleEvent[];
+  mailbox: MailboxItem[];
+  timed_out: boolean;
+}
+
+export interface MailboxOptions {
+  /** Max items/events retained before eviction (issue #152). */
+  maxRetainedRecords?: number;
+}
 
 /** Compact status-change chains: keep only the last status per agent in a window. */
 function compactStatusEvents(events: LifecycleEvent[]): LifecycleEvent[] {
@@ -36,8 +51,15 @@ export class Mailbox {
   private waiters = new Set<{
     agentPath: string;
     afterSeq: number;
-    resolve: (value: { events: LifecycleEvent[]; mailbox: MailboxItem[] }) => void;
+    resolve: (value: MailboxWaitResult) => void;
   }>();
+
+  constructor(private readonly options: MailboxOptions = {}) {}
+
+  private get maxRetainedRecords(): number {
+    const v = this.options.maxRetainedRecords;
+    return typeof v === "number" && v > 0 ? v : DEFAULT_MAX_RETAINED_RECORDS;
+  }
 
   /**
    * Enqueue a mailbox item. Notifies any waiting consumer.
@@ -114,15 +136,16 @@ export class Mailbox {
     agentPath: string,
     afterSeq: number,
     timeoutMs: number,
-  ): Promise<{ events: LifecycleEvent[]; mailbox: MailboxItem[] }> {
+  ): Promise<MailboxWaitResult> {
     return this.waitForUpdateInternal(agentPath, afterSeq, timeoutMs);
   }
 
   /**
    * Wait for new items/events without any timeout. Intended for fully
    * synchronous delegation where the caller must not observe a timeout result.
+   * `timed_out` is therefore always `false`.
    */
-  waitForUpdateIndefinitely(agentPath: string, afterSeq: number): Promise<{ events: LifecycleEvent[]; mailbox: MailboxItem[] }> {
+  waitForUpdateIndefinitely(agentPath: string, afterSeq: number): Promise<MailboxWaitResult> {
     return this.waitForUpdateInternal(agentPath, afterSeq);
   }
 
@@ -130,12 +153,12 @@ export class Mailbox {
     agentPath: string,
     afterSeq: number,
     timeoutMs?: number,
-  ): Promise<{ events: LifecycleEvent[]; mailbox: MailboxItem[] }> {
+  ): Promise<MailboxWaitResult> {
     // Check for immediate results
     const pending = this.pendingFor(agentPath, afterSeq);
     const pendingEvts = this.pendingEventsFor(agentPath, afterSeq);
     if (pending.length > 0 || pendingEvts.length > 0) {
-      return Promise.resolve({ events: pendingEvts, mailbox: pending });
+      return Promise.resolve({ events: pendingEvts, mailbox: pending, timed_out: false });
     }
 
     // Wait for notification
@@ -145,7 +168,7 @@ export class Mailbox {
       const waiter = {
         agentPath,
         afterSeq,
-        resolve: (value: { events: LifecycleEvent[]; mailbox: MailboxItem[] }) => {
+        resolve: (value: MailboxWaitResult) => {
           if (settled) return;
           settled = true;
           if (timer) clearTimeout(timer);
@@ -155,9 +178,12 @@ export class Mailbox {
       };
       if (timeoutMs !== undefined) {
         timer = setTimeout(() => {
+          // Deadline elapsed. This is an authoritative timeout signal even if a
+          // message raced in just now: the caller learns that no timely
+          // notification settled the wait (issue #152 / IC-029).
           const mb = this.pendingFor(agentPath, afterSeq);
           const ev = this.pendingEventsFor(agentPath, afterSeq);
-          waiter.resolve({ events: ev, mailbox: mb });
+          waiter.resolve({ events: ev, mailbox: mb, timed_out: true });
         }, timeoutMs);
       }
       this.waiters.add(waiter);
@@ -202,9 +228,9 @@ export class Mailbox {
     this.items = [];
     this.events = [];
     this.seq = 0;
-    // Reject all waiters with empty results
+    // Resolve all waiters with empty results (not a timeout).
     for (const waiter of this.waiters) {
-      waiter.resolve({ events: [], mailbox: [] });
+      waiter.resolve({ events: [], mailbox: [], timed_out: false });
     }
     this.waiters.clear();
   }
@@ -212,11 +238,12 @@ export class Mailbox {
   // ─── Internal ────────────────────────────────────────────────
 
   private pruneRetainedRecords(): void {
-    if (this.items.length > MAX_RETAINED_RECORDS) {
-      this.items = this.items.slice(-MAX_RETAINED_RECORDS);
+    const cap = this.maxRetainedRecords;
+    if (this.items.length > cap) {
+      this.items = this.items.slice(-cap);
     }
-    if (this.events.length > MAX_RETAINED_RECORDS) {
-      this.events = compactStatusEvents(this.events.slice(-MAX_RETAINED_RECORDS));
+    if (this.events.length > cap) {
+      this.events = compactStatusEvents(this.events.slice(-cap));
     }
   }
 
@@ -226,7 +253,7 @@ export class Mailbox {
       const mb = this.pendingFor(waiter.agentPath, waiter.afterSeq);
       const ev = this.pendingEventsFor(waiter.agentPath, waiter.afterSeq);
       if (mb.length > 0 || ev.length > 0) {
-        waiter.resolve({ events: ev, mailbox: mb });
+        waiter.resolve({ events: ev, mailbox: mb, timed_out: false });
       }
     }
   }

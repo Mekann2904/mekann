@@ -271,4 +271,48 @@ describe("evaluateSemanticConflict", () => {
     const decision = evaluateSemanticConflict(incoming, log);
     expect(decision.action).toBe("require_review");
   });
+
+  // Issue #152 / IC-161: the public-surface match must compare names exactly,
+  // not via substring. `r.includes(delta.name)` previously flagged a read of
+  // `parseFile` when a `parse` surface changed (over-detection).
+  it("does not flag a breaking surface delta whose name is only a substring of a read", () => {
+    const incoming = makePatch({
+      semantic: {
+        reads: [{ kind: "symbol", name: "parseFile" }],
+        writes: [],
+        assumptions: [],
+        effects: [],
+        public_surface_delta: [],
+        risk: { level: "low" },
+      },
+    });
+    const log = [makeLogEntry({
+      writes: [],
+      public_surface_delta: [
+        { surface: "typescript_export", name: "parse", change: "remove", compatibility: "breaking" },
+      ],
+    })];
+    const decision = evaluateSemanticConflict(incoming, log);
+    expect(decision.action).toBe("allow");
+  });
+
+  // Issue #152 / IC-158: same-named symbols in different modules are distinct
+  // targets and must not be treated as a write-write conflict.
+  it("treats same-named writes in different modules as distinct", () => {
+    const incoming = makePatch({
+      semantic: {
+        reads: [],
+        writes: [{ kind: "symbol", name: "parse", module: "b" }],
+        assumptions: [],
+        effects: [],
+        public_surface_delta: [],
+        risk: { level: "low" },
+      },
+    });
+    const log = [makeLogEntry({
+      writes: [{ kind: "symbol", name: "parse", module: "a" }],
+    })];
+    const decision = evaluateSemanticConflict(incoming, log);
+    expect(decision.action).toBe("allow");
+  });
 });

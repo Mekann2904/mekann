@@ -35,7 +35,7 @@ export const issueSettingsSchema: FeatureSettingsSchema = {
 			"autopilot.maxParallel",
 			"Autopilot",
 			2,
-			"`/issue-autopilot` が同時に駆動する Work Pi の上限。並列ワーカープールは別 issue で拡張されるまで、現状は 1（逐次）として動作します。",
+			"`/issue-autopilot` が同時に駆動する Work Pi の上限。並列ワーカープールはこの値まで同時に起動し、Work Pi が PR 作成後に自動終了すると空き枠へ次の候補を起動します。",
 			positiveInt("autopilot.maxParallel は 1 以上の整数である必要があります"),
 		),
 	],
