@@ -562,4 +562,101 @@ describe("/goal command", () => {
       "info",
     );
   });
+
+  // 43. --budget=value (= separated) is accepted (IC-207)
+  it("parses --budget=value form", async () => {
+    await goalCommand.handler("Build feature --budget=100", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Build feature"),
+      "info",
+    );
+    // Verify the budget was actually applied via the budget status subcommand
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("budget", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Current budget: 100"),
+      "info",
+    );
+  });
+
+  // 44. -b <value> short flag is accepted (IC-207)
+  it("parses -b <value> short flag form", async () => {
+    await goalCommand.handler("-b 100 Build feature", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Build feature"),
+      "info",
+    );
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("budget", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Current budget: 100"),
+      "info",
+    );
+  });
+
+  // 45. scientific notation budget value is accepted (IC-207)
+  it("accepts scientific notation budget (1e5)", async () => {
+    await goalCommand.handler("Build feature --budget 1e5", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Build feature"),
+      "info",
+    );
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("budget", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Current budget: 100000"),
+      "info",
+    );
+  });
+
+  // 46. thousands-grouped digits are accepted (IC-207)
+  it("accepts grouped-digit budget (10,000)", async () => {
+    await goalCommand.handler("Build feature --budget 10,000", ctx);
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("budget", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Current budget: 10000"),
+      "info",
+    );
+  });
+
+  // 47. `--` terminator keeps literal flag text in the objective (IC-207)
+  it("preserves literal --budget text after a -- terminator", async () => {
+    await goalCommand.handler("--budget 100 -- discuss the --budget flag", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("discuss the --budget flag"),
+      "info",
+    );
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("budget", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Current budget: 100"),
+      "info",
+    );
+  });
+
+  // 48. -b=value equals short form is accepted (IC-207)
+  it("parses -b=value short equals form", async () => {
+    await goalCommand.handler("-b=250 Build feature", ctx);
+    ctx.ui.notify.mockClear();
+    await goalCommand.handler("budget", ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Current budget: 250"),
+      "info",
+    );
+  });
+
+  // 49. quoted objective text is unquoted (IC-199/207 quote handling)
+  it("strips surrounding quotes from the objective", async () => {
+    await goalCommand.handler('"Build the feature"', ctx);
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Build the feature"),
+      "info",
+    );
+    // The stored objective must not retain quote characters
+    expect(ctx.ui.notify).not.toHaveBeenCalledWith(
+      expect.stringContaining('"Build'),
+      "info",
+    );
+  });
 });

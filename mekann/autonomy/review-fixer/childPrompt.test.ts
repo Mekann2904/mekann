@@ -26,7 +26,7 @@ describe("buildChildPrompt", () => {
     const prompt = buildChildPrompt(makeIssueContext(), mockCwd, options);
     expect(prompt.startsWith("/skill:thermo-nuclear-code-quality-review")).toBe(true);
     expect(prompt).not.toContain("## Review Skill: thermo-nuclear-code-quality-review (MANDATORY)");
-    expect(prompt).not.toContain("review-fixer.result.v1");
+    expect(prompt).toContain("review-fixer.result.v1");
   });
 
   it("asks the child Pi to use the normal skill behavior", () => {
@@ -51,6 +51,13 @@ describe("buildChildPrompt", () => {
     expect(prompt).toContain("Phase 3 は親 Issue Pi が issue_workflow で実行します");
     expect(prompt).toContain("issue_workflow tool を呼び出さないでください");
     expect(prompt).toContain("subagent を起動せず");
+  });
+
+  it("requires structured JSON output for parent-side gate interpretation", () => {
+    const prompt = buildChildPrompt(makeIssueContext(), mockCwd, options);
+    expect(prompt).toContain("JSON オブジェクトだけを返してください");
+    expect(prompt).toContain('"schema":"review-fixer.result.v1"');
+    expect(prompt).toContain('"status":"changed|no_change|failed"');
   });
 
   it("explicitly prohibits review_fixer to prevent recursive invocation", () => {

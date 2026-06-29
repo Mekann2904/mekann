@@ -103,6 +103,28 @@ describe("classifyEventErrorMessage", () => {
 		expect(classifyEventErrorMessage("Our servers are currently overloaded")).toBe("overloaded");
 		expect(classifyEventErrorMessage("slow_down")).toBe("overloaded");
 	});
+
+	it("Japanese-locale patterns (IC-227)", () => {
+		expect(classifyEventErrorMessage("サーバーが過負荷です")).toBe("overloaded");
+		expect(classifyEventErrorMessage("オーバーロード中")).toBe("overloaded");
+		expect(classifyEventErrorMessage("スローダウンしてください")).toBe("overloaded");
+		expect(classifyEventErrorMessage("サービスは利用不可です")).toBe("overloaded");
+
+		expect(classifyEventErrorMessage("レートリミットに達しました")).toBe("rate_limit");
+		expect(classifyEventErrorMessage("リクエストが多すぎます")).toBe("rate_limit");
+		expect(classifyEventErrorMessage("クォータを超過しました")).toBe("rate_limit");
+
+		expect(classifyEventErrorMessage("認証に失敗しました")).toBe("auth");
+		expect(classifyEventErrorMessage("アクセスが拒否されました")).toBe("auth");
+		expect(classifyEventErrorMessage("この操作は許可されません")).toBe("auth");
+
+		expect(classifyEventErrorMessage("リクエストがタイムアウトしました")).toBe("timeout");
+		expect(classifyEventErrorMessage("時間切れです")).toBe("timeout");
+
+		expect(classifyEventErrorMessage("ネットワークエラーが発生しました")).toBe("transport");
+		expect(classifyEventErrorMessage("サーバーに接続できません")).toBe("transport");
+		expect(classifyEventErrorMessage("通信エラー")).toBe("transport");
+	});
 });
 
 describe("isAuthError", () => {

@@ -76,6 +76,31 @@ describe("WorkerPool", () => {
     expect(createCount).toBe(3);
   });
 
+  it("assigns distinct, monotonically increasing taskIds even within the same ms (issue #152)", async () => {
+    const seenTaskIds: number[] = [];
+    const createCapturing = () => {
+      const w = { onMessage: null as ((msg: unknown) => void) | null, onError: null as ((err: Error) => void) | null, terminated: false };
+      return {
+        postMessage(msg: { taskId: number; input: unknown }) {
+          seenTaskIds.push(msg.taskId);
+          setTimeout(() => { if (w.onMessage) w.onMessage({ taskId: msg.taskId, result: `ok-${String(msg.input)}` }); }, 1);
+        },
+        once(event: string, handler: (arg: unknown) => void) {
+          if (event === "message") w.onMessage = handler;
+          if (event === "error") w.onError = handler;
+        },
+        off() {},
+        terminate: vi.fn(async () => { w.terminated = true; }),
+      };
+    };
+    pool = createWorkerPool({ maxSize: 3, idleTimeoutMs: 30000, createWorker: createCapturing });
+    await Promise.all([pool.execute("a"), pool.execute("b"), pool.execute("c"), pool.execute("d")]);
+    expect(seenTaskIds).toHaveLength(4);
+    expect(new Set(seenTaskIds).size).toBe(4); // all unique
+    // strictly increasing in dispatch order
+    expect([...seenTaskIds].sort((a, b) => a - b)).toEqual(seenTaskIds.slice().sort((a, b) => a - b));
+  });
+
   it("terminates idle workers on shutdown", async () => {
     const { mockCreate } = createMockWorker();
     pool = createWorkerPool({ maxSize: 2, idleTimeoutMs: 30000, createWorker: mockCreate });

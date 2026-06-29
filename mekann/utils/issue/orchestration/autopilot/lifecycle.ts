@@ -151,7 +151,24 @@ export async function runAutopilotSupervisor(
 	const launchAttempts = new Map<number, number>();
 
 	while (!hooks.shouldStop()) {
-		const states = await collectAutopilotSnapshot(deps);
+		// The snapshot fans out to gh (issues / blocked_by / prs) and kitty. Any of
+		// those can fail transiently (rate limit, network blip). A single transient
+		// failure must NOT crash the whole supervisor — it sleeps on the bounded
+		// backoff and re-snapshots from GitHub truth next cycle. This is distinct
+		// from a clean "0 candidates" result, which is handled below.
+		let states: AutopilotChildState[];
+		try {
+			states = await collectAutopilotSnapshot(deps);
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			hooks.notify(
+				`Autopilot: snapshot failed (${message}); staying up and re-checking GitHub truth in ${Math.round(interval / 1000)}s.`,
+				"warning",
+			);
+			await hooks.sleep(interval);
+			interval = nextInterval(interval, config.backoffFactor, config.maxIntervalMs);
+			continue;
+		}
 		const decision = decideAutopilotPoolStep(states, maxParallel);
 
 		if (decision.kind === "no-candidates") {
@@ -206,6 +223,13 @@ export async function runAutopilotSupervisor(
 
 			const appeared = await Promise.all(decision.children.map((child) => waitForWorkPi(deps, child.number, hooks, config)));
 			if (hooks.shouldStop()) return { kind: "stopped", reason: "supervisor stopped during launch" };
+			// A pane that appeared is a successful launch: clear its failure counter so
+			// the bounded-relaunch guard below only bounds *consecutive* no-shows for
+			// the same issue (a pane that crashes after a successful start must not
+			// exhaust the budget against a later relaunch).
+			decision.children.forEach((child, index) => {
+				if (appeared[index]) launchAttempts.delete(child.number);
+			});
 			const missing = decision.children.filter((_child, index) => !appeared[index]);
 			if (missing.length > 0) {
 				hooks.notify(`Autopilot: Work Pi pane(s) did not appear for ${missing.map((child) => `#${child.number}`).join(", ")}; re-checking GitHub truth.`, "warning");

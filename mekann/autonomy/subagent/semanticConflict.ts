@@ -1,5 +1,5 @@
 import type { PatchProposalResult, RejectReason, SemanticApplyLogEntry } from "./types.js";
-import { isBreakingOrUnknown, keyOfTarget } from "./semantic.js";
+import { isBreakingOrUnknown, keyOfTarget, nameOfKey } from "./semantic.js";
 
 export type SemanticConflictDecision =
   | { action: "allow" }
@@ -18,7 +18,7 @@ export function evaluateSemanticConflict(incoming: PatchProposalResult, appliedL
       if (incomingWrites.has(key)) return { action: "require_review", reason: `Both proposals write the same semantic target: ${key}` };
     }
     for (const delta of entry.public_surface_delta) {
-      if (isBreakingOrUnknown(delta) && [...incomingReads].some((r) => r.includes(delta.name))) return { action: "require_regeneration", reason: `Incoming proposal depends on changed public surface: ${delta.name}`, invalidated_by: [entry.result_id] };
+      if (isBreakingOrUnknown(delta) && [...incomingReads].some((r) => nameOfKey(r) === delta.name)) return { action: "require_regeneration", reason: `Incoming proposal depends on changed public surface: ${delta.name}`, invalidated_by: [entry.result_id] };
     }
   }
   if (incoming.semantic.risk.level === "high" && !options.allowHighRisk) return { action: "require_review", reason: "High semantic risk requires review." };

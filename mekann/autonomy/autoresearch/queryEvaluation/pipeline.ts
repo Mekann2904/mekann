@@ -17,6 +17,7 @@ import {
   detectWallClock,
   UNKNOWN_MEASUREMENT,
 } from "./measurementRules.js";
+import { directionWord, formatMessage, messageText } from "./messages.js";
 
 // ─── 内部ヘルパー ─────────────────────────────────────────────
 
@@ -26,20 +27,25 @@ function clamp(value: number, min = 0, max = 1): number {
 
 // ── Risk detection ────────────────────────────────────────────
 
+// 秘密情報・本番環境の検出語彙。ASCII 系は `\b` 境界、CJK 系は substring のみ
+// (`\b` は ASCII 境界なので「本番の秘密」のように非 ASCII 同士に挟まれた日本語
+//  単語の境界を検出できず、リスク検出が抜ける — issue #147)。
+const SECRET_TERMS =
+  /\b(?:secret|token|api\s*key|password)\b|秘密|認証情報|シークレット|トークン|パスワード|api\s*キー|秘密鍵/i;
+const LEAK_ACTIONS =
+  /\b(?:upload|post|print|echo|show|dump|reveal|expose)\b|表示|送信|出力|公開|吐き?出|見せ|印刷|書き出|転送/i;  // 吐出(としゅつ)・吐き出(はきだ)し両方を許容
+const PROD_TERMS = /\b(?:production|prod)\b|本番|商用環境?|プロダクション/i;
+const DESTRUCTIVE_ACTIONS =
+  /\b(?:update|delete|write|drop|alter|truncate|erase|clear)\b|変更|削除|書き込|消去|破棄|初期化|落と[すし]/i;
+
 export function detectRiskFlags(query: string): string[] {
   const q = query.toLowerCase();
   const flags = applyTextRules(q, RISK_RULES);
 
-  if (
-    /\b(secret|token|api\s*key|password|秘密|認証情報)\b/.test(q) &&
-    /(表示|送信|upload|post|出力|出力し|print|echo|show|dump)/.test(q)
-  ) {
+  if (SECRET_TERMS.test(q) && LEAK_ACTIONS.test(q)) {
     flags.push("秘密情報の漏洩リスク");
   }
-  if (
-    /\b(production|prod|本番db|本番)\b/.test(q) &&
-    /(変更|削除|書き込|update|delete|write|drop|alter|truncate)/.test(q)
-  ) {
+  if (PROD_TERMS.test(q) && DESTRUCTIVE_ACTIONS.test(q)) {
     flags.push("本番環境への破壊的変更");
   }
 
@@ -390,20 +396,20 @@ export function buildBlockingIssues(
 ): string[] {
   const issues: string[] = [];
 
-  if (!objective) issues.push("実験の目的が不明確です");
-  if (!metricName) issues.push("主指標 (metric) が未定義です");
-  if (metricDirection === "unknown") issues.push("改善方向 (lower/higher) が未指定です");
-  if (!benchmarkCommand) issues.push("ベンチマークコマンドが未指定です");
+  if (!objective) issues.push(messageText("block.empty_objective"));
+  if (!metricName) issues.push(messageText("block.metric_undefined"));
+  if (metricDirection === "unknown") issues.push(messageText("block.direction_unspecified"));
+  if (!benchmarkCommand) issues.push(messageText("block.benchmark_unspecified"));
   if (!metricExtractionReady && metricName) {
-    issues.push("metric の抽出方法 (extraction rule) が未確定です");
+    issues.push(messageText("block.extraction_unspecified"));
   }
   if (checksPolicy === "not_specified" && benchmarkCommand) {
-    issues.push("検証方針 (checks policy) が未指定です");
+    issues.push(messageText("block.checks_unspecified"));
   }
 
   if (decision === "reject") {
     for (const flag of riskFlags) {
-      issues.push(`安全上の問題: ${flag}`);
+      issues.push(formatMessage("block.safety_risk", { flag }));
     }
   }
 
@@ -418,14 +424,10 @@ export function buildWarnings(
 ): string[] {
   const w: string[] = [];
   if (checksPolicy === "not_specified") {
-    w.push(
-      "検証方針 (checks) が未指定です。変更が既存の振る舞いを壊さないか確認するため、checks command または autoresearch.checks.sh の方針を明示することを推奨します。"
-    );
+    w.push(messageText("warn.checks_unspecified"));
   }
   if (scope.length === 0) {
-    w.push(
-      "対象範囲 (scope) が未指定です。改善対象を明確にすると実験の再現性が向上します。"
-    );
+    w.push(messageText("warn.scope_unspecified"));
   }
   return w;
 }
@@ -439,13 +441,13 @@ export function buildAmbiguityFlags(
 ): string[] {
   const flags: string[] = [];
   if (broad) {
-    flags.push("目的が広すぎます。具体的な測定可能な指標に分解する必要があります");
+    flags.push(messageText("ambig.too_broad"));
   }
   if (!metricName && !broad) {
-    flags.push("測定指標が不明です。主指標 (primary metric) を明記してください");
+    flags.push(messageText("ambig.metric_unknown"));
   }
-  if (scope.length === 0) flags.push("対象範囲が不明です");
-  if (scope.length > 2) flags.push("複数の対象範囲が含まれています");
+  if (scope.length === 0) flags.push(messageText("ambig.scope_unknown"));
+  if (scope.length > 2) flags.push(messageText("ambig.scope_multiple"));
   return flags;
 }
 
@@ -476,46 +478,55 @@ export function buildSuggestedRewrite(
   checksPolicy: ChecksPolicy
 ): string {
   if (decision === "reject") {
-    return "安全上の理由により、このクエリは実験として実行できません。危険な操作を削除した上で、安全な代替手段を検討してください。";
+    return messageText("rewrite.reject");
   }
   if (broad) {
-    return "目的が広すぎるため、まず測定可能な proxy metric を選ぶ必要があります。候補: lint violation 数、型エラー数、重複行数、複雑度、test coverage、prepush 実行時間などから一つ選び、具体的な benchmark command と合わせて再投稿してください。";
+    return messageText("rewrite.broad");
   }
 
   switch (decision) {
     case "ready_for_init": {
       const missing = describeMissingRunRequirements(benchmarkCommand, metricExtractionReady, checksPolicy);
       const missingText = missing.length > 0 ? missing.join("、") : "追加情報";
-      return `init は可能ですが、run 前に ${missingText} が必要です。\n例: \`<command>\` の実行時間を短縮したい。metric は ${metricName ?? "duration_seconds"}、${metricDirection === "higher" ? "higher" : "lower"} is better。既存 checks を使う。`;
+      return formatMessage("rewrite.ready_for_init", {
+        missingText,
+        metric: metricName ?? "duration_seconds",
+        directionWord: directionWord(metricDirection),
+      });
     }
 
     case "needs_command": {
-      const metric = metricName ?? "duration_seconds";
-      return `主指標は ${metric} で、${metricDirection === "higher" ? "higher" : "lower"} is better。benchmark command を指定してください。`;
+      return formatMessage("rewrite.needs_command", {
+        metric: metricName ?? "duration_seconds",
+        directionWord: directionWord(metricDirection),
+      });
     }
 
     case "needs_metric_extraction": {
-      const metric = metricName ?? "<metric>";
-      return `主指標 ${metric} の抽出方法を指定してください。\n- wall-clock (実行時間): 自動測定\n- stdout_metric: コマンドが METRIC ${metric}=<value> を出力\n- report_file: カバレッジレポート等から抽出`;
+      return formatMessage("rewrite.needs_metric_extraction", {
+        metric: metricName ?? "<metric>",
+      });
     }
 
     case "needs_checks_policy":
-      return `検証方針を指定してください。\n- checks command を明示: checks は \`npm test\`\n- autoresearch.checks.sh を使う: 「既存 checks を使う」と記載`;
+      return messageText("rewrite.needs_checks_policy");
 
     case "needs_metric_design":
-      return "測定可能な主指標 (metric) と改善方向 (lower/higher) を指定してください。";
+      return messageText("rewrite.needs_metric_design");
 
     default: {
       // ready_for_run or fallback
       if (measurementMethod === "wall_clock") {
-        const cmd = benchmarkCommand ?? "<benchmark command>";
-        return `主指標は \`${cmd}\` の実行時間秒数で、lower is better。挙動を変えず、既存 checks が成功する範囲で改善する。`;
+        return formatMessage("rewrite.default_wall_clock", {
+          command: benchmarkCommand ?? "<benchmark command>",
+        });
       }
       if (metricDirection === "higher") {
-        const name = metricName ?? "score";
-        return `主指標は ${name} で、higher is better。`;
+        return formatMessage("rewrite.default_higher", {
+          metric: metricName ?? "score",
+        });
       }
-      return "主指標と benchmark command を明記してください。";
+      return messageText("rewrite.default_fallback");
     }
   }
 }
@@ -533,32 +544,22 @@ export function buildClarifyingQuestions(
   const questions: string[] = [];
 
   if (!metricName) {
-    questions.push(
-      "主指標は wall-clock time、テスト成功率、coverage のどれを優先しますか？"
-    );
+    questions.push(messageText("q.metric_priority"));
   }
   if (!benchmarkCommand) {
-    questions.push(
-      "benchmark command は何を実行しますか？（例: `npm run prepush`、`pnpm test`）"
-    );
+    questions.push(messageText("q.benchmark_command"));
   }
   if (!metricExtractionReady && metricName) {
-    questions.push(
-      `主指標 ${metricName} はどうやって測定しますか？（stdout / report file / wall-clock）`
-    );
+    questions.push(formatMessage("q.metric_measurement", { metricName }));
   }
   if (checksPolicy === "not_specified" && benchmarkCommand) {
-    questions.push(
-      "検証には autoresearch.checks.sh を使いますか？それとも checks command を指定しますか？"
-    );
+    questions.push(messageText("q.checks_policy"));
   }
   if (scope.length === 0) {
-    questions.push(
-      "改善対象の scope はリポジトリ全体ですか、それとも特定 package や directory ですか？"
-    );
+    questions.push(messageText("q.scope"));
   }
   if (broad) {
-    questions.push("どの側面を最優先で改善しますか？");
+    questions.push(messageText("q.priority"));
   }
 
   return questions.slice(0, 3);

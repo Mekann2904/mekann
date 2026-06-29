@@ -43,6 +43,8 @@ export function createWorkerPool(options: WorkerPoolOptions) {
   const pendingQueue: { input: unknown; task: PendingTask }[] = [];
   const idleTimers: ReturnType<typeof setTimeout>[] = [];
   let shutdown = false;
+  // Task ids are now cryptographically-random tokens via randomToken() (issue
+  // #144 / IC-157: unify process-local ids/tokens on the shared crypto helper).
 
   function drainQueue() {
     while (pendingQueue.length > 0) {
