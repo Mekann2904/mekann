@@ -19,6 +19,7 @@ import { Text } from "@earendil-works/pi-tui";
 import { MEKANN_CODEX_DEFAULTS, MEKANN_CODEX_WEB_SEARCH_DEFAULTS } from "../../config.js";
 import { featureConfig } from "../../settings/featureConfig.js";
 import { CodexError, extractAccountIdFromToken } from "../codex-shared/index.js";
+import { redactSecrets } from "../../context/tool-output/redact.js";
 import type { CodexReasoningEffort, SearchContextSize } from "../codex-shared/types.js";
 import type { CodexWebSearchDetails } from "./result.js";
 import { CodexWebSearchRuntime } from "./runtime.js";
@@ -306,11 +307,14 @@ const codexWebSearchTool: ToolDefinition<typeof CodexWebSearchParams, CodexWebSe
 					error.kind,
 					formatUserErrorMessage(error.kind),
 					error.status,
+					error.debugBody,
 				);
 			}
+			// IC-218: a non-Codex error (e.g. a fetch failure whose message echoes a
+			// token-bearing URL) must also be masked before reaching the user.
 			throw new CodexError(
 				"unknown",
-				error instanceof Error ? error.message : String(error),
+				redactSecrets(error instanceof Error ? error.message : String(error)).text,
 			);
 		}
 	},

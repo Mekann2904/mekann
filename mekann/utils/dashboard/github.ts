@@ -12,6 +12,7 @@ import {
 	type GitHubProfileResult,
 	type GitHubDashboardResult,
 } from "./github-parse.js";
+import { redactSecrets } from "../../context/tool-output/redact.js";
 
 // Re-export types and parse functions for backward compatibility
 export type { GitHubProfile, ContributionDay, GitHubActivitySummary, GitHubDashboardData, GitHubProfileResult, GitHubDashboardResult } from "./github-parse.js";
@@ -119,11 +120,13 @@ function githubToken(env: NodeJS.ProcessEnv): { name: "GITHUB_TOKEN" | "GH_TOKEN
 	return undefined;
 }
 
-function message(error: unknown): string {
+export function message(error: unknown): string {
 	const text = error instanceof Error ? error.message : String(error);
 	const authHint = "To get started with GitHub CLI";
 	if (text.includes(authHint) || text.includes("gh auth login") || text.includes("GH_TOKEN")) {
 		return "GitHub CLI is not authenticated";
 	}
-	return text.replace(/\s+/g, " ").trim().slice(0, 300);
+	// IC-243: a token-derived error string can flow into dashboard output; mask
+	// secrets with the canonical `redactSecrets` before truncating.
+	return redactSecrets(text.replace(/\s+/g, " ").trim()).text.slice(0, 300);
 }

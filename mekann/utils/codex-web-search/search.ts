@@ -4,7 +4,7 @@
  * Framework-independent HTTP + SSE logic.
  */
 
-import { CodexError, classifyEventErrorMessage, classifyHttpStatus } from "../codex-shared/errors.js";
+import { CodexError, classifyEventErrorMessage, throwCodexHttpError } from "../codex-shared/errors.js";
 import type { SearchContextSize } from "../codex-shared/types.js";
 import { buildCodexHeaders, resolveCodexEndpoint } from "../codex-shared/client.js";
 import { parseSse } from "./stream.js";
@@ -129,12 +129,7 @@ export async function fetchCodexWebSearch(
 	);
 
 	if (!response.ok) {
-		const status = response.status;
-		throw new CodexError(
-			classifyHttpStatus(status),
-			`Codex web search request failed: HTTP ${status} ${await response.text()}`,
-			status,
-		);
+		return throwCodexHttpError(response, "Codex web search request failed", options.accountId);
 	}
 	if (!response.body) {
 		throw new CodexError(
