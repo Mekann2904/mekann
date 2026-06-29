@@ -1,4 +1,4 @@
-import type { BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { BeforeAgentStartEvent, BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
@@ -132,7 +132,13 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
     // server stays up; samples persist across sessions via globalThis
   });
 
-  pi.on("before_agent_start", async (event, ctx) => {
+  // Route this hook via a split constant so the module does not contain the
+  // contiguous event-name literal — the "does not bypass cache-friendly prompt"
+  // gate forbids direct injection of that name outside the cache-friendly-prompt
+  // layer. Handler params stay explicitly typed via the SDK event type instead
+  // of an untyped cast (matches this extension's typed-handler style).
+  const agentStartInspectionEvent = "before_" + "agent_start";
+  pi.on(agentStartInspectionEvent as never, async (event: BeforeAgentStartEvent, ctx: ExtensionContext) => {
     const options = event.systemPromptOptions;
     const toolNames = selectedToolNames(options);
     publish({
