@@ -1,6 +1,6 @@
 import { Type } from "@sinclair/typebox";
 
-const SemanticTargetSchema = Type.Object({ kind: Type.String(), name: Type.String() });
+const SemanticTargetSchema = Type.Object({ kind: Type.String(), name: Type.String(), module: Type.Optional(Type.String()), filePath: Type.Optional(Type.String()) });
 const ValidationCommandSchema = Type.Union([
   Type.Object({ kind: Type.Literal("npm_script"), script: Type.String(), args: Type.Optional(Type.Array(Type.String())) }),
   Type.Object({ kind: Type.Literal("shell_allowlisted"), command_id: Type.String(), args: Type.Optional(Type.Array(Type.String())) }),

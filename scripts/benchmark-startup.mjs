@@ -3,7 +3,7 @@
  * Mekann extension startup benchmark.
  * Measures: static-import → extension-factory-call → session_start handlers
  *
- * Usage: node benchmark-startup.mjs
+ * Usage: node scripts/benchmark-startup.mjs
  * Output: METRIC total_ms=<number>
  */
 import { performance } from "node:perf_hooks";
@@ -14,7 +14,7 @@ const require = createRequire(import.meta.url);
 
 // ── Phase 1: Static import ──────────────────────────────────────
 const t0 = performance.now();
-const mod = await import("./mekann/index.ts");
+const mod = await import("../mekann/index.ts");
 const t1 = performance.now();
 const importMs = t1 - t0;
 

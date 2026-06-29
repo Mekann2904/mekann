@@ -1,15 +1,21 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import type { ApplyAgentResultsParams, ApplyAgentResultsResult, ApplyRecord, RejectReason, StoredSubagentResult } from "./types.js";
+import { HARD_MAX_APPLY_BATCH } from "../../config.js";
+import type { ApplyAgentResultsParams, ApplyAgentResultsResult, ApplyRecord, RejectReason, StoredResultStatus, StoredSubagentResult } from "./types.js";
 import { SubagentResultStore } from "./resultStore.js";
 import { ExecFileGitPatchAdapter } from "./gitPatchAdapter.js";
 import { ExecFileValidationRunner } from "./validationRunner.js";
 import { ResultStoreSemanticLogReader } from "./resultStoreAdapter.js";
 import { PatchApplicationPipeline, type PatchApplicationDecision } from "./patchApplicationPipeline.js";
+import { isPatchRefUnderDir } from "./pathSafety.js";
 
-function isUnderDir(file: string, dir: string): boolean {
-	const rel = path.relative(path.resolve(dir), path.resolve(file));
-	return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+/** Clamp the requested batch size to `[1, HARD_MAX_APPLY_BATCH]`. Previously
+ * `max_results ?? Infinity` applied every pending result in one shot
+ * (issue #152 / IC-159). */
+function clampMaxResults(requested: number | undefined): number {
+  if (requested === undefined) return HARD_MAX_APPLY_BATCH;
+  if (!Number.isFinite(requested) || requested < 1) return 1;
+  return Math.min(Math.trunc(requested), HARD_MAX_APPLY_BATCH);
 }
 
 export class ApplyQueue {
@@ -36,7 +42,7 @@ export class ApplyQueue {
 	showAgentResult(resultId: string, includePatch = false): StoredSubagentResult & { patch_body?: string } {
 		const s = this.store.load(resultId) as StoredSubagentResult & { patch_body?: string };
 		if (includePatch && s.result.outcome === "patch" && s.result.patch.ref) {
-			if (!isUnderDir(s.result.patch.ref, this.store.dir)) throw new Error("invalid patch ref");
+			if (!isPatchRefUnderDir(s.result.patch.ref, this.store.dir)) throw new Error("invalid patch ref");
 			s.patch_body = readFileSync(s.result.patch.ref, "utf8");
 		}
 		return s;
@@ -54,7 +60,7 @@ export class ApplyQueue {
 		const items = (params.source === "result_ids"
 			? (params.result_ids ?? []).map((id) => this.store.load(id))
 			: await this.store.list({ status: "pending" })
-		).slice(0, params.max_results ?? Infinity);
+		).slice(0, clampMaxResults(params.max_results));
 
 		for (const stored of items) {
 			if (stored.status !== "pending" && !(stored.status === "needs_review" && params.allow_high_risk)) {
@@ -89,7 +95,14 @@ export class ApplyQueue {
 			stored.result.outcome === "patch" &&
 			(!stored.workspace_cwd || path.resolve(stored.workspace_cwd) === path.resolve(this.cwd))
 		) {
-			this.store.markApplying(stored.result_id);
+			// Atomic pending→applying across parallel processes: if another pi
+			// already owns this result, skip it instead of double-applying
+			// (issue #152 / IC-163).
+			const eligible = new Set<StoredResultStatus>(params.allow_high_risk ? ["pending", "needs_review"] : ["pending"]);
+			if (!this.store.tryMarkApplying(stored.result_id, eligible)) {
+				out.skipped.push({ result_id: stored.result_id, reason: "concurrent_apply" });
+				return;
+			}
 		}
 		const decision = await this.pipeline.apply({ stored, params });
 		this.applyDecision(decision, stored, out);

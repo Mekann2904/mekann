@@ -49,13 +49,14 @@ function buildImplementationPhasePrompt(issueNumber: number): string {
 		"After the demotion and comment are done, stop/halt the Work Pi after reporting that the issue needs human input. Do not run review_fixer or Phase 3 after F3 demotion.",
 		"If this session resumed from prior Agreement-phase comments, preserve the previous agreement as established context and ask only about the newly blocking question; do not restart consensus from zero.",
 		"Phase 1 — issue対応: read the issue, confirm dependency status if needed, understand acceptance criteria, then implement/fix the issue in this session.",
-		"Phase 2 — review_fixerによる調査と修正: immediately invoke the review_fixer tool yourself. Inspect its structured result, address any required follow-up, and rerun review_fixer if the result says the gate failed or the user asks for another pass.",
+		"Phase 2 — review_fixerによる調査と修正: immediately invoke the review_fixer tool yourself exactly once for a given tree state. Inspect its structured result and address any required follow-up in the parent Issue Pi. Do not automatically launch another review_fixer when the result is busy, malformed, failed, or unclear; stop and ask the human unless the user explicitly asks for another pass after you explain the situation.",
 		"Phase 3 — issue_workflow (status → diff → commit → push → create_pr): only after review_fixer succeeds, use the issue_workflow tool to inspect status/diff, then commit, push the issue branch, and create the PR. Always go through issue_workflow; do NOT run git/gh via the bash tool (git-safety intercepts it and commit/PR messages get mangled by shell expansion).",
 		"create_pr should produce a ready (non-draft) PR; review_fixer has already gated implementation quality. create_pr automatically targets the branch this issue worktree was forked from (the branch /issue was invoked on), so you normally do NOT pass `base`; pass it only to override. Use issue_workflow `current_branch` to see the recorded prBase.",
 		"Do not collapse these phases. Announce the current phase briefly before acting so the user can follow progress.",
 		"Do not merely recommend review_fixer after implementation; invoke it yourself unless the issue is blocked or the user explicitly forbids it.",
 		"Do not run thermo-nuclear-code-quality-review directly in the parent Issue Pi as the normal gate; use review_fixer so the review happens in a clean child Pi context. Direct /skill force-load is only a fallback if review_fixer errors and explicitly tells you to use it.",
-		"Do not commit, push, or create a PR before review_fixer has completed successfully.",
+		"Do not commit, push, or create a PR before review_fixer has completed successfully. Successful completion requires a valid review-fixer.result.v1 status of changed or no_change.",
+		"If review_fixer reports that another run is active, or that the launch budget is exceeded, do not retry; wait or ask the human to inspect the active/stale review-fixer.",
 	].join("\n");
 }
 

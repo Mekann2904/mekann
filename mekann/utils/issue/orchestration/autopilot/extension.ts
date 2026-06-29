@@ -29,7 +29,7 @@ import { checkIssuePrerequisites } from "../../prerequisites.js";
 import { createAutopilotDeps } from "./deps.js";
 import { resolveIssueWorkPiModel } from "../issueModel.js";
 import { DEFAULT_AUTOPILOT_CONFIG, runAutopilotSupervisor, type AutopilotLoopHooks, type AutopilotSupervisorConfig } from "./lifecycle.js";
-import { readAutopilotChildEnv } from "./markers.js";
+import { readAutopilotChildEnv, READY_FOR_AGENT_LABEL } from "./markers.js";
 import type { AutopilotChildState } from "./state.js";
 
 const execFile = promisify(execFileCb);
@@ -103,6 +103,45 @@ async function prExistsForBranch(remote: string, branch: string): Promise<boolea
 	}
 }
 
+/**
+ * True when the issue still carries the `ready-for-agent` label. A read failure
+ * defaults to `true` so a transient gh error never auto-closes a live Work Pi
+ * (safe side: keep working rather than killing an in-flight session).
+ */
+async function issueHasReadyForAgentLabel(remote: string, issueNumber: number): Promise<boolean> {
+	try {
+		const { stdout } = await execFile(
+			"gh",
+			["issue", "view", String(issueNumber), "--repo", remote, "--json", "labels"],
+			{ timeout: 15000 },
+		);
+		const labels = (JSON.parse(String(stdout))?.labels ?? []) as Array<string | { name?: string }>;
+		return labels.some((label) => (typeof label === "string" ? label : label.name ?? "").toLowerCase() === READY_FOR_AGENT_LABEL);
+	} catch {
+		return true;
+	}
+}
+
+/**
+ * Reason the Work Pi has reached an autopilot-terminal state, or null when it
+ * should keep running. Terminal = a PR exists (success) OR the issue lost its
+ * `ready-for-agent` label (F3 demotion to `ready-for-human`). Either frees the
+ * worker slot so the supervisor can refill it; without the demotion case a
+ * demoted Work Pi pane would stay open forever (the PR-only check never fires
+ * because F3 deliberately creates no PR) and maxParallel slot accounting would
+ * drift as the demoted issue vanishes from the candidate set.
+ */
+async function autopilotTerminalReason(remote: string, issueNumber: number): Promise<string | null> {
+	const branch = `issue-${issueNumber}`;
+	const [hasPr, readyForAgent] = await Promise.all([
+		prExistsForBranch(remote, branch),
+		issueHasReadyForAgentLabel(remote, issueNumber),
+	]);
+	if (hasPr) return `PR detected for ${branch}`;
+	if (!readyForAgent) return `#${issueNumber} is no longer ${READY_FOR_AGENT_LABEL} (demoted to ready-for-human)`;
+	return null;
+}
+
 async function startSupervisor(ctx: ExtensionContext): Promise<void> {
 	if (supervisorActive) {
 		ctx.ui.notify("Autopilot supervisor is already running. /issue-autopilot to start, or wait for completion.", "warning");
@@ -140,6 +179,12 @@ export function registerAutopilot(pi: ExtensionAPI): void {
 	pi.registerCommand("issue-autopilot", {
 		description: "Autopilot: drive ready-for-agent issues to PRs with a parallel worker pool.",
 		handler: async (_args, ctx) => {
+			// Never start a supervisor inside an autopilot Work Pi — it would spawn a
+			// nested worker pool and re-split panes from a child session.
+			if (readAutopilotChildEnv(process.env) !== null) {
+				ctx.ui.notify("Autopilot cannot run inside an autopilot Work Pi. Run /issue-autopilot from the Main Pi.", "warning");
+				return;
+			}
 			const prerequisiteError = checkIssuePrerequisites(ctx.cwd);
 			if (prerequisiteError) {
 				ctx.ui.notify(prerequisiteError, "error");
@@ -164,10 +209,10 @@ export function registerAutopilot(pi: ExtensionAPI): void {
 		if (closing) return;
 		const repoInfo = getRepoInfo(ctx.cwd);
 		if (!repoInfo) return;
-		const branch = `issue-${child}`;
-		if (await prExistsForBranch(repoInfo.remote, branch)) {
+		const reason = await autopilotTerminalReason(repoInfo.remote, child);
+		if (reason !== null) {
 			closing = true;
-			ctx.ui.notify(`Autopilot: PR detected for ${branch}. Closing Work Pi so the supervisor can continue.`, "info");
+			ctx.ui.notify(`Autopilot: ${reason}. Closing Work Pi so the supervisor can continue.`, "info");
 			// Request a graceful shutdown; the supervisor detects the pane closing and proceeds.
 			ctx.shutdown();
 		}

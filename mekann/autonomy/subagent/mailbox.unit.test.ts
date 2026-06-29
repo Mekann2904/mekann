@@ -93,6 +93,39 @@ describe("Mailbox", () => {
     const result = await mailbox.waitForUpdate("/root/task1", 0, 50);
     expect(result.mailbox).toHaveLength(0);
     expect(result.events).toHaveLength(0);
+    // Authoritative timeout signal (issue #152 / IC-029).
+    expect(result.timed_out).toBe(true);
+  });
+
+  it("waitForUpdate reports timed_out=false on a real notification", async () => {
+    const promise = mailbox.waitForUpdate("/root/task1", 0, 1000);
+    await new Promise((r) => setTimeout(r, 5));
+    mailbox.enqueue({ fromAgentId: "root", fromAgentPath: "/root", toAgentPath: "/root/task1", content: "hi", timestamp: Date.now(), kind: "message" });
+    const result = await promise;
+    expect(result.mailbox).toHaveLength(1);
+    expect(result.timed_out).toBe(false);
+  });
+
+  it("waitForUpdate reports timed_out=false for immediate pending items", async () => {
+    mailbox.enqueue({ fromAgentId: "root", fromAgentPath: "/root", toAgentPath: "/root/task1", content: "hi", timestamp: Date.now(), kind: "message" });
+    const result = await mailbox.waitForUpdate("/root/task1", 0, 50);
+    expect(result.timed_out).toBe(false);
+  });
+
+  it("waitForUpdateIndefinitely never reports a timeout", async () => {
+    const promise = mailbox.waitForUpdateIndefinitely("/root/task1", 0);
+    mailbox.enqueue({ fromAgentId: "root", fromAgentPath: "/root", toAgentPath: "/root/task1", content: "hi", timestamp: Date.now(), kind: "message" });
+    const result = await promise;
+    expect(result.timed_out).toBe(false);
+  });
+
+  it("honours a configurable retention cap", () => {
+    const small = new Mailbox({ maxRetainedRecords: 3 });
+    for (let i = 0; i < 10; i++) {
+      small.enqueue({ fromAgentId: "root", fromAgentPath: "/root", toAgentPath: "/root/task1", content: `m${i}`, timestamp: Date.now(), kind: "message" });
+    }
+    expect(small.allItems()).toHaveLength(3);
+    expect(small.allItems()[0]!.content).toBe("m7");
   });
 
   it("waitForUpdate resolves when item is enqueued", async () => {
