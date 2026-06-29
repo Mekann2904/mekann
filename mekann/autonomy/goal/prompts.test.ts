@@ -71,6 +71,12 @@ describe("goal/prompts", () => {
     it("formats exactly 3600 seconds as 1h 0m", () => {
       expect(formatDuration(3600)).toBe("1h 0m");
     });
+
+    it("floors a fractional second value instead of rendering 0.5s (IC-215)", () => {
+      expect(formatDuration(0.5)).toBe("0s");
+      expect(formatDuration(59.9)).toBe("59s");
+      expect(formatDuration(125.7)).toBe("2m 5s");
+    });
   });
 
   describe("continuationPrompt", () => {
