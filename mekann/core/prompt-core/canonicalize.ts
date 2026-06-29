@@ -35,5 +35,43 @@ export function sortFragments(fragments: PromptFragment[]): PromptFragment[] {
     stabilityRank[a.f.stability] - stabilityRank[b.f.stability] || a.f.priority - b.f.priority || a.f.source.localeCompare(b.f.source) || a.f.kind.localeCompare(b.f.kind) || a.f.id.localeCompare(b.f.id) || a.i - b.i,
   ).map((x) => x.f);
 }
-/** Provider-agnostic estimate only; not a tokenizer. */
-export function estimateTokens(text: string): number { return Math.ceil(text.length / 4); }
+/**
+ * True if a code point is "high-density" for tokenization: CJK ideographs,
+ * kana, hangul, fullwidth forms, and the main emoji/symbol planes. Modern
+ * tokenizers split these at roughly 1 token per character, unlike ASCII
+ * (~4 chars/token), so a flat `length / 4` badly underestimates Japanese/CJK
+ * prompts and suppresses cache-efficiency warnings.
+ */
+function isHighDensityCodePoint(code: number): boolean {
+  return (
+    (code >= 0x1100 && code <= 0x11ff) || // Hangul Jamo
+    (code >= 0x2e80 && code <= 0x303f) || // CJK radicals / Kangxi / CJK symbols & punctuation
+    (code >= 0x3040 && code <= 0x33ff) || // Hiragana, Katakana, CJK symbols
+    (code >= 0x3400 && code <= 0x4dbf) || // CJK Unified Ideographs Extension A
+    (code >= 0x4e00 && code <= 0x9fff) || // CJK Unified Ideographs
+    (code >= 0xa000 && code <= 0xa4cf) || // Yi syllables/radicals
+    (code >= 0xac00 && code <= 0xd7a3) || // Hangul Syllables
+    (code >= 0xf900 && code <= 0xfaff) || // CJK Compatibility Ideographs
+    (code >= 0xfe30 && code <= 0xfe4f) || // CJK Compatibility Forms
+    (code >= 0xff00 && code <= 0xffef) || // Halfwidth & Fullwidth Forms
+    (code >= 0x1f000 && code <= 0x1faff) || // Emoji & pictographic symbols
+    (code >= 0x20000 && code <= 0x2fffd) // CJK Unified Ideographs Extensions B-F
+  );
+}
+
+/** Provider-agnostic estimate only; not a tokenizer. Weights by character
+ * class so CJK / emoji prompts are not underestimated ~4-8x (ASCII ~4
+ * chars/token, CJK/emoji ~1 token/char, other scripts ~2 chars/token). */
+export function estimateTokens(text: string): number {
+  if (text.length === 0) return 0;
+  let tokens = 0;
+  // for..of iterates by code point, so supplementary emoji (surrogate pairs)
+  // are counted as a single character.
+  for (const ch of text) {
+    const code = ch.codePointAt(0)!;
+    if (code <= 0x7f) tokens += 0.25;
+    else if (isHighDensityCodePoint(code)) tokens += 1;
+    else tokens += 0.5;
+  }
+  return Math.ceil(tokens);
+}

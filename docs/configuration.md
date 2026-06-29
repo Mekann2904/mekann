@@ -42,7 +42,8 @@ Pi 上では `/mekann-settings` を使って設定を確認・編集できます
   "features": {
     "sandbox": {
       "enabled": true,
-      "bashMode": "ask",
+      "bashMode": "sandboxed",
+      "bashAllowlist": "",
       "allowPersistentBashApprovals": true,
       "llmOutputMaxBytes": 51200,
       "llmOutputMaxLines": 2000
@@ -51,7 +52,7 @@ Pi 上では `/mekann-settings` を使って設定を確認・編集できます
 }
 ```
 
-`bashMode` は `off`、`ask`、`sandboxed`、`yolo` のいずれかです。`yolo` は OS sandbox なしで実行します。
+`bashMode` は `off`（bash 禁止）、`ask`（allowlist 外をユーザー確認）、`sandboxed`（filesystem sandbox 内で実行、**既定**）、`yolo`（OS sandbox なしで実行）のいずれかです。`bashAllowlist` は `bashMode=ask` で確認なしに実行できる bash command の exact match 一覧（1 行 1 command、既定は空）。`allowPersistentBashApprovals`（既定 true）は allowlist 外 command を workspace の `mekann.json` に永続許可できるようにします。
 
 ### Subagent
 
@@ -169,6 +170,251 @@ Pi 上では `/mekann-settings` を使って設定を確認・編集できます
 }
 ```
 
+### Goal
+
+```json
+{
+  "version": 1,
+  "features": {
+    "goal": {
+      "enabled": true,
+      "toolSurface": "slash",
+      "maxObjectiveLength": 100000
+    }
+  }
+}
+```
+
+goal model tools を LLM に見せる条件。`toolSurface` は `slash`（`/goal` command のみ）、`active`（active goal 中のみ）、`always`（常時）のいずれかです。`maxObjectiveLength`（1〜500000、既定 100000）は goal objective の最大文字数で、500000 の sanity ceiling でクランプされます。
+
+### Autoresearch
+
+```json
+{
+  "version": 1,
+  "features": {
+    "autoresearch": {
+      "enabled": true,
+      "toolSurface": "active"
+    }
+  }
+}
+```
+
+autoresearch model tools を LLM に見せる条件。`toolSurface` は `active`（`/autoresearch on` 実行中のみ）または `always`（常時）です。
+
+### Review Fixer
+
+```json
+{
+  "version": 1,
+  "features": {
+    "review-fixer": {
+      "enabled": true,
+      "maxFixRetries": 3
+    }
+  }
+}
+```
+
+Review fixer tool を有効にします（`thermo-nuclear-code-quality-review` に基づく同期 review + edit を child Pi で実行）。`maxFixRetries`（1〜10、既定 3）は verification 失敗時の修正再試行回数上限です。Work Pi の model / thinking 設定は `modes` feature の `review_fix` profile に集約されているため、ここには含まれません。
+
+### Context Ledger
+
+```json
+{
+  "version": 1,
+  "features": {
+    "context-ledger": {
+      "enabled": true,
+      "toolSurface": "on-demand",
+      "postCompactionRestore": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+`toolSurface` は `on-demand`（compaction 後や command で有効化）または `always`（常時）です。`postCompactionRestore.enabled`（既定 true）をオンにすると、compaction 後の次 turn で ledger snapshot を動的フラグメントとして自動注入し working memory を復元します。
+
+### Context Tracker
+
+```json
+{
+  "version": 1,
+  "features": {
+    "context-tracker": {
+      "enabled": true,
+      "autoStartServer": false,
+      "port": 0
+    }
+  }
+}
+```
+
+Mekann Web UI と context pressure monitoring を有効にします（LLM tool は追加しません）。`autoStartServer`（既定 false）をオンにすると `session_start` 時に monitoring HTTP server を自動起動します（オフなら `/web-ui` 実行時のみ）。`port`（既定 0）は 0 で空き port を自動選択します。変更時は restart が必要です。
+
+### Codex Shared
+
+```json
+{
+  "version": 1,
+  "features": {
+    "codex-shared": {
+      "baseUrl": "https://chatgpt.com/backend-api",
+      "modelCacheTtlMs": 300000
+    }
+  }
+}
+```
+
+Codex API の共有設定（Advanced カテゴリ、通常は変更不要）。`baseUrl` は Codex API base URL、`modelCacheTtlMs`（0〜86400000、既定 300000 = 5 分）は model catalog cache TTL です。
+
+### Model Optimizer
+
+```json
+{
+  "version": 1,
+  "features": {
+    "model-optimizer": {
+      "enabled": true,
+      "overflowRecovery": { "enabled": true },
+      "metrics": { "enabled": true },
+      "compactionObserver": { "enabled": true },
+      "postCompactionHint": { "enabled": true },
+      "debugLogging": false
+    }
+  }
+}
+```
+
+model-optimizer 拡張全体の有効/無効と各観測機能の切替。`overflowRecovery`（context overflow エラーの自動正規化）、`metrics`（使用量・レイテンシの session-local 計測）、`compactionObserver`（compaction lifecycle の観測）、`postCompactionHint`（compaction 後の次 turn で provider-aware continuation hint を注入）、`debugLogging`（既定 false、notify 表示）です。provider 別（OpenAI / DeepSeek など）の最適化設定は各 optimizer module から動的に追加されます。詳細な key、default、validation は各 `settingsSchema.ts` を正とします。
+
+### Terminal
+
+```json
+{
+  "version": 1,
+  "features": {
+    "terminal": {
+      "clearOnStartup": true
+    }
+  }
+}
+```
+
+`clearOnStartup`（既定 true）は Pi 起動時（`session_start` reason: `startup`）にターミナル画面をクリアします。
+
+### Issue
+
+```json
+{
+  "version": 1,
+  "features": {
+    "issue": {
+      "autopilot": {
+        "maxParallel": 2
+      }
+    }
+  }
+}
+```
+
+`autopilot.maxParallel`（既定 2、1 以上の整数）は `/issue-autopilot` が同時に駆動する Work Pi の上限。並列ワーカープールは別 issue で拡張されるまで、現状は 1（逐次）として動作します。
+
+### Codex Limits
+
+```json
+{
+  "version": 1,
+  "features": {
+    "codex-limits": {
+      "enabled": true
+    }
+  }
+}
+```
+
+Codex usage footer / statusline と `/codex-status` command を有効にします。変更時は restart が必要です。
+
+### Dashboard
+
+```json
+{
+  "version": 1,
+  "features": {
+    "dashboard": {
+      "enabled": true
+    }
+  }
+}
+```
+
+`/dashboard` command と dashboard 関連 UI integration を有効にします。変更時は restart が必要です。
+
+### Zip Repo
+
+```json
+{
+  "version": 1,
+  "features": {
+    "zip-repo": {
+      "enabled": true
+    }
+  }
+}
+```
+
+`/zip` command を有効にします。`false` の場合、zip utility command を登録しません。変更時は restart が必要です。
+
+### Terminal Shortcuts
+
+```json
+{
+  "version": 1,
+  "features": {
+    "terminal-shortcuts": {
+      "enabled": true
+    }
+  }
+}
+```
+
+terminal shortcut handling を有効にします。`false` の場合、shortcut hooks を登録しません。変更時は restart が必要です。
+
+### Settings Editor
+
+```json
+{
+  "version": 1,
+  "features": {
+    "settings-editor": {
+      "enabled": true
+    }
+  }
+}
+```
+
+`/mekann-settings` command を有効にします。`false` の場合、settings editor command を登録しません。変更時は restart が必要です。
+
+### Mekann Skills
+
+```json
+{
+  "version": 1,
+  "features": {
+    "skills": {
+      "diagnose": true,
+      "tdd": true,
+      "zoom-out": true
+    }
+  }
+}
+```
+
+各 Mekann skill の system prompt 可視性を制御します（feature key は `skills`）。各 key は skill 名で、`false` にすると `available skills` 一覧から非表示になります（`/skill:<name>` での明示起動は可能）。実際の skill 一覧と既定値は `mekann/skill-surface/skills.ts` の定義から動的に生成されるため、上記は例です。
+
 ## Registered features
 
-現在 registry にある feature settings は、`modes`、`sandbox`、`subagent`、`command-normalization`、`output-gate`、`context-ledger`、`context-tracker`、`cacheable-context`、`codex-shared`、`codex-web-search`、`codex-limits`、`dashboard`、`model-optimizer`、`terminal` です。詳細な key、default、validation は各 `settingsSchema.ts` を正とします。
+現在 registry にある feature settings（`mekann/settings/registry.ts` の `mekannSettingsSchemas` 順）は、`modes`、`sandbox`、`goal`、`subagent`、`autoresearch`、`review-fixer`、`command-normalization`、`output-gate`、`context-ledger`、`context-tracker`、`cacheable-context`、`codex-shared`、`codex-web-search`、`codex-limits`、`dashboard`、`zip-repo`、`terminal-shortcuts`、`settings-editor`、`skills`、`model-optimizer`、`terminal`、`issue` の 22 feature です。詳細な key、default、validation は各 `settingsSchema.ts` を正とします。

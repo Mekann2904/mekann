@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -137,6 +137,30 @@ describe("ApplyQueue: applyAgentResults", () => {
       store.save(agent, { schema: "subagent.result.v1", outcome: "no_change", summary: "c" } as any);
       const result = await q.applyAgentResults({ max_results: 2 });
       expect(result.skipped).toHaveLength(2);
+    } finally { cleanup(); }
+  });
+
+  it("clamps an absurd max_results to the HARD_MAX apply batch (issue #152)", async () => {
+    const { store, q, agent, cleanup } = makeStoreAndQueue();
+    try {
+      store.save(agent, { schema: "subagent.result.v1", outcome: "no_change", summary: "a" } as any);
+      // 1e9 is far above HARD_MAX_APPLY_BATCH; the batch must stay bounded.
+      const result = await q.applyAgentResults({ max_results: 1_000_000_000 });
+      expect(result.skipped).toHaveLength(1);
+    } finally { cleanup(); }
+  });
+
+  it("skips a result already being applied elsewhere as concurrent_apply (issue #152)", async () => {
+    const { store, q, agent, cleanup } = makeStoreAndQueue();
+    try {
+      const stored = store.save(agent, patch());
+      // Simulate a parallel process winning the pending→applying race after this
+      // caller loaded the (still pending) result but before it could mark it.
+      const spy = vi.spyOn(store, "tryMarkApplying").mockReturnValue(false);
+      const result = await q.applyAgentResults({ source: "result_ids", result_ids: [stored.result_id] });
+      spy.mockRestore();
+      expect(result.skipped.some((s) => s.reason === "concurrent_apply")).toBe(true);
+      expect(result.applied).toHaveLength(0);
     } finally { cleanup(); }
   });
 
