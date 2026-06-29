@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, unlinkSync, renameSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, unlinkSync, renameSync, statSync, openSync, closeSync } from "node:fs";
 import * as fsp from "node:fs/promises";
 import path from "node:path";
 import type { AgentMetadata, ApplyRecord, EscrowRecord, RejectReason, ResultFilter, SemanticApplyLogEntry, StoredResultStatus, StoredSubagentResult, SubagentResultV1 } from "./types.js";
 import { tryParseSubagentResult } from "./resultSchema.js";
+import { isPatchRefUnderDir } from "./pathSafety.js";
 
 let counter = 0;
 function nextId(): string { return `sar_${Date.now().toString(36)}_${++counter}`; }
@@ -13,7 +14,13 @@ export function assertValidResultId(id: string): void {
 
 const VALID_STATUSES = new Set<StoredResultStatus>(["pending", "escrowed", "applying", "applied", "rejected", "needs_review", "superseded"]);
 
-function isUnderDir(file: string, dir: string): boolean { const rel = path.relative(path.resolve(dir), path.resolve(file)); return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel); }
+/**
+ * How long an apply lock file is considered owned before a later process may
+ * steal it. The lock guards only the brief pending→applying read-modify-write
+ * (milliseconds), so a lock older than this almost certainly belongs to a
+ * crashed process and is safe to take over (issue #152 / IC-163).
+ */
+const APPLY_LOCK_STALE_MS = 60_000;
 
 export function resultSummary(stored: StoredSubagentResult): string {
   const r: any = stored.result;
@@ -100,7 +107,7 @@ export class SubagentResultStore {
   private patchRefFromResult(result: any): { kind: "not-patch" } | { kind: "invalid-ref" } | { kind: "read"; ref: string } {
     if (result?.outcome !== "patch") return { kind: "not-patch" };
     const ref = result.patch?.ref;
-    if (typeof ref !== "string" || !isUnderDir(ref, this.dir)) return { kind: "invalid-ref" };
+    if (typeof ref !== "string" || !isPatchRefUnderDir(ref, this.dir)) return { kind: "invalid-ref" };
     return { kind: "read", ref };
   }
 
@@ -156,7 +163,10 @@ export class SubagentResultStore {
     // so the mutation never leaks into the cache or the next persisted write.
     if (cached) return structuredClone(cached);
     const raw = JSON.parse(readFileSync(this.jsonPath(resultId), "utf8"));
-    const stored = this.validateStoredResult(raw, resultId, this.resolvePatchSync((raw as any).result));
+    // `raw` is the JSON.parse'd stored result (`any`); narrow it to the store's
+    // own `StoredSubagentResult` shape so `.result` access is type-checked
+    // (issue #141: replace `as any` with a narrow local type).
+    const stored = this.validateStoredResult(raw, resultId, this.resolvePatchSync((raw as StoredSubagentResult).result));
     this.entryCache.set(resultId, stored);
     return structuredClone(stored);
   }
@@ -183,7 +193,7 @@ export class SubagentResultStore {
       if (cached) { entries.push(cached); continue; }
       try {
         const raw = JSON.parse(await fsp.readFile(path.join(this.dir, name), "utf8"));
-        const stored = this.validateStoredResult(raw, id, await this.resolvePatchAsync((raw as any).result));
+        const stored = this.validateStoredResult(raw, id, await this.resolvePatchAsync((raw as StoredSubagentResult).result));
         this.entryCache.set(id, stored);
         entries.push(stored);
       } catch { /* skip corrupt/unreadable entries */ }
@@ -213,6 +223,32 @@ export class SubagentResultStore {
 
   /** O(1) sync check used by tool-surface projection (no disk IO). */
   hasPendingResults(): boolean { return this.pendingIds.size > 0; }
+
+  /**
+   * Atomic test-and-set for the pending→applying transition across parallel
+   * pi processes. Holds a brief O_EXCL lock file around the
+   * load-check-save so two processes loading the same "pending" result cannot
+   * both flip it to applying and apply the patch twice. Returns true when this
+   * caller won the transition; false means the result was no longer in an
+   * eligible status (another process owns it) and must be skipped
+   * (issue #152 / IC-163).
+   */
+  tryMarkApplying(resultId: string, eligibleStatuses: ReadonlySet<StoredResultStatus> = new Set<StoredResultStatus>(["pending"])): boolean {
+    if (!this.acquireApplyLock(resultId)) return false;
+    try {
+      const s = this.load(resultId);
+      if (!eligibleStatuses.has(s.status)) return false;
+      s.status = "applying";
+      s.applying_at = Date.now();
+      this.saveStored(s);
+      return true;
+    } finally {
+      this.releaseApplyLock(resultId);
+    }
+  }
+
+  /** Compatibility wrapper: unconditional pending-or-not transition. Prefer
+   * {@link tryMarkApplying} from apply paths. */
   markApplying(resultId: string): void { const s = this.load(resultId); s.status = "applying"; s.applying_at = Date.now(); this.saveStored(s); }
   markApplied(resultId: string, applyRecord: ApplyRecord): void { const s = this.load(resultId); s.status = "applied"; s.apply_record = applyRecord; delete s.applying_at; delete s.escrow_record; delete s.reject_reason; delete s.reject_details; delete s.review_record; delete s.superseded_reason; this.saveStored(s); }
   markEscrowed(resultId: string, escrowRecord: EscrowRecord): void { const s = this.load(resultId); s.status = "escrowed"; s.escrow_record = escrowRecord; delete s.applying_at; delete s.apply_record; delete s.reject_reason; delete s.reject_details; delete s.review_record; delete s.superseded_reason; this.saveStored(s); }
@@ -293,4 +329,36 @@ export class SubagentResultStore {
   }
   appendSemanticLog(entry: SemanticApplyLogEntry): void { appendFileSync(path.join(this.dir, "semantic-log.jsonl"), `${JSON.stringify(entry)}\n`, "utf8"); }
   readSemanticLog(): SemanticApplyLogEntry[] { const p = path.join(this.dir, "semantic-log.jsonl"); if (!existsSync(p)) return []; return readFileSync(p, "utf8").split(/\r?\n/).filter(Boolean).flatMap((l) => { try { return [JSON.parse(l) as SemanticApplyLogEntry]; } catch { return []; } }); }
+
+  // ─── Apply serialization lock (issue #152 / IC-163) ────────────────
+
+  private applyLockPath(resultId: string): string { return path.join(this.dir, `${resultId}.apply.lock`); }
+
+  /** Acquire the per-result apply lock via O_EXCL, stealing stale locks. */
+  private acquireApplyLock(resultId: string): boolean {
+    const lockPath = this.applyLockPath(resultId);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const fd = openSync(lockPath, "wx");
+        closeSync(fd);
+        writeFileSync(lockPath, JSON.stringify({ pid: process.pid, startedAt: Date.now() }), "utf8");
+        return true;
+      } catch (e: any) {
+        if (e?.code !== "EEXIST") throw e;
+      }
+      // Exists: steal it only if it is stale.
+      try {
+        const st = statSync(lockPath);
+        if (Date.now() - st.mtimeMs > APPLY_LOCK_STALE_MS) { unlinkSync(lockPath); continue; }
+      } catch {
+        /* ignore stat errors; treat as held */
+      }
+      return false;
+    }
+    return false;
+  }
+
+  private releaseApplyLock(resultId: string): void {
+    try { unlinkSync(this.applyLockPath(resultId)); } catch { /* already gone */ }
+  }
 }

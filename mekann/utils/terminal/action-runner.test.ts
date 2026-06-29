@@ -123,6 +123,23 @@ describe("TerminalActionRunner", () => {
 			expect(close.calls).toEqual(["w1"]);
 		});
 
+		it("fires split launch even while the agent is not idle (LLM reasoning)", async () => {
+			const launch = mockLaunch([{ ok: true, windowId: "w1" }]);
+			const spawn = mockSpawn(0);
+			const runner = newSilentRunner({
+				launchWithTerminalEmulator: launch,
+				spawnAction: spawn,
+			});
+
+			const exitCode = await runner.run(
+				mkCtx({ isIdle: () => false }),
+				splitInput,
+			);
+			expect(exitCode).toBe(0);
+			expect(launch).toHaveBeenCalledTimes(1);
+			expect(spawn.calls).toHaveLength(0);
+		});
+
 		it("falls back to pass-through when split fails and idle and not splitOnly", async () => {
 			const launch = mockLaunch([{ ok: false, reason: "unsupported" }]);
 			const spawn = mockSpawn(0);

@@ -293,4 +293,68 @@ describe("runAutopilotSupervisor", () => {
 		const result = await runAutopilotSupervisor(fakeDeps(world), vi.fn(), hooks, DEFAULT_AUTOPILOT_CONFIG);
 		expect(result.kind).toBe("stopped");
 	});
+
+	it("survives a transient snapshot failure and completes on retry (no full-supervisor crash)", async () => {
+		// A transient gh/kitty failure during collectAutopilotSnapshot must not reject
+		// the whole supervisor promise. It warns, backs off, and re-snapshots.
+		const world = makeWorld([1]);
+		const sim = new AutopilotSim(world);
+		const base = fakeDeps(world);
+		let snapshotCalls = 0;
+		const deps: AutopilotDeps = {
+			...base,
+			async listReadyForAgentIssues() {
+				snapshotCalls += 1;
+				if (snapshotCalls === 1) throw new Error("transient gh failure");
+				return base.listReadyForAgentIssues();
+			},
+		};
+		const launch = launchVia(sim);
+		const result = await runAutopilotSupervisor(deps, launch, simHooks(sim, () => {}), DEFAULT_AUTOPILOT_CONFIG);
+		expect(result.kind).toBe("completed");
+		expect(snapshotCalls).toBeGreaterThanOrEqual(2);
+		expect(launch).toHaveBeenCalledWith(expect.objectContaining({ number: 1 }));
+	});
+
+	it("resets the launch-attempts counter once a Work Pi pane appears (crash-then-relaunch is allowed)", async () => {
+		// Issue #1: each launch makes the pane appear, then the pane crashes
+		// (closes WITHOUT a PR). A PR appears only after the 3rd launch.
+		// maxLaunchAttempts=1: without the reset, the 2nd launch attempt would be
+		// blocked (attempts 2 > 1) and the supervisor would stop before any PR.
+		const world = makeWorld([1]);
+		let paneOpen = false;
+		let launchCount = 0;
+		const launch = vi.fn(async (_child: AutopilotChildState) => {
+			launchCount += 1;
+			paneOpen = true;
+		});
+		const base = fakeDeps(world);
+		const deps: AutopilotDeps = {
+			...base,
+			async hasActiveWorkPi() {
+				return paneOpen;
+			},
+		};
+		let iters = 0;
+		const hooks: AutopilotLoopHooks = {
+			async sleep() {
+				iters += 1;
+				if (iters > 100) throw new Error("test loop exceeded 100 iterations");
+				// Closing the open pane models a Work Pi crash; a PR lands only after
+				// the 3rd launch, so the supervisor must relaunch at least twice.
+				if (paneOpen) {
+					paneOpen = false;
+					if (launchCount >= 3) world.prExists.add(1);
+				}
+			},
+			shouldStop: () => false,
+			// Fixed clock inside appearTimeoutMs: waitForWorkPi sees the pane immediately.
+			now: () => 0,
+			notify: () => {},
+		};
+		const config: AutopilotSupervisorConfig = { ...DEFAULT_AUTOPILOT_CONFIG, maxLaunchAttempts: 1, appearTimeoutMs: 1_000 };
+		const result = await runAutopilotSupervisor(deps, launch, hooks, config);
+		expect(result.kind).toBe("completed");
+		expect(launchCount).toBe(3);
+	});
 });
