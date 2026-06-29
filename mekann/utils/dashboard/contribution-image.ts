@@ -8,7 +8,38 @@ import type { ContributionDay } from "./github.js";
 
 const execFile = promisify(execFileCb);
 
-export type DashboardImage = { ok: true; path: string; columns: number; rows: number; pngPath?: string } | { ok: false; error: string };
+export type DashboardImage = { ok: true; path: string; columns: number; rows: number; pngPath?: string; pngError?: string } | { ok: false; error: string };
+
+// SVG→PNG converters tried in order (issue #171, IC-234). rsvg-convert is the
+// fast path but absent on many minimal containers / WSL; fall back to inkscape
+// or ImageMagick so the Kitty graphics PNG is still produced when possible.
+type SvgConverter = {
+	command: string;
+	args: (svgPath: string, pngPath: string) => string[];
+};
+
+const SVG_CONVERTERS: SvgConverter[] = [
+	{ command: "rsvg-convert", args: (svg, png) => ["--format", "png", "--output", png, svg] },
+	{ command: "inkscape", args: (svg, png) => ["--export-filename", png, svg] },
+	{ command: "magick", args: (svg, png) => [svg, png] },
+	{ command: "convert", args: (svg, png) => [svg, png] },
+];
+
+// Resolve the first available converter. Probing with `--version` lets us tell
+// "not installed" (ENOENT) from "installed but errored"; the latter still counts
+// as usable so a quirky `--version` exit does not skip a working converter.
+async function resolveSvgConverter(): Promise<{ converter: SvgConverter } | { converter: undefined; reason: string }> {
+	for (const converter of SVG_CONVERTERS) {
+		try {
+			await execFile(converter.command, ["--version"], { timeout: 2000 });
+			return { converter };
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException)?.code === "ENOENT") continue;
+			return { converter };
+		}
+	}
+	return { converter: undefined, reason: "no SVG→PNG converter found — install librsvg (rsvg-convert), inkscape, or imagemagick" };
+}
 
 export async function createContributionSvg(days: ContributionDay[] | undefined, options: { enabled: boolean; columns?: number; rows?: number } = { enabled: true }): Promise<DashboardImage | undefined> {
 	if (!options.enabled || !days?.length) return undefined;
@@ -63,17 +94,25 @@ ${rects}
 		const path = join(dir, "contributions.svg");
 		await writeFile(path, svg);
 
-		// Convert SVG to PNG for Kitty graphics protocol (SVG is not a supported image format)
+		// Convert SVG to PNG for Kitty graphics protocol (SVG is not a supported image format).
+		// Try rsvg-convert, then inkscape/ImageMagick, so a missing librsvg in a
+		// minimal container/WSL no longer silently drops the image (issue #171, IC-234).
 		let pngPath: string | undefined;
-		try {
-			const png = join(dir, "contributions.png");
-			await execFile("rsvg-convert", ["--format", "png", "--output", png, path], { timeout: 5000 });
-			pngPath = png;
-		} catch {
-			// PNG conversion optional; SVG path remains for text fallback
+		let pngError: string | undefined;
+		const resolved = await resolveSvgConverter();
+		if (resolved.converter) {
+			try {
+				const png = join(dir, "contributions.png");
+				await execFile(resolved.converter.command, resolved.converter.args(path, png), { timeout: 5000 });
+				pngPath = png;
+			} catch (convertError) {
+				pngError = `${resolved.converter.command} failed: ${convertError instanceof Error ? convertError.message : String(convertError)}`;
+			}
+		} else {
+			pngError = resolved.reason;
 		}
 
-		return { ok: true, path, columns, rows, pngPath };
+		return { ok: true, path, columns, rows, pngPath, pngError };
 	} catch (error) {
 		return { ok: false, error: error instanceof Error ? error.message : String(error) };
 	}

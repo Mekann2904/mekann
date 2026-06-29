@@ -54,7 +54,13 @@ async function generateGraphPng(days: ContributionDay[] | undefined): Promise<st
 	if (!days?.length) return undefined;
 	try {
 		const result = await createContributionSvg(days, { enabled: true });
-		if (!result?.ok || !result.pngPath) return undefined;
+		if (!result?.ok) return undefined;
+		if (!result.pngPath && result.pngError) {
+			// PNG (kitten icat) unavailable; a text fallback still renders. Surface
+			// the cause so the user knows why the image is missing instead of silence
+			// (issue #171, IC-234).
+			console.warn(`contribution graph PNG skipped: ${result.pngError}`);
+		}
 		return result.pngPath;
 	} catch {
 		return undefined;

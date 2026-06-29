@@ -40,8 +40,39 @@ function walkFiles(dir) {
   });
 }
 
+function parseFrontmatterBlock(contents) {
+  // YAML frontmatter is a `---`-delimited block at the very start of the file.
+  // The previous single-regex check assumed LF endings (broke on CRLF
+  // checkouts), mixed greedy/non-greedy + lookahead (mis-fired on quoted
+  // values or `description:` appearing in the body), and could not tell an
+  // empty `description:` from a missing one. Parse it explicitly instead.
+  const text = contents.replace(/\r\n/g, "\n");
+  const match = /^---\n([\s\S]*?)\n---(?:\n|$)/.exec(text);
+  return match ? match[1] : null;
+}
+
+function getDescriptionValue(frontmatter) {
+  if (!frontmatter) return undefined;
+  for (const line of frontmatter.split("\n")) {
+    const match = /^description:\s*(.*)$/.exec(line);
+    if (!match) continue;
+    let value = match[1].trim();
+    // Drop a trailing YAML comment, then strip one layer of matching quotes.
+    value = value.replace(/(?:^|\s)#.*$/, "").trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    return value;
+  }
+  return undefined;
+}
+
 function hasDescriptionFrontmatter(contents) {
-  return /^---\n(?=[\s\S]*?^---\n)[\s\S]*^description:\s+.+$/m.test(contents);
+  const value = getDescriptionValue(parseFrontmatterBlock(contents));
+  return Boolean(value && value.trim());
 }
 
 function checkImportedSkill(manifest, item) {
