@@ -228,15 +228,22 @@ interface LockOwner {
 }
 
 function readLockOwner(lockDir: string): { owner: LockOwner | null; mtimeMs: number | null } {
+  // Always stat the lock dir for mtimeMs (best-effort): the age-based stale
+  // fallback in isStaleSettingsLock must work even when owner.json is present
+  // but unusable (empty/corrupt object, or missing pid/startedAt). Previously
+  // mtimeMs was discarded whenever owner.json parsed, so such a lock could never
+  // be reclaimed by age and saveModelConfig stalled until the lock timeout.
+  let mtimeMs: number | null = null;
+  try {
+    mtimeMs = statSync(lockDir).mtimeMs;
+  } catch {
+    /* leave null; the age fallback degrades to `now` (never stale) */
+  }
   try {
     const owner = JSON.parse(readFileSync(join(lockDir, "owner.json"), "utf8")) as LockOwner;
-    return { owner, mtimeMs: null };
+    return { owner, mtimeMs };
   } catch {
-    try {
-      return { owner: null, mtimeMs: statSync(lockDir).mtimeMs };
-    } catch {
-      return { owner: null, mtimeMs: null };
-    }
+    return { owner: null, mtimeMs };
   }
 }
 
