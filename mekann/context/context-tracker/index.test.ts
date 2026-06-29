@@ -98,6 +98,24 @@ describe("context tool registration observation", () => {
     expect(state.toolSchemaTotalBytes).toBe(second);
   });
 
+  it("records non-zero schema bytes when canonicalization throws (BigInt parameters)", () => {
+    // BigInt makes canonicalizeJson/JSON.stringify throw; previously the
+    // per-module byteLen returned 0, hiding this tool from the schema
+    // surface total. safeByteLen must fall back to a non-zero length.
+    const pi = {
+      on: vi.fn(),
+      registerCommand: vi.fn(),
+      registerTool: vi.fn(),
+    } as any;
+
+    observeToolRegistrations(pi);
+    pi.registerTool({ name: "bigint_tool", parameters: { type: "object", properties: { count: { type: "integer" } }, big: 10n } as any, execute: async () => ({ content: "ok" }) });
+
+    const bytes = state.tools.get("bigint_tool")?.schemaBytes;
+    expect(bytes).toBeGreaterThan(0);
+    expect(state.toolSchemaTotalBytes).toBe(bytes);
+  });
+
   it("keeps context intelligence derived values scoped to the requested sample set", () => {
     recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "provider_request", summary: { contextTokens: 1000, contextPercent: 10, payloadBytes: 1000, messageBytes: 700, systemPromptBytes: 100, resultBytes: 10 } });
     recordContextMonitorSample({ cwd: "/repo/a", sessionId: "a", phase: "tool_end", summary: { toolName: "a_tool", resultBytes: 100 } });
