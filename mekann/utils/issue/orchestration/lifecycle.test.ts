@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { continueOrchestration, startOrchestration, type LaunchWorkPi } from "./lifecycle.js";
+import { continueOrchestration, formatSummaryJson, startOrchestration, type LaunchWorkPi } from "./lifecycle.js";
 import type { OrchestrationDeps, ChildBrief } from "./collector.js";
 
 function fakeDeps(map: Record<number, Partial<{ openBlockers: number[]; merged: boolean; prExists: boolean; hasWorktree: boolean; hasActiveWorkPi: boolean; readyForAgent: boolean }>>): OrchestrationDeps {
@@ -26,6 +26,30 @@ function fakeDeps(map: Record<number, Partial<{ openBlockers: number[]; merged: 
 }
 
 const noLaunch: LaunchWorkPi = async () => {};
+
+describe("formatSummaryJson (IC-248: structured summary for localized display)", () => {
+	it("serializes the summary to stable JSON with identifier keys", () => {
+		const json = formatSummaryJson({
+			total: 5,
+			done: [11, 12],
+			blocked: [13],
+			active: [14],
+			notReady: [],
+			startable: [15],
+		});
+		const parsed = JSON.parse(json);
+		expect(parsed).toEqual({
+			total: 5,
+			done: [11, 12],
+			active: [14],
+			blocked: [13],
+			notReady: [],
+			startable: [15],
+		});
+		// Keys are stable identifiers (not localized prose) so a renderer can map them.
+		expect(Object.keys(parsed).sort()).toEqual(["active", "blocked", "done", "notReady", "startable", "total"]);
+	});
+});
 
 describe("startOrchestration", () => {
 	it("returns no-children when the parent has no sub-issues", async () => {
