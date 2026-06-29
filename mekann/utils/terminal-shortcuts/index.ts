@@ -31,7 +31,11 @@ const BUILT_IN_SHORTCUTS: Record<string, TerminalShortcut> = {
 	"zed .": { mode: "argv", argv: ["zed", "."] },
 };
 
-const BUILT_IN_SPLIT_SHORTCUTS = new Set(["lg"]);
+// `lg` and `zed` default to split launching. Split panes do not take over
+// Pi's TTY, so these shortcuts fire even while the agent is streaming
+// (e.g. during LLM reasoning). On terminals without split support they
+// fall back to pass-through when idle.
+const BUILT_IN_SPLIT_SHORTCUTS = new Set(["lg", "zed", "zed ."]);
 const SPLIT_ONLY_SHORTCUTS = new Set<string>();
 
 function parseShortcutEnv(value: string | undefined): Record<string, TerminalShortcut> {
