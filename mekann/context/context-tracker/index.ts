@@ -242,7 +242,7 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
         `JSON endpoints: ${serverUrl}/snapshot ${serverUrl}/events ${serverUrl}/tools ${serverUrl}/cache-efficiency/snapshot`,
       ];
       if (!opened.ok) lines.push(`(ブラウザを自動起動できませんでした: ${opened.reason})`);
-      ctx.ui.notify(lines.join("\n"), opened.ok ? "info" : "warn");
+      ctx.ui.notify(lines.join("\n"), opened.ok ? "info" : "warning");
     },
   });
 }

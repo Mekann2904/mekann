@@ -167,7 +167,7 @@ export default function cacheableContextExtension(pi: ExtensionAPI): void {
       await ensureBuilt(cwd);
       const manifest = await readManifest(cwd);
       if (!manifest) {
-        ctx.ui.notify("Mekann context prefix has not been built", "warn");
+        ctx.ui.notify("Mekann context prefix has not been built", "warning");
         return;
       }
       const lines = [
