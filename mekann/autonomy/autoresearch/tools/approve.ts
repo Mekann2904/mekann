@@ -44,12 +44,12 @@ export type ApproveParams = { plan_path?: string };
 export async function executeApprove(
     store: SessionStore,
     params: ApproveParams,
-    signal: any,
-    ctx: ExtensionContext,
-    deps: {
-        sessionDir: (cwd: string, sid: string) => string;
-        eventsLedgerPath: (cwd: string, sid: string) => string;
-    },
+	signal: AbortSignal | undefined,
+	ctx: ExtensionContext,
+	deps: {
+		sessionDir: (cwd: string, sid: string) => string;
+		eventsLedgerPath: (cwd: string, sid: string) => string;
+	},
 ): Promise<ToolResponse> {
 	const pp = params.plan_path ?? planPath(ctx.cwd);
 	if (!fs.existsSync(pp)) {
@@ -134,7 +134,7 @@ export async function executeApprove(
 			logEvent("baseline_check_completed", { name, phase, exitCode, passed, timedOut });
 			const check = contract.evaluation.checks.find((c) => c.name === name);
 			if (check?.required && !passed) return store.textDetails(`[ERROR] baseline ${phase} check failed: ${name}`, { check: name, phase, exitCode, timedOut });
-			return undefined as unknown as void;
+			return undefined;
 		},
 	);
 	// Check required failures

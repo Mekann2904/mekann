@@ -34,3 +34,19 @@ describe("output-gate structured preview", () => {
 		expect(result.retrievalHints.some((h) => h.includes("AssertionError"))).toBe(true);
 	});
 });
+
+describe("lineFocusedPreview — symmetric context window (issue #166 / IC-196)", () => {
+	// The output-gate defaultContextLines default is 3, so the focused window is
+	// symmetric hit-3..hit+3 (previously an undocumented asymmetric hit-2..hit+3).
+	it("keeps a symmetric window around the matched line", () => {
+		const lines = Array.from({ length: 30 }, (_, i) => i === 15 ? "ERROR boom" : `line ${i}`);
+		const text = lines.join("\n");
+		const result = buildStructuredPreview(text, { toolName: "bash", maxBytes: 8000 });
+		expect(result.contentType).toBe("log");
+		// hit is at 0-based index 15 → kept lines are 12..18 → displayed as 13..19.
+		expect(result.preview).toContain("13: line 12");
+		expect(result.preview).toContain("19: line 18");
+		expect(result.preview).not.toContain("12: line 11");
+		expect(result.preview).not.toContain("20: line 19");
+	});
+});

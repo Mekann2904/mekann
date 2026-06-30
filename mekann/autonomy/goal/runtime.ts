@@ -9,6 +9,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { GoalStore, type Goal, type GoalStateEntry, CONTINUATION_COOLDOWN_MS } from "./state.js";
 import { continuationPrompt, budgetLimitPrompt, objectiveUpdatedPrompt } from "./prompts.js";
 import { normalizeActualCacheUsage } from "../../core/cache-friendly-prompt/actualUsage.js";
+import { isPersistedSession } from "./session.js";
 
 // ---------------------------------------------------------------------------
 // Compaction threshold
@@ -61,11 +62,6 @@ export type GoalEventCallback = (action: string, goal: Goal) => void;
  * repo's explicit-cast baseline). Returns false when the method is absent,
  * matching the previous optional-chain early-return behavior.
  */
-function isSessionPersisted(sessionManager: unknown): boolean {
-  const fn = (sessionManager as { isPersisted?: () => unknown }).isPersisted;
-  return typeof fn === "function" ? Boolean(fn()) : false;
-}
-
 export class GoalRuntime {
   private store: GoalStore;
   private pi: ExtensionAPI;
@@ -275,7 +271,7 @@ export class GoalRuntime {
   maybeContinueIfIdle(ctx: ExtensionContext): void {
     // Check all preconditions
     if (this.pi.getFlag("goals") !== true) return;
-    if (!isSessionPersisted(ctx.sessionManager)) return;
+    if (!isPersistedSession(ctx)) return;
     if (this.continuationSuppressed) return;
     if (this.active_turn_marker) return;
     if (this.continuation_active) return;

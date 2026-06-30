@@ -32,6 +32,41 @@ export type GitHubDashboardData = {
 export type GitHubProfileResult = { ok: true; profile: GitHubProfile } | { ok: false; error: string };
 export type GitHubDashboardResult = { ok: true; data: GitHubDashboardData } | { ok: false; error: string };
 
+type GitHubContributionGroup = {
+	contributions?: {
+		totalCount?: number | null;
+	} | null;
+};
+
+type GitHubContributionDayNode = {
+	date?: string | null;
+	contributionCount?: number | null;
+	contributionLevel?: string | null;
+};
+
+type GitHubContributionWeekNode = {
+	contributionDays?: GitHubContributionDayNode[] | null;
+};
+
+type GitHubContributionsCollection = {
+	contributionCalendar?: {
+		weeks?: GitHubContributionWeekNode[] | null;
+	} | null;
+	pullRequestContributionsByRepository?: GitHubContributionGroup[] | null;
+	issueContributionsByRepository?: GitHubContributionGroup[] | null;
+	pullRequestReviewContributionsByRepository?: GitHubContributionGroup[] | null;
+};
+
+type GitHubDashboardViewer = GitHubProfile & {
+	contributionsCollection?: GitHubContributionsCollection | null;
+};
+
+type GitHubDashboardGraphQLResponse = {
+	data?: {
+		viewer?: GitHubDashboardViewer | null;
+	} | null;
+};
+
 export function parseGitHubViewer(value: unknown): GitHubProfile {
 	const obj = value && typeof value === "object" ? value as Record<string, unknown> : {};
 	const login = typeof obj.login === "string" && obj.login ? obj.login : "unknown";
@@ -46,8 +81,9 @@ export function parseGitHubViewer(value: unknown): GitHubProfile {
 }
 
 export function normalizeDashboardResponse(value: unknown, now = new Date()): GitHubDashboardData {
-	const viewer = ((value as { data?: { viewer?: unknown } }).data?.viewer ?? {}) as Record<string, any>;
-	const collection = viewer.contributionsCollection as Record<string, any> | undefined;
+	const response = isGitHubDashboardGraphQLResponse(value) ? value : undefined;
+	const viewer: GitHubDashboardViewer = response?.data?.viewer ?? { login: "unknown" };
+	const collection = viewer.contributionsCollection ?? undefined;
 	const weeks = collection?.contributionCalendar?.weeks ?? [];
 	const contributionDays: ContributionDay[] = [];
 	for (const week of Array.isArray(weeks) ? weeks : []) {
@@ -77,8 +113,12 @@ export function normalizeDashboardResponse(value: unknown, now = new Date()): Gi
 	};
 }
 
-function sumContributionGroups(value: unknown): number {
-	return (Array.isArray(value) ? value : []).reduce((sum, item: any) => sum + Number(item?.contributions?.totalCount ?? 0), 0);
+function isGitHubDashboardGraphQLResponse(value: unknown): value is GitHubDashboardGraphQLResponse {
+	return value !== null && typeof value === "object";
+}
+
+function sumContributionGroups(value: GitHubContributionGroup[] | null | undefined): number {
+	return (Array.isArray(value) ? value : []).reduce((sum, item) => sum + Number(item.contributions?.totalCount ?? 0), 0);
 }
 
 function sumDays(days: ContributionDay[], from: Date, toKey: string): number {

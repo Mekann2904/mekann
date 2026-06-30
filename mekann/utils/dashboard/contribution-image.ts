@@ -4,15 +4,22 @@ import { mkdtemp, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerCleanupPath } from "./cleanup.js";
+import { resolveDashboardConfig, type MekannDashboardConfig } from "./config.js";
 import type { ContributionDay } from "./github.js";
 
 const execFile = promisify(execFileCb);
 
 export type DashboardImage = { ok: true; path: string; columns: number; rows: number; pngPath?: string } | { ok: false; error: string };
 
-export async function createContributionSvg(days: ContributionDay[] | undefined, options: { enabled: boolean; columns?: number; rows?: number } = { enabled: true }): Promise<DashboardImage | undefined> {
+export async function createContributionSvg(days: ContributionDay[] | undefined, options: { enabled: boolean; columns?: number; rows?: number; config?: MekannDashboardConfig } = { enabled: true }): Promise<DashboardImage | undefined> {
 	if (!options.enabled || !days?.length) return undefined;
 	try {
+		// GitHub-contribution quartile colors are config-driven (issue #166 /
+		// IC-236) so the graph can adapt to theme, dark/light, and color-vision
+		// needs. Both the cells and the "Less/More" legend below read the same
+		// five colors. `config` is a DI seam for tests; production omits it and
+		// resolves from `mekann.json`.
+		const colors = options.config ?? resolveDashboardConfig();
 		const columns = options.columns ?? 104;
 		const rows = options.rows ?? 11;
 		const recent = days.slice(-371);
@@ -40,7 +47,7 @@ export async function createContributionSvg(days: ContributionDay[] | undefined,
 					lastLabelX = x;
 				}
 			}
-			return `<rect x="${left + week * (cell + gap)}" y="${top + dow * (cell + gap)}" width="${cell}" height="${cell}" fill="${levelColor(day.level)}"/>`;
+			return `<rect x="${left + week * (cell + gap)}" y="${top + dow * (cell + gap)}" width="${cell}" height="${cell}" fill="${levelColor(day.level, colors)}"/>`;
 		}).join("\n");
 		const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
 <rect width="100%" height="100%" fill="rgba(4,10,8,0.10)"/>
@@ -51,11 +58,11 @@ ${monthLabels.join("\n")}
 <text x="0" y="${top + 5 * (cell + gap) + 10}" fill="#d1d5db" font-size="12">Fri</text>
 ${rects}
 <text x="0" y="${height - 8}" fill="#d1d5db" font-size="12">Less</text>
-<rect x="36" y="${height - 18}" width="10" height="10" fill="#17201b"/>
-<rect x="52" y="${height - 18}" width="10" height="10" fill="#0e4429"/>
-<rect x="68" y="${height - 18}" width="10" height="10" fill="#006d32"/>
-<rect x="84" y="${height - 18}" width="10" height="10" fill="#26a641"/>
-<rect x="100" y="${height - 18}" width="10" height="10" fill="#39d353"/>
+<rect x="36" y="${height - 18}" width="10" height="10" fill="${colors.levelColorNone}"/>
+<rect x="52" y="${height - 18}" width="10" height="10" fill="${colors.levelColorFirst}"/>
+<rect x="68" y="${height - 18}" width="10" height="10" fill="${colors.levelColorSecond}"/>
+<rect x="84" y="${height - 18}" width="10" height="10" fill="${colors.levelColorThird}"/>
+<rect x="100" y="${height - 18}" width="10" height="10" fill="${colors.levelColorFourth}"/>
 <text x="118" y="${height - 8}" fill="#d1d5db" font-size="12">More</text>
 </svg>`;
 		const dir = await mkdtemp(join(tmpdir(), "mekann-dashboard-graph-"));
@@ -79,10 +86,10 @@ ${rects}
 	}
 }
 
-function levelColor(level: string): string {
-	if (level === "FOURTH_QUARTILE") return "#39d353";
-	if (level === "THIRD_QUARTILE") return "#26a641";
-	if (level === "SECOND_QUARTILE") return "#006d32";
-	if (level === "FIRST_QUARTILE") return "#0e4429";
-	return "#111827";
+function levelColor(level: string, colors: MekannDashboardConfig = resolveDashboardConfig()): string {
+	if (level === "FOURTH_QUARTILE") return colors.levelColorFourth;
+	if (level === "THIRD_QUARTILE") return colors.levelColorThird;
+	if (level === "SECOND_QUARTILE") return colors.levelColorSecond;
+	if (level === "FIRST_QUARTILE") return colors.levelColorFirst;
+	return colors.levelColorNone;
 }

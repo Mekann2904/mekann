@@ -197,12 +197,6 @@ export function validateContractV1(value: unknown): ContractV1ValidationResult {
 	if (errors.length === 0) {
 		const contract = value as AutoresearchContractV1;
 
-		// Reject manual acceptance mode (this is already enforced by the schema union,
-		// but double-check for clarity)
-		if ((contract.acceptance as any).mode === "manual") {
-			errors.push("acceptance.mode: manual は autoresearch/v1 contract で禁止されています");
-		}
-
 
 		// Warn if no checks defined
 		if (contract.evaluation.checks.length === 0) {
@@ -231,23 +225,6 @@ export function validateContractV1(value: unknown): ContractV1ValidationResult {
 				"acceptance.mode=better_than_best is experimental in contract v1/P1. " +
 				"Prefer better_than_baseline for P0 contract mode unless best-metric ledger recovery is acceptable.",
 			);
-		}
-
-		// Check command argv safety
-		const allCommands = [
-			contract.evaluation.benchmark.command,
-			...contract.evaluation.checks.map((c) => c.command),
-		];
-		for (const cmd of allCommands) {
-			for (const arg of cmd.argv) {
-				// Reject shell metacharacters in argv (should not contain shell expansion)
-				if (new RegExp(String.fromCharCode(96) + "$").test(arg) && cmd.argv.length === 1) {
-					warnings.push(
-						"command argv contains shell-like characters in single-element argv: \"" + arg + "\". " +
-						"argv execution does not expand shell variables.",
-					);
-				}
-			}
 		}
 
 		// Validate path patterns
