@@ -76,11 +76,26 @@ export function extractTouchedPathsFromPatch(patch: string): string[] {
 	return [...paths].sort();
 }
 function matchesAny(file: string, scopes: string[]): boolean { return scopes.length === 0 || matchesAnyPattern(file, scopes); }
+// Single statSync instead of existsSync + statSync (issue #168 / IC-173): the
+// hot path used to issue two sync syscalls per changed path just to tell a
+// directory from a file/missing entry. One stat with ENOENTO-as-false is
+// behaviour-identical and halves the synchronous IO on multi-file diffs.
+function statIsDirectory(p: string): boolean { try { return fs.statSync(p).isDirectory(); } catch { return false; } }
+function statFileHash(fp: string): { exists: boolean; hash: string | null } {
+	try {
+		const st = fs.statSync(fp);
+		// `exists` tracks the stat result exactly (matches the old existsSync);
+		// only a real file is hashed, and a read error propagates just like before.
+		return { exists: true, hash: st.isFile() ? sha256Buffer(fs.readFileSync(fp)) : null };
+	} catch {
+		return { exists: false, hash: null };
+	}
+}
 export function candidateChangedFiles(cwd: string): string[] {
 	const out = new Set<string>();
 	for (const f of filterInternalPaths(getChangedFiles(cwd))) {
 		const abs = path.join(cwd, f);
-		if (f.endsWith("/") || (fs.existsSync(abs) && fs.statSync(abs).isDirectory())) {
+		if (f.endsWith("/") || statIsDirectory(abs)) {
 			for (const child of walkFiles(abs)) out.add(path.relative(cwd, child).replace(/\\/g, "/"));
 		} else out.add(f.replace(/\\/g, "/"));
 	}
@@ -89,8 +104,8 @@ export function candidateChangedFiles(cwd: string): string[] {
 function walkFiles(dir: string): string[] { const out: string[] = []; for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); if (e.isDirectory()) out.push(...walkFiles(p)); else out.push(p); } return out; }
 export function candidateDiffIdentityHash(cwd: string): string {
 	const entries = candidateChangedFiles(cwd).map((p) => {
-		const fp = path.join(cwd, p);
-		return { path: p, exists: fs.existsSync(fp), hash: fs.existsSync(fp) && fs.statSync(fp).isFile() ? sha256Buffer(fs.readFileSync(fp)) : null };
+		const { exists, hash } = statFileHash(path.join(cwd, p));
+		return { path: p, exists, hash };
 	});
 	return sha256Text(JSON.stringify(entries));
 }

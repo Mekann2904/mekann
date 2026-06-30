@@ -32,6 +32,7 @@ interface RawSubIssuesJson {
 interface RawPr {
 	number: number;
 	state: string; // "OPEN" | "CLOSED" | "MERGED"
+	isDraft?: boolean;
 }
 
 async function ghJson<T>(args: string[], timeout: number): Promise<T> {
@@ -93,7 +94,7 @@ export function createOrchestrationDeps(config: OrchestrationDepsConfig): Orches
 			let prs: RawPr[] = [];
 			try {
 				prs = await ghJson<RawPr[]>(
-					["pr", "list", "--repo", remote, "--head", branch, "--state", "all", "--json", "number,state", "--limit", "10"],
+					["pr", "list", "--repo", remote, "--head", branch, "--state", "all", "--json", "number,state,isDraft", "--limit", "10"],
 					15000,
 				);
 			} catch {
@@ -102,7 +103,14 @@ export function createOrchestrationDeps(config: OrchestrationDepsConfig): Orches
 			}
 			const exists = prs.length > 0;
 			const merged = prs.some((pr) => pr.state === "MERGED");
-			return { merged, exists };
+			// A branch may carry several PRs over its life (e.g. a closed one plus a
+			// reopened/ fresh one). Treat the chain by its most relevant state: merged
+			// wins; otherwise an OPEN PR is the live one (draft if it is a draft); a
+			// branch with no merged and no OPEN PR is closed-without-merge.
+			const hasOpen = prs.some((pr) => pr.state === "OPEN");
+			const closed = !merged && !hasOpen && prs.some((pr) => pr.state === "CLOSED");
+			const isDraft = prs.some((pr) => pr.state === "OPEN" && pr.isDraft === true);
+			return { merged, closed, isDraft, exists };
 		},
 
 		hasWorktree(childNumber: number): boolean {

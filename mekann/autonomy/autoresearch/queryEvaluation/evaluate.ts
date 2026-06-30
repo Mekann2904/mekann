@@ -98,6 +98,7 @@ import {
   isBroadQuery,
   sourceFromMeasurementMethod,
 } from "./pipeline.js";
+import { messageText } from "./messages.js";
 
 // ─── Export する関数 ──────────────────────────────────────────
 
@@ -156,18 +157,15 @@ export function evaluateQueryStatically(query: string): QueryEvaluation {
       readiness: emptyReadiness,
       scores: emptyScores,
       contractDraft: emptyDraft,
-      blockingIssues: ["実験の目的が不明確です"],
-      warnings: [
-        "検証方針 (checks) が未指定です。変更が既存の振る舞いを壊さないか確認するため、checks command または autoresearch.checks.sh の方針を明示することを推奨します。",
-        "対象範囲 (scope) が未指定です。改善対象を明確にすると実験の再現性が向上します。",
-      ],
-      ambiguityFlags: ["対象範囲が不明です"],
+      blockingIssues: [messageText("block.empty_objective")],
+      warnings: [messageText("warn.checks_unspecified"), messageText("warn.scope_unspecified")],
+      ambiguityFlags: [messageText("ambig.scope_unknown")],
       riskFlags: [],
-      suggestedRewrite: "測定可能な主指標 (metric) と改善方向 (lower/higher) を指定してください。",
+      suggestedRewrite: messageText("rewrite.needs_metric_design"),
       clarifyingQuestions: [
-        "主指標は wall-clock time、テスト成功率、coverage のどれを優先しますか？",
-        "benchmark command は何を実行しますか？（例: `npm run prepush`、`pnpm test`）",
-        "改善対象の scope はリポジトリ全体ですか、それとも特定 package や directory ですか？",
+        messageText("q.metric_priority"),
+        messageText("q.benchmark_command"),
+        messageText("q.scope"),
       ],
     };
   }

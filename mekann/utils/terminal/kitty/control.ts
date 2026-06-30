@@ -1,4 +1,4 @@
-import { execFile as execFileCb, spawnSync } from "node:child_process";
+import { execFile as execFileCb, spawn } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFile = promisify(execFileCb);
@@ -408,7 +408,18 @@ export class KittyControl {
 	}
 
 	async renderImage(options: { path: string; columns: number; rows: number; x: number; y: number }): Promise<void> {
-		spawnSync(this.kittenBin, ["icat", "--silent", "--transfer-mode=file", "--align=left", "--scale-up=yes", "--place", `${options.columns}x${options.rows}@${options.x}x${options.y}`, options.path], { stdio: "inherit" });
+		// spawn (async) with an inherited TTY instead of the blocking spawnSync:
+		// image rendering must not block the event loop for the hundreds of ms
+		// `kitten icat` can take (IC-088). stdio: "inherit" lets icat place the image
+		// on the real TTY — its graphics-protocol escapes must reach the terminal,
+		// not a pipe buffer — and we await "close" so the image is fully drawn
+		// before the caller proceeds (same ordering as the old blocking call, but
+		// non-blocking).
+		await new Promise<void>((resolve, reject) => {
+			const child = spawn(this.kittenBin, ["icat", "--silent", "--transfer-mode=file", "--align=left", "--scale-up=yes", "--place", `${options.columns}x${options.rows}@${options.x}x${options.y}`, options.path], { stdio: "inherit" });
+			child.on("error", reject);
+			child.on("close", () => resolve());
+		});
 	}
 
 	async launchWindow(options: KittyLaunchOptions & { location: KittySplitLocation }): Promise<KittyLaunchResult> {

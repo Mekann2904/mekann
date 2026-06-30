@@ -13,7 +13,7 @@ function deps(children: ChildBrief[], labels: Record<number, string[]>): Orchest
 			return labels[childNumber] ?? [];
 		},
 		async getPrMergeStatus() {
-			return { merged: false, exists: false };
+			return { merged: false, closed: false, isDraft: false, exists: false };
 		},
 		hasWorktree() {
 			return false;
