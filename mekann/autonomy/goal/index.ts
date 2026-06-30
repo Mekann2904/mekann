@@ -36,6 +36,7 @@ import { createGoalEmitters } from "./goalEvents.js";
 import { registerGoalTools } from "./goalTools.js";
 import { registerGoalPromptProvider } from "./goalPromptProvider.js";
 import { registerGoalLifecycle } from "./goalLifecycle.js";
+import { isPersistedSession } from "./session.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -80,7 +81,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
 
   function isEnabled(ctx: ExtensionContext): boolean {
     if (pi.getFlag("goals") !== true) return false;
-    if (!(ctx.sessionManager as any).isPersisted?.()) return false;
+    if (!isPersistedSession(ctx)) return false;
     return true;
   }
 

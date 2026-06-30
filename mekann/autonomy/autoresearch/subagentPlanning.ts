@@ -23,7 +23,20 @@ export function authorityFromContract(contract: AutoresearchContractV1, role: Au
 	};
 }
 
-export function suggestSubagents(contract: AutoresearchContractV1): { scouts: unknown[]; proposers: unknown[]; critics: unknown[] } {
+export interface SubagentSuggestion {
+	task_name: string;
+	message: string;
+	authority: SubagentAuthority;
+	result_contract?: "subagent_result_v1";
+}
+
+export interface AutoresearchSubagentSuggestions {
+	scouts: SubagentSuggestion[];
+	proposers: SubagentSuggestion[];
+	critics: SubagentSuggestion[];
+}
+
+export function suggestSubagents(contract: AutoresearchContractV1): AutoresearchSubagentSuggestions {
 	const view = contractViewForAgent(contract);
 	const scopeNote = `Allowed write paths: ${JSON.stringify(contract.scope.allowedWritePaths)}\nForbidden write paths: ${JSON.stringify(contract.scope.forbiddenWritePaths)}\nImmutable read paths: ${JSON.stringify(contract.scope.immutableReadPaths)}`;
 	return {

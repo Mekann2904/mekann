@@ -68,21 +68,82 @@ export async function contextLedgerStats(cwd: string): Promise<string> {
 	].join("\n");
 }
 
-export async function searchContextEventsText(input: {
+export interface SearchContextEventsResult {
+	text: string;
+	details: {
+		query?: string;
+		kind?: MekannContextEventKind;
+		maxResults: number;
+		priorityMax?: number;
+		count: number;
+		eventIds: string[];
+		matches: Array<{
+			id: string;
+			kind: MekannContextEventKind;
+			priority: number;
+			status: string;
+			effectiveStatus: string;
+			title: string;
+		}>;
+	};
+}
+
+export async function searchContextEvents(input: {
 	cwd: string;
 	query?: string;
 	kind?: MekannContextEventKind;
 	maxResults?: unknown;
 	priorityMax?: unknown;
-}): Promise<string> {
+}): Promise<SearchContextEventsResult> {
+	const maxResults = clampInt(input.maxResults, 20, 1, 100);
+	const priorityMax = input.priorityMax == null ? undefined : clampInt(input.priorityMax, 4, 0, 4);
 	const events = await searchEvents({
 		cwd: input.cwd,
 		query: input.query,
 		kind: input.kind,
-		maxResults: clampInt(input.maxResults, 20, 1, 100),
-		priorityMax: input.priorityMax == null ? undefined : clampInt(input.priorityMax, 4, 0, 4),
+		maxResults,
+		priorityMax,
 	});
-	return formatSearchResult(events);
+	return {
+		text: formatSearchResult(events),
+		details: {
+			query: input.query,
+			kind: input.kind,
+			maxResults,
+			priorityMax,
+			count: events.length,
+			eventIds: events.map((event) => event.id),
+			matches: events.map((event) => ({
+				id: event.id,
+				kind: event.kind,
+				priority: event.priority,
+				status: event.status,
+				effectiveStatus: event.effectiveStatus,
+				title: event.title,
+			})),
+		},
+	};
+}
+
+export async function summarizeSessionContext(input: {
+	cwd: string;
+	rebuild?: unknown;
+	maxBytes?: unknown;
+}): Promise<{ text: string; details: { rebuild: boolean; maxBytes: number; eventCount: number; source: "cache" | "rebuilt" } }> {
+	const maxBytes = clampInt(input.maxBytes, 4096, 512, 65536);
+	const rebuild = Boolean(input.rebuild);
+	const events = await readEvents(input.cwd);
+	let xml: string | undefined;
+	let source: "cache" | "rebuilt" = "rebuilt";
+	if (!rebuild) {
+		const cached = await readBoundedLatestSnapshot(input.cwd, maxBytes);
+		if (cached && snapshotWatermarkMatches(cached, events)) {
+			xml = cached;
+			source = "cache";
+		}
+	}
+	if (!xml) xml = buildSnapshot(events, { maxBytes });
+	return { text: xml, details: { rebuild, maxBytes, eventCount: events.length, source } };
 }
 
 export async function summarizeSessionContextText(input: {
@@ -90,16 +151,7 @@ export async function summarizeSessionContextText(input: {
 	rebuild?: unknown;
 	maxBytes?: unknown;
 }): Promise<string> {
-	const maxBytes = clampInt(input.maxBytes, 4096, 512, 65536);
-	const rebuild = Boolean(input.rebuild);
-	const events = await readEvents(input.cwd);
-	let xml: string | undefined;
-	if (!rebuild) {
-		const cached = await readBoundedLatestSnapshot(input.cwd, maxBytes);
-		if (cached && snapshotWatermarkMatches(cached, events)) xml = cached;
-	}
-	if (!xml) xml = buildSnapshot(events, { maxBytes });
-	return xml;
+	return (await summarizeSessionContext(input)).text;
 }
 
 export const CONTEXT_LEDGER_COMMAND_COMPLETIONS = ["list", "stats", "snapshot", "restore", "clear", "enable-tools", "disable-tools"] as const;

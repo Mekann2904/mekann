@@ -161,8 +161,7 @@ export class SubagentLifecycle {
     this.surfaceSyncUnsubscribe = createSurfaceSyncSubscriber(
       pi,
       this.registry,
-      (cwd) => this.resultStoreFor(cwd),
-      () => this._cwd,
+      this.resultStore,
     );
   }
 
@@ -176,6 +175,6 @@ export class SubagentLifecycle {
    * for backwards compatibility when reactive sync is not enabled.
    */
   syncSurface(pi: ExtensionAPI): void {
-    syncSubagentToolSurface(pi, this.registry.list(), this.resultStoreFor(this._cwd));
+    syncSubagentToolSurface(pi, this.registry.list(), this.resultStore);
   }
 }
