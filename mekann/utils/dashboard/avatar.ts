@@ -1,6 +1,7 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { MEKANN_DASHBOARD_DEFAULTS } from "../../config.js";
 import { renderTerminalImage } from "../terminal/launch.js";
 import { registerCleanupPath } from "./cleanup.js";
 import { isLikelyKitty } from "./kitty-env.js";
@@ -77,9 +78,18 @@ export async function renderKittyImage(image: { ok: true; path: string; columns:
 	await renderTerminalImage({ path: image.path, columns: image.columns, rows: image.rows, x: options.x, y: options.y });
 }
 
-export function kittyGraphicsEscape(bytes: Buffer, options: { columns: number; rows: number }): string {
+export function kittyGraphicsEscape(bytes: Buffer, options: { columns: number; rows: number; chunkChars?: number }): string {
 	const payload = bytes.toString("base64");
-	const chunks = payload.match(/.{1,4096}/g) ?? [""];
+	// Kitty graphics protocol transmits an image as a sequence of APC
+	// (`ESC _ G ... ESC \`) commands; each command carries a slice of the
+	// base64 payload with `m=1` to signal more chunks follow. The slice must
+	// stay small enough for the terminal to buffer and reassemble without
+	// truncation — Kitty's own `kitten icat` uses ~4 KiB chunks, so 4096 base64
+	// chars is the default here. `chunkChars` lets a caller pass a
+	// terminal-capability-aware value (e.g. larger chunks on capable terminals
+	// to reduce the escape-sequence flood on huge images). Issue #166 / IC-233.
+	const chunkSize = options.chunkChars ?? MEKANN_DASHBOARD_DEFAULTS.kittyChunkChars;
+	const chunks = payload.match(new RegExp(`.{1,${Math.max(1, Math.floor(chunkSize))}}`, "g")) ?? [""];
 	return chunks.map((chunk, index) => {
 		const more = index < chunks.length - 1 ? 1 : 0;
 		const header = index === 0

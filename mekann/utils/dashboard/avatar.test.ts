@@ -3,9 +3,11 @@ import {
 	isLikelyKitty,
 	classifyAvatarUrl,
 	fetchKittyAvatar,
+	kittyGraphicsEscape,
 	AVATAR_PNG_MAGIC,
 	AVATAR_MAX_BYTES,
 } from "./avatar.js";
+import { MEKANN_DASHBOARD_DEFAULTS } from "../../config.js";
 
 describe("kitty avatar", () => {
 	it("detects kitty-like environments", () => {
@@ -114,5 +116,26 @@ describe("fetchKittyAvatar (IC-232 SSRF + PNG validation)", () => {
 		const result = await fetchKittyAvatar("https://avatars.githubusercontent.com/u/1", { enabled: true });
 		expect((result as { ok: false; error: string }).ok).toBe(false);
 		expect((result as { ok: false; error: string }).error).toMatch(/size/i);
+	});
+});
+
+describe("kittyGraphicsEscape — configurable chunk size (issue #166 / IC-233)", () => {
+	it("defaults to the documented chunk size", () => {
+		// Payload large enough to require multiple default-sized chunks.
+		const bytes = Buffer.alloc((MEKANN_DASHBOARD_DEFAULTS.kittyChunkChars * 2) * 0.75 + 8, 0xab);
+		const escape = kittyGraphicsEscape(bytes, { columns: 10, rows: 4 });
+		// Each APC command is wrapped by ESC _ G ... ESC backslash.
+		const count = (escape.match(/\x1b\\/g) ?? []).length;
+		expect(count).toBeGreaterThan(1);
+	});
+
+	it("respects an overridden chunkChars to reduce escape flood", () => {
+		const bytes = Buffer.alloc(8192, 0xcd);
+		const small = kittyGraphicsEscape(bytes, { columns: 10, rows: 4, chunkChars: 1024 });
+		const large = kittyGraphicsEscape(bytes, { columns: 10, rows: 4, chunkChars: 65536 });
+		const smallChunks = (small.match(/\x1b_G/g) ?? []).length;
+		const largeChunks = (large.match(/\x1b_G/g) ?? []).length;
+		expect(smallChunks).toBeGreaterThan(largeChunks);
+		expect(largeChunks).toBe(1);
 	});
 });

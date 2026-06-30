@@ -222,7 +222,7 @@ pi.registerTool({
 	label: "autoresearch list candidates",
 	description: "List autoresearch candidates for the current plan.",
 	parameters: Type.Object({}),
-	async execute(_tc, params, _signal, _ou, ctx) { return executeListCandidates(store, params as Record<string, never>, ctx); },
+	async execute(_tc, _params, _signal, _ou, ctx) { return executeListCandidates(store, {}, ctx); },
 });
 
 pi.registerTool({
@@ -258,7 +258,7 @@ pi.registerTool({
 		const contract = readCurrentContract(ctx.cwd);
 		if (!contract) return store.textResponse("[ERROR] current contract が見つかりません。");
 		const result = suggestSubagents(contract);
-		return store.textDetails(JSON.stringify(result, null, 2), result as Record<string, unknown>);
+		return store.textDetails(JSON.stringify(result, null, 2), { suggestions: result });
 	},
 });
 

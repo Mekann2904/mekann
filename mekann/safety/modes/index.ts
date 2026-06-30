@@ -14,6 +14,7 @@ import {
 	type AutoresearchModeEvent,
 } from "../policy-core/modes.js";
 import { registerPromptProvider, type PromptFragment } from "../../core/prompt-core/index.js";
+import { randomToken } from "../../utils/id.js";
 
 export default function modesExtension(pi: ExtensionAPI): void {
 	let configPath: string | undefined;
@@ -124,7 +125,7 @@ export default function modesExtension(pi: ExtensionAPI): void {
 		if (target === "read_only") {
 			saveActiveToolsIfFirst();
 			pi.setActiveTools([...READ_ONLY_MODE_TOOLS]);
-			readOnlySandboxOverrideToken = `read-only-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+			readOnlySandboxOverrideToken = randomToken();
 			safeEmit(SANDBOX_PUSH_PROFILE_EVENT, { owner: "read-only-mode", token: readOnlySandboxOverrideToken, profile: "read_only" } satisfies SandboxPushProfileEvent);
 			const readOnlyRef = state.modelConfig.models.read_only;
 			if (readOnlyRef) await trySetModel(readOnlyRef, ctx, "Read-only model");
