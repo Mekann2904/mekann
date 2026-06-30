@@ -19,17 +19,6 @@ set -euo pipefail
 # to run at normal priority (e.g. a dedicated build box). Note: load average
 # still counts these runnable threads, so judge the effect by interactive
 # responsiveness, not by load avg.
-if [ -z "${PREPUSH_NOPRIORITIZE:-}" ]; then
-  if command -v taskpolicy >/dev/null 2>&1; then
-    PRIORITIZE="taskpolicy -c utility"
-  elif command -v nice >/dev/null 2>&1; then
-    PRIORITIZE="nice"
-  else
-    PRIORITIZE=""
-  fi
-else
-  PRIORITIZE=""
-fi
 
 start_ms=$(python3 -c 'import time; print(int(time.time()*1000))')
 
@@ -38,6 +27,28 @@ bash scripts/check-git-local-safety.sh
 
 tmpdir=$(mktemp -d)
 trap "rm -rf $tmpdir" EXIT
+
+# Build the prioritisation prefix as an ARRAY once (issue #171, IC-254). The
+# previous `eval "$PRIORITIZE ${names[$name]}"` re-interpreted the string through
+# the shell parser, which is an injection vector if PRIORITIZE or a job name ever
+# flows in from the environment. Word-splitting into an array and expanding with
+# `"${arr[@]}"` avoids eval entirely while still passing the job through verbatim.
+prefix=()
+if [ -z "${PREPUSH_NOPRIORITIZE:-}" ]; then
+  if command -v taskpolicy >/dev/null 2>&1; then
+    prefix=(taskpolicy -c utility)
+  elif command -v nice >/dev/null 2>&1; then
+    prefix=(nice)
+  fi
+fi
+
+# Bash 4+ supports `wait -n` (block until any background child exits). macOS'
+# bundled bash 3.2 does not, so fall back to kill -0 polling there
+# (issue #171, IC-253).
+use_wait_n=0
+if [ "${BASH_VERSINFO[0]:-0}" -ge 4 ]; then
+  use_wait_n=1
+fi
 
 declare -A pids
 # Cap simultaneous jobs so total processes stay within the CPU budget.
@@ -60,24 +71,56 @@ declare -A names=( [typecheck]="npm run typecheck"
   [output-gate]="npm run test:output-gate"
   [ledger]="npm run test:ledger" )
 
-for name in "${!names[@]}"; do
-  # Gate on the running count before launching the next job. kill -0 (not
-  # `wait -n`) keeps this compatible with macOS' bundled bash 3.2.
-  while true; do
-    active=0
-    for n in "${!pids[@]}"; do
-      kill -0 "${pids[$n]}" 2>/dev/null && active=$((active + 1))
-    done
-    [ "$active" -lt "$MAX_JOBS" ] && break
-    sleep 0.2
+# Count currently-running tracked children.
+count_active() {
+  local n active=0
+  for n in "${!pids[@]}"; do
+    kill -0 "${pids[$n]}" 2>/dev/null && active=$((active + 1))
   done
-  eval "$PRIORITIZE ${names[$name]}" > "$tmpdir/$name.log" 2>&1 & pids[$name]=$!
+  echo "$active"
+}
+
+# Wait until a concurrency slot is free. On bash 4+, block on `wait -n` (no
+# busy-loop). On bash 3.2, fall back to a short kill -0 poll. Status is recorded
+# per-job via status files below, so reaping a child here is safe.
+wait_for_slot() {
+  while [ "$(count_active)" -ge "$MAX_JOBS" ]; do
+    if [ "$use_wait_n" -eq 1 ]; then
+      wait -n 2>/dev/null || sleep 0.05
+    else
+      sleep 0.2
+    fi
+  done
+}
+
+for name in "${!names[@]}"; do
+  wait_for_slot
+  # Run the job in a subshell that writes its own exit status to a file. This
+  # keeps the authoritative status even if the pid was already reaped by
+  # `wait -n` above, so the final collection pass never misses a result.
+  read -ra job <<< "${names[$name]}"
+  (
+    # Disable errexit inside the status-recording subshell so a failing job does
+    # not abort before its exit status is written. The authoritative status is
+    # the file; the subshell's own exit code is irrelevant.
+    set +e
+    if [ "${#prefix[@]}" -gt 0 ]; then
+      "${prefix[@]}" "${job[@]}"
+    else
+      "${job[@]}"
+    fi
+    echo "$?" > "$tmpdir/$name.status"
+  ) > "$tmpdir/$name.log" 2>&1 & pids[$name]=$!
 done
 
 fail=0
 failed_names=""
 for name in "${!pids[@]}"; do
-  if ! wait ${pids[$name]}; then
+  # Block until this child is done (no-op if `wait -n` already reaped it), then
+  # read the authoritative status the subshell recorded before exiting.
+  wait "${pids[$name]}" 2>/dev/null || true
+  status=$(cat "$tmpdir/$name.status" 2>/dev/null || echo "unknown")
+  if [ "$status" != "0" ]; then
     fail=1
     failed_names="$failed_names $name"
   fi

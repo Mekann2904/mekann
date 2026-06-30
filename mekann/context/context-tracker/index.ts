@@ -1,6 +1,6 @@
 import type { BeforeAgentStartEvent, BuildSystemPromptOptions, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
 import { safeByteLen } from "../../utils/safe-bytes/index.js";
 import { ensureContextMonitorServer, recordCompaction } from "./server.js";
@@ -30,15 +30,53 @@ function shortSource(message: unknown): string {
   return `${role}:${text.slice(0, 80).replace(/\s+/g, " ")}`;
 }
 
-function openUrl(url: string): void {
-  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
-  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
-  try {
-    const child = spawn(command, args, { detached: true, stdio: "ignore" });
-    child.unref();
-  } catch {
-    // Best-effort convenience only; the command notification still exposes the URL.
+// Best-effort browser opener. Resolution order (issue #171, IC-221):
+//   1. explicit `browserCommand` setting (overridable for exotic setups)
+//   2. platform default (open on macOS, cmd/start on Windows)
+//   3. candidate list for Linux/WSL/minimal containers (xdg-open → wslview →
+//      gio → x-www-browser → sensible-browser)
+// The previous version caught only the synchronous spawn throw, so an ENOENT
+// from a missing binary (minimal container) escaped as an unhandled 'error'
+// event. We now probe with `command -v` and attach an 'error' handler too.
+const URL_OPENER_CANDIDATES = ["xdg-open", "wslview", "gio", "x-www-browser", "sensible-browser"];
+
+function commandAvailable(command: string): boolean {
+  if (process.platform === "win32") {
+    return spawnSync("where", [command], { stdio: "ignore" }).status === 0;
   }
+  return spawnSync("sh", ["-c", `command -v "${command}" >/dev/null 2>&1`], { stdio: "ignore" }).status === 0;
+}
+
+function resolveOpenCommand(): { command: string; args: (url: string) => string[] } | undefined {
+  const cfg = featureConfig("context-tracker");
+  const override = typeof cfg.browserCommand === "string" ? cfg.browserCommand.trim() : "";
+  if (override) {
+    const [command, ...rest] = override.split(/\s+/).filter(Boolean);
+    if (command) return { command, args: (url) => [...rest, url] };
+  }
+  const platform = process.platform;
+  if (platform === "darwin") return { command: "open", args: (url) => [url] };
+  if (platform === "win32") return { command: "cmd", args: (url) => ["/c", "start", "", url] };
+  for (const candidate of URL_OPENER_CANDIDATES) {
+    if (commandAvailable(candidate)) return { command: candidate, args: (url) => [url] };
+  }
+  return undefined;
+}
+
+function openUrl(url: string): { ok: true } | { ok: false; reason: string } {
+  const resolved = resolveOpenCommand();
+  if (!resolved) {
+    return {
+      ok: false,
+      reason: "no URL opener found — set context-tracker.browserCommand or install xdg-open/wslview/gio",
+    };
+  }
+  const child = spawn(resolved.command, resolved.args(url), { detached: true, stdio: "ignore" });
+  // ENOENT is emitted asynchronously via 'error'; attach a handler so a missing
+  // binary (e.g. an override pointing at nothing) never escapes unhandled.
+  child.on("error", () => { /* best-effort convenience only */ });
+  child.unref();
+  return { ok: true };
 }
 
 function messageBreakdown(messages: unknown, limit = 20): MessageBreakdownItem[] {
@@ -196,8 +234,15 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
     description: "Show Mekann Web UI local server URL",
     async handler(_args: string | undefined, ctx) {
       await startServer(ctx);
-      openUrl(serverUrl);
-      ctx.ui.notify(`Mekann Web UI: ${serverUrl}\nContext Monitor: ${serverUrl}/dashboard\nCache Efficiency: ${serverUrl}/cache-efficiency\nJSON endpoints: ${serverUrl}/snapshot ${serverUrl}/events ${serverUrl}/tools ${serverUrl}/cache-efficiency/snapshot`, "info");
+      const opened = openUrl(serverUrl);
+      const lines = [
+        `Mekann Web UI: ${serverUrl}`,
+        `Context Monitor: ${serverUrl}/dashboard`,
+        `Cache Efficiency: ${serverUrl}/cache-efficiency`,
+        `JSON endpoints: ${serverUrl}/snapshot ${serverUrl}/events ${serverUrl}/tools ${serverUrl}/cache-efficiency/snapshot`,
+      ];
+      if (!opened.ok) lines.push(`(ブラウザを自動起動できませんでした: ${opened.reason})`);
+      ctx.ui.notify(lines.join("\n"), opened.ok ? "info" : "warn");
     },
   });
 }

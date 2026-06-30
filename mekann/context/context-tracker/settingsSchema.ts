@@ -13,6 +13,10 @@ function num(key: string, category: string, defaultValue: number, min: number, m
   } };
 }
 
+function str(key: string, category: string, defaultValue: string, description: string): SettingSchema<string> {
+  return { key, type: "string", defaultValue, description, category, scopes: ["global", "workspace"], restartRequired: false, validate(value) { return typeof value === "string" ? [] : ["文字列である必要があります"]; } };
+}
+
 export const contextTrackerSettingsSchema: FeatureSettingsSchema = {
   feature: "context-tracker",
   title: "Context Tracker",
@@ -20,5 +24,6 @@ export const contextTrackerSettingsSchema: FeatureSettingsSchema = {
     bool("enabled", "General", true, "Mekann Web UI と context pressure monitoring を有効にします。LLM tool は追加しません。"),
     bool("autoStartServer", "Server", false, "pi session_start 時に monitoring HTTP server を自動起動します。false なら /web-ui 実行時だけ起動します。"),
     num("port", "Server", 0, 0, 65535, "monitoring HTTP server port。0 なら空き port を自動選択します。"),
+    str("browserCommand", "Server", "", "/web-ui で URL を開くコマンド(例: `wslview` / `firefox`)。空ならプラットフォーム候補(open/xdg-open/wslview/gio/...)を順に試します。"),
   ],
 };

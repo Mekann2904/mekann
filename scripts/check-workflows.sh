@@ -3,9 +3,14 @@
 set -euo pipefail
 
 if ! command -v wrkflw >/dev/null 2>&1; then
-  echo "wrkflw is required for workflow validation." >&2
-  echo "Install it with: brew install wrkflw" >&2
-  exit 1
+  # Best-effort: wrkflw is an external (Homebrew) tool not available on Linux
+  # CI runners, Docker images, or fresh contributor machines. Failing hard here
+  # blocks `git push` in those environments for no productive reason. Warn and
+  # skip so the rest of pre-push still runs; install it locally for full coverage
+  # (issue #171, IC-252).
+  echo "wrkflw not found; skipping workflow validation." >&2
+  echo "Install it for full coverage: brew install wrkflw" >&2
+  exit 0
 fi
 
 wrkflw validate --exit-code .github/workflows
