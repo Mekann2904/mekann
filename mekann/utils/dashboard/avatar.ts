@@ -3,6 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { renderTerminalImage } from "../terminal/launch.js";
 import { registerCleanupPath } from "./cleanup.js";
+import { isLikelyKitty } from "./kitty-env.js";
+
+export { isLikelyKitty };
 
 export type DashboardAvatarResult = { ok: true; path: string; columns: number; rows: number } | { ok: false; error: string };
 
@@ -30,10 +33,6 @@ export async function renderKittyAvatar(avatar: DashboardAvatarResult | undefine
 export async function renderKittyImage(image: { ok: true; path: string; columns: number; rows: number } | { ok: false; error: string } | undefined, options: { x: number; y: number }): Promise<void> {
 	if (!image?.ok) return;
 	await renderTerminalImage({ path: image.path, columns: image.columns, rows: image.rows, x: options.x, y: options.y });
-}
-
-export function isLikelyKitty(env: NodeJS.ProcessEnv = process.env): boolean {
-	return Boolean(env.KITTY_WINDOW_ID || env.TERM?.toLowerCase().includes("kitty"));
 }
 
 export function kittyGraphicsEscape(bytes: Buffer, options: { columns: number; rows: number }): string {

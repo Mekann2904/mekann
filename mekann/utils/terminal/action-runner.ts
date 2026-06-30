@@ -7,7 +7,7 @@
 
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { readSync } from "node:fs";
-import { shellArgs, terminalActionLabel } from "./actions.js";
+import { resolveShell, shellArgs, terminalActionLabel } from "./actions.js";
 import { launchWithTerminalEmulator } from "./launch.js";
 import type { TerminalAction, TerminalLaunchResult } from "./types.js";
 
@@ -90,7 +90,7 @@ function defaultSpawnAction(
 		return spawnSync(command, args, { cwd, stdio: "inherit", env });
 	}
 
-	const shell = process.env.SHELL || "/bin/sh";
+	const shell = resolveShell(process.env.SHELL);
 	return spawnSync(shell, shellArgs(shell, action.command), {
 		cwd,
 		stdio: "inherit",
