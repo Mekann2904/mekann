@@ -16,11 +16,12 @@ import type {
 	StoredSubagentResult,
 	ValidationResult,
 } from "./types.js";
-import type { GitPatchAdapter } from "./gitPatchAdapter.js";
+import type { GitPatchAdapter, RollbackResult } from "./gitPatchAdapter.js";
 import type { ValidationRunner } from "./validationRunner.js";
 import type { SemanticConflictLogReader } from "./resultStoreAdapter.js";
 import { admitPatchProposal } from "./patchProposalIntake.js";
 import { evaluateSemanticConflict } from "./semanticConflict.js";
+import { isPatchRefUnderDir } from "./pathSafety.js";
 
 // ---------------------------------------------------------------------------
 // Decision types
@@ -41,11 +42,6 @@ export interface PatchApplicationPipelineInput {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function isUnderDir(file: string, dir: string): boolean {
-	const rel = path.relative(path.resolve(dir), path.resolve(file));
-	return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
-}
-
 function isReviewOnlyPath(file: string): boolean {
 	return file === ".husky" || file.startsWith(".husky/");
 }
@@ -65,43 +61,44 @@ export class PatchApplicationPipeline {
 
 	async apply(input: PatchApplicationPipelineInput): Promise<PatchApplicationDecision> {
 		const { stored, params } = input;
-		const state: { patchApplied: boolean; ref?: string } = { patchApplied: false };
+		const state: { patchApplied: boolean; ref?: string; touchedPaths?: string[] } = { patchApplied: false };
 
 		try {
 			return await this.applyInner(stored, params, state);
 		} catch (err) {
-			// Unexpected exception — attempt rollback if patch was applied
-			let rollbackAttempted = false;
-			let rollbackOk: boolean | undefined;
-			if (state.patchApplied && state.ref && params.rollback_on_failure !== false) {
-				rollbackAttempted = true;
-				try {
-					await this.deps.git.rollback(state.ref);
-					rollbackOk = true;
-				} catch {
-					rollbackOk = false;
-				}
+		// Unexpected exception — attempt rollback if patch was applied
+		let rollbackAttempted = false;
+		let rollback: RollbackResult | undefined;
+		if (state.patchApplied && state.ref && params.rollback_on_failure !== false) {
+			rollbackAttempted = true;
+			try {
+				rollback = await this.deps.git.rollback(state.ref, state.touchedPaths);
+			} catch {
+				rollback = { fullyReverted: false, residual: [], method: "none" };
 			}
-			return {
-				kind: "needs_review",
-				result_id: stored.result_id,
-				reason: state.patchApplied
-					? "apply_engine_exception_after_patch_applied"
-					: "apply_engine_exception",
-				details: {
-					error: err instanceof Error ? err.message : String(err),
-					patch_applied: state.patchApplied,
-					rollback_attempted: rollbackAttempted,
-					rollback_ok: rollbackOk,
-				},
-			};
+		}
+		return {
+			kind: "needs_review",
+			result_id: stored.result_id,
+			reason: state.patchApplied
+				? "apply_engine_exception_after_patch_applied"
+				: "apply_engine_exception",
+			details: {
+				error: err instanceof Error ? err.message : String(err),
+				patch_applied: state.patchApplied,
+				rollback_attempted: rollbackAttempted,
+				rollback_fully_reverted: rollback?.fullyReverted,
+				rollback_method: rollback?.method,
+				rollback_residual: rollback?.residual,
+			},
+		};
 		}
 	}
 
 	private async applyInner(
 		stored: StoredSubagentResult,
 		params: ApplyAgentResultsParams,
-		state: { patchApplied: boolean; ref?: string },
+		state: { patchApplied: boolean; ref?: string; touchedPaths?: string[] },
 	): Promise<PatchApplicationDecision> {
 		const id = stored.result_id;
 
@@ -131,7 +128,7 @@ export class PatchApplicationPipeline {
 		const patch = r as PatchProposalResult;
 		const ref = patch.patch.ref;
 		state.ref = ref;
-		if (!ref || !isUnderDir(ref, this.deps.patchRefRootDir)) {
+		if (!ref || !isPatchRefUnderDir(ref, this.deps.patchRefRootDir)) {
 			return { kind: "rejected", result_id: id, reason: "invalid_patch_ref" };
 		}
 
@@ -153,6 +150,7 @@ export class PatchApplicationPipeline {
 
 		// 7. empty write_scope
 		const actualTouched = intake.touchedPaths;
+		state.touchedPaths = actualTouched;
 		if (intake.canonicalWriteScope.length === 0) {
 			return { kind: "needs_review", result_id: id, reason: "write_scope is not specified; auto apply requires explicit authority scope", details: { actualTouched } };
 		}
@@ -220,15 +218,16 @@ export class PatchApplicationPipeline {
 		const validations = await this.deps.validator.runAll(validationCommands);
 		const firstFailure = validations.find((v) => !v.ok);
 		if (firstFailure) {
+			let rollback: RollbackResult | undefined;
 			if (params.rollback_on_failure !== false) {
 				try {
-					await this.deps.git.rollback(ref);
-					state.patchApplied = false;
+					rollback = await this.deps.git.rollback(ref, actualTouched);
+					if (rollback?.fullyReverted) state.patchApplied = false;
 				} catch {
 					/* best-effort */
 				}
 			}
-			return { kind: "rejected", result_id: id, reason: "validation_failed", details: { ...firstFailure, all_validations: validations } };
+			return { kind: "rejected", result_id: id, reason: "validation_failed", details: { ...firstFailure, all_validations: validations, rollback_fully_reverted: rollback?.fullyReverted, rollback_residual: rollback?.residual } };
 		}
 
 		// 16. Success

@@ -833,4 +833,84 @@ describe("evaluateQueryStatically", () => {
 			expect(r.scores.safety).toBe(1);
 		});
 	});
+
+	// ── i18n: CJK 正規表現の堅牢性 (issue #147) ───────────────
+
+	describe("i18n: CJK query detection (issue #147)", () => {
+		// Risk detection — `\b` と日本語の混用で抜けていた境界ケース
+		describe("risk flag detection for Japanese", () => {
+			it("detects 秘密 surrounded by Japanese (本番の秘密を表示して)", () => {
+				const r = evaluateQueryStatically("本番の秘密を表示して");
+				expect(r.decision).toBe("reject");
+				expect(r.riskFlags.some(f => f.includes("秘密情報"))).toBe(true);
+			});
+
+			it("detects パスワード leak risk", () => {
+				const r = evaluateQueryStatically("パスワードを送信して");
+				expect(r.decision).toBe("reject");
+				expect(r.riskFlags.some(f => f.includes("秘密情報"))).toBe(true);
+			});
+
+			it("detects 本番環境 destructive change (本番DBを削除)", () => {
+				const r = evaluateQueryStatically("本番DBを削除して");
+				expect(r.decision).toBe("reject");
+				expect(r.riskFlags.some(f => f.includes("本番"))).toBe(true);
+			});
+
+			it("still detects English production+change", () => {
+				const r = evaluateQueryStatically("production DB を変更してベンチマークしたい");
+				expect(r.decision).toBe("reject");
+				expect(r.riskFlags.some(f => f.includes("本番"))).toBe(true);
+			});
+
+			it("does not flag safe Japanese queries", () => {
+				const r = evaluateQueryStatically("prepush を速くしたい");
+				expect(r.riskFlags).toEqual([]);
+			});
+		});
+
+		// Metric inference `require` — 命令形の揺れ
+		describe("metric inference require verb variations", () => {
+			it("score を高くしたい → higher (高く)", () => {
+				const r = evaluateQueryStatically("スコアを高くしたい");
+				expect(r.contractDraft.primaryMetric.name).toBe("スコア");
+				expect(r.contractDraft.primaryMetric.direction).toBe("higher");
+			});
+
+			it("accuracy を増やしたい → higher (増や)", () => {
+				const r = evaluateQueryStatically("accuracy を増やしたい");
+				expect(r.contractDraft.primaryMetric.direction).toBe("higher");
+			});
+
+			it("error を少なくしたい → lower (少なく)", () => {
+				const r = evaluateQueryStatically("エラーを少なくしたい");
+				expect(r.contractDraft.primaryMetric.name).toBe("error_count");
+				expect(r.contractDraft.primaryMetric.direction).toBe("lower");
+			});
+
+			it("failure を下げたい → lower (下げ)", () => {
+				const r = evaluateQueryStatically("failure を下げたい");
+				expect(r.contractDraft.primaryMetric.name).toBe("error_count");
+				expect(r.contractDraft.primaryMetric.direction).toBe("lower");
+			});
+		});
+
+		// stdout metric detection — 全角 `＝`・日本語メトリック言及
+		describe("stdout metric detection for Japanese", () => {
+			it("accepts full-width ＝ in METRIC line", () => {
+				const r = evaluateQueryStatically(
+					"`npm run bench` は stdout に METRIC score＝<value> を出す。score を上げたい。checks は `npm test`。"
+				);
+				expect(r.contractDraft.primaryMetric.measurementMethod).toBe("stdout_metric");
+				expect(r.decision).toBe("ready_for_run");
+			});
+
+			it("detects 標準出力 + メトリック mention", () => {
+				const r = evaluateQueryStatically(
+					"`npm run bench` は標準出力にメトリック score=<value> を出す。score を上げたい。checks は `npm test`。"
+				);
+				expect(r.contractDraft.primaryMetric.measurementMethod).toBe("stdout_metric");
+			});
+		});
+	});
 });

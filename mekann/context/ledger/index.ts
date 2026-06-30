@@ -1,6 +1,5 @@
-import type { ExtensionAPI, ExtensionCommandContext, SessionStartEvent, ContextEvent } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
-import { parseParams } from "../../tool-params.js";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { Type, type Static } from "@sinclair/typebox";
 import { appendContextEvent, readEvents, clearContext, archiveLegacyV1Log } from "./store.js";
 import { computeStats, searchEvents, formatSearchResult, projectContextEvents } from "./query.js";
 import { CONTEXT_EVENT_KINDS, type MekannContextEventKind } from "./schema.js";
@@ -9,6 +8,7 @@ import { readLatestSnapshot } from "./snapshot-store.js";
 import { handleClear } from "../clear.js";
 import { featureBooleanValue, featureStringValue } from "../../settings/enabled.js";
 import { setToolsActive } from "../../settings/toolSurface.js";
+import { parseParams } from "../../utils/typed-params.js";
 import { shouldExposeManualOrAlwaysSurface, shouldRestoreSessionContextSurface } from "../surface-policy.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
 import {
@@ -20,7 +20,6 @@ import {
 	clampInt,
 	runContextLedgerCommand,
 	searchContextEvents,
-	summarizeSessionContext,
 	summarizeSessionContextText,
 } from "./projection.js";
 
@@ -68,17 +67,15 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 		manualToolsActive = active;
 		syncContextLedgerToolSurface();
 	}
-	const KindEnum = Type.Enum(Object.fromEntries(CONTEXT_EVENT_KINDS.map((kind) => [kind, kind])) as Record<string, string>);
+	const KindEnum = Type.Enum(Object.fromEntries(CONTEXT_EVENT_KINDS.map((kind) => [kind, kind])) as { [K in MekannContextEventKind]: K });
 	const searchContextEventsParams = Type.Object({
 		query: Type.Optional(Type.String({ description: "Search title, summary, and refs" })),
 		kind: Type.Optional(KindEnum),
 		maxResults: Type.Optional(Type.Number({ description: "Maximum events to return (default: 20)" })),
 		priorityMax: Type.Optional(Type.Number({ description: "Only include events with priority <= this value (0-4)" })),
 	});
-	const summarizeSessionContextParams = Type.Object({
-		rebuild: Type.Optional(Type.Boolean({ description: "Rebuild from context events instead of reading latest snapshot" })),
-		maxBytes: Type.Optional(Type.Number({ description: "Maximum snapshot bytes (default: 4096, min: 512)" })),
-	});
+	type SearchContextEventsParams = Static<typeof searchContextEventsParams>;
+
 	pi.registerTool({
 		name: "search_context_events",
 		label: "Search Context Events",
@@ -91,18 +88,25 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 		parameters: searchContextEventsParams,
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const cwd = ctx?.cwd ?? process.cwd();
-			const p = parseParams(searchContextEventsParams, params);
-			const kind = p.kind === undefined ? undefined : p.kind as MekannContextEventKind;
+			// Type-safe decode: schema↔handler field drift surfaces as a compile
+			// error instead of silently returning undefined.
+			const p: SearchContextEventsParams = parseParams(searchContextEventsParams, params);
 			const result = await searchContextEvents({
 				cwd,
 				query: p.query,
-				kind,
+				kind: p.kind,
 				maxResults: p.maxResults,
 				priorityMax: p.priorityMax,
 			});
 			return { content: [{ type: "text", text: result.text }], details: result.details };
 		},
 	});
+
+	const summarizeSessionContextParams = Type.Object({
+		rebuild: Type.Optional(Type.Boolean({ description: "Rebuild from context events instead of reading latest snapshot" })),
+		maxBytes: Type.Optional(Type.Number({ description: "Maximum snapshot bytes (default: 4096, min: 512)" })),
+	});
+	type SummarizeSessionContextParams = Static<typeof summarizeSessionContextParams>;
 
 	pi.registerTool({
 		name: "summarize_session_context",
@@ -117,13 +121,13 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 		parameters: summarizeSessionContextParams,
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const cwd = ctx?.cwd ?? process.cwd();
-			const p = parseParams(summarizeSessionContextParams, params);
-			const result = await summarizeSessionContext({
+			const p: SummarizeSessionContextParams = parseParams(summarizeSessionContextParams, params);
+			const text = await summarizeSessionContextText({
 				cwd,
 				rebuild: p.rebuild,
 				maxBytes: p.maxBytes,
 			});
-			return { content: [{ type: "text", text: result.text }], details: result.details };
+			return { content: [{ type: "text", text }], details: {} };
 		},
 	});
 
@@ -132,7 +136,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 		getArgumentCompletions(prefix: string) {
 			return CONTEXT_LEDGER_COMMAND_COMPLETIONS.filter((v) => v.startsWith(prefix)).map((value) => ({ value, label: value }));
 		},
-		async handler(args: string, ctx: ExtensionCommandContext) {
+		async handler(args: string | undefined, ctx: ExtensionCommandContext) {
 			const cwd = ctx?.cwd ?? process.cwd();
 			const arg = args?.trim() ?? "";
 			if (arg === "enable-tools") {
@@ -155,7 +159,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.on("session_start", async (event: SessionStartEvent, ctx) => {
+	pi.on("session_start", async (event, ctx) => {
 		const cwd = ctx?.cwd ?? process.cwd();
 		manualToolsActive = false;
 		manualToolsActive = shouldRestoreSessionContextSurface({
@@ -189,7 +193,7 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 	// Consume the restore once the snapshot lands in a freshly-built dynamic
 	// block. cache-friendly-prompt's context handler runs before this one
 	// (core loads before context), so the block is already appended here.
-	pi.on("context", async (event: ContextEvent) => {
+	pi.on("context", async (event) => {
 		restoreController.consumeIfDelivered(event?.messages ?? []);
 	});
 

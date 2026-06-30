@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
-import { parseParams } from "../../tool-params.js";
+import { Type, type Static, type TSchema } from "@sinclair/typebox";
+import { StringEnum } from "@earendil-works/pi-ai";
 import { readCurrentContract } from "./contractV1.js";
 import { executeEvaluateQuery } from "./tools/evaluateQuery.js";
 import { executePlan } from "./tools/plan.js";
@@ -13,6 +13,28 @@ import { executeApplyCandidate, executeApplyCandidateIsolated, executeCandidateE
 import { suggestSubagents } from "./subagentPlanning.js";
 import type { SessionStore } from "./tools/sessionStore.js";
 import type { toolDeps } from "./index.js";
+
+/**
+ * pi-ai's `StringEnum` produces the provider-compatible JSON-schema shape
+ * `{ type: "string", enum: [...] }` that Google/Anthropic APIs require (they
+ * reject `anyOf`/`const` encodings). Its return type, however, is pi-ai's own
+ * bundled `TUnsafe<T>` (from the `typebox` v1 package), whose `TSchema` brand
+ * is structurally incompatible with the app's `@sinclair/typebox` 0.34. We
+ * therefore cast once at this boundary to the app's `TSchema` while preserving
+ * the literal static type — avoiding `any` so enum values stay compile-checked.
+ *
+ * Note: `Static<typeof schema>` infers the literal union, but pi's
+ * `registerTool<TParams>` generic inference degrades these enum fields to
+ * `unknown` inside `execute`'s `params`, so call sites cast `params` to the
+ * schema-derived type (pi validates against the schema at runtime). Tracked as
+ * a SDK/typing follow-up; see issue #141.
+ */
+function stringEnumParam<T extends readonly string[]>(
+	values: T,
+	options?: { description?: string; default?: T[number] },
+): TSchema & { static: T[number] } {
+	return StringEnum(values, options) as unknown as TSchema & { static: T[number] };
+}
 
 export function registerAutoresearchTools(pi: ExtensionAPI, store: SessionStore, deps: typeof toolDeps): void {
 // ─── Tool: autoresearch_evaluate_query ─────────────────────
@@ -41,21 +63,22 @@ const initParamDefs = Type.Object({
 	name: Type.String({ description: "Experiment name." }),
 	metric_name: Type.String({ description: "Primary metric name, e.g. total_ms." }),
 	metric_unit: Type.Optional(Type.String({ description: "Metric unit, e.g. ms." })),
-	direction: Type.Optional(Type.Union([Type.Literal("lower"), Type.Literal("higher")], { description: "Default: lower." })),
+	direction: Type.Optional(stringEnumParam(["lower", "higher"] as const, { description: "Default: lower." })),
 	objective: Type.Optional(Type.String({ description: "Experiment objective." })),
 	benchmark_command: Type.Optional(Type.String({ description: "Benchmark command, e.g. ./autoresearch.sh." })),
-	metric_method: Type.Optional(Type.Union([Type.Literal("wall_clock"), Type.Literal("stdout_metric"), Type.Literal("report_file")], { description: "Metric method. Default: wall_clock." })),
-	checks_mode: Type.Optional(Type.Union([Type.Literal("script"), Type.Literal("command"), Type.Literal("none")], { description: "Checks mode. Default: script." })),
+	metric_method: Type.Optional(stringEnumParam(["wall_clock", "stdout_metric", "report_file"] as const, { description: "Metric method. Default: wall_clock." })),
+	checks_mode: Type.Optional(stringEnumParam(["script", "command", "none"] as const, { description: "Checks mode. Default: script." })),
 	checks_command: Type.Optional(Type.String({ description: "Checks command when checks_mode=command." })),
-	acceptance_mode: Type.Optional(Type.Union([Type.Literal("better_than_baseline"), Type.Literal("better_than_best")], { description: "Acceptance mode (V1). Default: better_than_baseline. manual/improvement_threshold は V1 schema で禁止済み。" })),
+	acceptance_mode: Type.Optional(stringEnumParam(["better_than_baseline", "better_than_best"] as const, { description: "Acceptance mode (V1). Default: better_than_baseline. manual/improvement_threshold は V1 schema で禁止済み。" })),
 	min_improvement: Type.Optional(Type.Number({ description: "Minimum relative improvement ratio (minRelativeImprovement), e.g. 0.02." })),
 	repeat: Type.Optional(Type.Number({ description: "Measurement repeats. Default: 3." })),
-	aggregate: Type.Optional(Type.Union([Type.Literal("median"), Type.Literal("mean"), Type.Literal("max"), Type.Literal("min")], { description: "Aggregation method (V1). Default: median." })),
+	aggregate: Type.Optional(stringEnumParam(["median", "mean", "min", "max"] as const, { description: "Aggregation method (V1). Default: median." })),
 	require_git: Type.Optional(Type.Boolean({ description: "Require a git repo. Default: true." })),
 	require_clean_baseline: Type.Optional(Type.Boolean({ description: "Require a clean baseline. Default: true." })),
 	allowed_paths: Type.Optional(Type.Array(Type.String(), { description: "Allowed path patterns." })),
 	excluded_paths: Type.Optional(Type.Array(Type.String(), { description: "Excluded path patterns." })),
 });
+type InitToolParams = Static<typeof initParamDefs>;
 
 pi.registerTool({
 	name: "autoresearch_init",
@@ -69,7 +92,13 @@ pi.registerTool({
 	parameters: initParamDefs,
 
 	async execute(_tc, params, _sig, _ou, ctx) {
-		return executeInit(store, parseParams(initParamDefs, params), ctx, deps);
+		// pi validates `params` against `initParamDefs` at runtime, but
+		// `registerTool<TParams>` infers `params` with enum statics degraded to
+		// `unknown` (a limitation of inferring through `Type.Unsafe`). Cast to the
+		// schema-derived type — the source of truth — instead of widening to a
+		// top-level any, so the structural check against `InitParams` still guards
+		// schema↔handler drift.
+		return executeInit(store, params as InitToolParams, ctx, deps);
 	},
 });
 
@@ -98,6 +127,17 @@ pi.registerTool({
 
 // ─── Tool: autoresearch_log ────────────────────────────────
 
+const logParamDefs = Type.Object({
+	metric: Type.Number({ description: "Primary metric value." }),
+	status: stringEnumParam(["keep", "discard", "crash", "checks_failed"] as const, { description: "Result status." }),
+	description: Type.String({ description: "Short experiment description." }),
+	runId: Type.Optional(Type.String({ description: "runId from autoresearch_run." })),
+	commit: Type.Optional(Type.String({ description: "Git commit hash; auto when omitted." })),
+	metrics: Type.Optional(Type.Object({}, { additionalProperties: Type.Number(), description: "Additional metrics." })),
+	memo: Type.Optional(Type.String({ description: "Memo." })),
+});
+type LogToolParams = Static<typeof logParamDefs>;
+
 pi.registerTool({
 	name: "autoresearch_log",
 	label: "autoresearch log",
@@ -107,18 +147,12 @@ pi.registerTool({
 		"Do not keep timeouts, nonzero exits, failed checks, or missing metrics.",
 		"Pass the runId from autoresearch_run; piRunId is accepted as a legacy alias.",
 	],
-	parameters: Type.Object({
-		metric: Type.Number({ description: "Primary metric value." }),
-		status: Type.Union([Type.Literal("keep"), Type.Literal("discard"), Type.Literal("crash"), Type.Literal("checks_failed")], { description: "Result status." }),
-		description: Type.String({ description: "Short experiment description." }),
-		runId: Type.Optional(Type.String({ description: "runId from autoresearch_run." })),
-		commit: Type.Optional(Type.String({ description: "Git commit hash; auto when omitted." })),
-		metrics: Type.Optional(Type.Object({}, { additionalProperties: Type.Number(), description: "Additional metrics." })),
-		memo: Type.Optional(Type.String({ description: "Memo." })),
-	}),
+	parameters: logParamDefs,
 
 	async execute(_tc, params, _sig, _ou, ctx) {
-		return executeLog(store, params, ctx, deps);
+		// See autoresearch_init: cast to the schema-derived type (pi validates at
+		// runtime) rather than widening to a top-level any.
+		return executeLog(store, params as LogToolParams, ctx, deps);
 	},
 });
 

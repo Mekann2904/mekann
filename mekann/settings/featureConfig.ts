@@ -1,6 +1,6 @@
 import { flattenEffective } from "./effective.js";
 import { mekannSettingsSchemas } from "./registry.js";
-import { getGlobalMekannSettingsPath, getWorkspaceMekannSettingsPath, loadSettings } from "./store.js";
+import { getGlobalMekannSettingsPath, getWorkspaceMekannSettingsPath, loadSettingsReadonly } from "./store.js";
 import type { LoadedSettings } from "./store.js";
 import type { EffectiveSetting, MekannSettingsFile } from "./types.js";
 
@@ -41,8 +41,8 @@ export interface EffectiveFeatureConfig {
  */
 function loadBoth(cwd: string, home?: string): { global: LoadedSettings; workspace: LoadedSettings } {
   return {
-    global: loadSettings(getGlobalMekannSettingsPath(home)),
-    workspace: loadSettings(getWorkspaceMekannSettingsPath(cwd)),
+    global: loadSettingsReadonly(getGlobalMekannSettingsPath(home)),
+    workspace: loadSettingsReadonly(getWorkspaceMekannSettingsPath(cwd)),
   };
 }
 
