@@ -19,9 +19,13 @@ export function escapeXmlText(text: string): string {
 }
 
 export function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
+  // Floor at the boundary so a fractional `seconds` (e.g. 0.5) never renders
+  // as "0.5s". The contract is whole seconds; this keeps the display sane even
+  // when a caller passes a sub-second value.
+  const total = Math.floor(seconds);
+  if (total < 60) return `${total}s`;
+  const m = Math.floor(total / 60);
+  const s = total % 60;
   if (m < 60) return `${m}m ${s}s`;
   const h = Math.floor(m / 60);
   return `${h}h ${m % 60}m`;

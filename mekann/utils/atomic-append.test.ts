@@ -8,6 +8,8 @@ import * as path from "node:path";
 import {
 	appendJsonlLine,
 	appendJsonlLineSync,
+	atomicReplaceFile,
+	atomicReplaceFileSync,
 	configureAtomicAppendLogging,
 	lockPathFor,
 	withAppendLock,
@@ -347,4 +349,79 @@ describe("baseline: bare appendFile CAN interleave (negative control)", () => {
 		// Every line still ends with a newline boundary; we only assert no throw.
 		expect(readLines(target).length).toBeGreaterThan(0);
 	}, 30_000);
+});
+
+// ---------------------------------------------------------------------------
+// Atomic full-file replace (write-temp-then-rename)
+// ---------------------------------------------------------------------------
+
+describe("atomicReplaceFile (async)", () => {
+	let dir: string;
+	beforeEach(async () => { dir = await tmpdir("atomic-replace-"); });
+	afterEach(async () => { await fsp.rm(dir, { recursive: true, force: true }); });
+
+	it("replaces the target content and leaves no temp file behind", async () => {
+		const target = path.join(dir, "out", "manifest.jsonl");
+		await fsp.mkdir(path.dirname(target), { recursive: true });
+		await fsp.writeFile(target, "OLD\n");
+		await atomicReplaceFile(target, "NEW\n");
+		expect(fs.readFileSync(target, "utf8")).toBe("NEW\n");
+		expect(fs.readdirSync(path.dirname(target)).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+	});
+
+	it("creates the parent directory when missing", async () => {
+		const target = path.join(dir, "nested", "deep", "f.json");
+		await atomicReplaceFile(target, "{\"a\":1}\n");
+		expect(fs.readFileSync(target, "utf8")).toBe("{\"a\":1}\n");
+	});
+
+	it("accepts a Buffer payload", async () => {
+		const target = path.join(dir, "bin.dat");
+		const buf = Buffer.from([0x00, 0x01, 0x02, 0xff]);
+		await atomicReplaceFile(target, buf);
+		expect(fs.readFileSync(target)).toEqual(buf);
+	});
+
+	it("preserves the original target and cleans up the temp when the write fails", async () => {
+		const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+		const sub = path.join(dir, "ledger");
+		await fsp.mkdir(sub);
+		const target = path.join(sub, "f.json");
+		await fsp.writeFile(target, "ORIGINAL\n");
+		// A read-only directory makes temp-file creation fail mid-replace.
+		await fsp.chmod(sub, 0o500);
+		try {
+			if (isRoot) { expect(true).toBe(true); return; }
+			await expect(atomicReplaceFile(target, "NEW\n")).rejects.toThrow();
+			expect(fs.readFileSync(target, "utf8")).toBe("ORIGINAL\n");
+			expect(fs.readdirSync(sub).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+		} finally {
+			await fsp.chmod(sub, 0o700);
+		}
+	});
+
+	it("concurrent replaces never expose a torn file (final content is one complete version)", async () => {
+		const target = path.join(dir, "c.json");
+		const payloads = Array.from({ length: 20 }, (_, i) => JSON.stringify({ i, pad: "x".repeat(4000) }) + "\n");
+		await Promise.all(payloads.map((p) => atomicReplaceFile(target, p)));
+		const final = fs.readFileSync(target, "utf8");
+		// The final bytes are exactly one of the written payloads (no interleave).
+		expect(payloads.indexOf(final)).toBeGreaterThanOrEqual(0);
+		expect((JSON.parse(final) as { pad: string }).pad).toBe("x".repeat(4000));
+	});
+});
+
+describe("atomicReplaceFileSync", () => {
+	let dir: string;
+	beforeEach(async () => { dir = await tmpdir("atomic-replace-sync-"); });
+	afterEach(async () => { await fsp.rm(dir, { recursive: true, force: true }); });
+
+	it("replaces the target content atomically (sync) and leaves no temp", () => {
+		const target = path.join(dir, "snap.json");
+		fs.mkdirSync(dir, { recursive: true });
+		fs.writeFileSync(target, "OLD\n");
+		atomicReplaceFileSync(target, "NEW\n");
+		expect(fs.readFileSync(target, "utf8")).toBe("NEW\n");
+		expect(fs.readdirSync(dir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+	});
 });
