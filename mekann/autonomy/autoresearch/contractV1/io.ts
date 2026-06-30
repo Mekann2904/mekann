@@ -8,6 +8,7 @@ import type { AutoresearchContractV1 } from "./schema.js";
 import { validateContractV1 } from "./schema.js";
 import { canonicalJsonPretty } from "./crypto.js";
 import type { BaselineNoiseSummary, EnvironmentFingerprint } from "./crypto.js";
+import { bestEffort, logBestEffortFailure, quarantineCorrupt } from "../../../utils/best-effort.js";
 
 // ---------------------------------------------------------------------------
 // Lock file types
@@ -208,14 +209,23 @@ export function writeCurrentContract(cwd: string, contract: AutoresearchContract
 export function readCurrentContract(cwd: string): AutoresearchContractV1 | null {
 	const fp = currentContractPath(cwd);
 	if (!fs.existsSync(fp)) return null;
-	try {
-		const data = JSON.parse(fs.readFileSync(fp, "utf8"));
-		const validation = validateContractV1(data);
-		if (validation.valid) return data as AutoresearchContractV1;
-		return null;
-	} catch {
+	// Distinguish a truly corrupt file (unparseable JSON → quarantine for human
+	// inspection) from a structurally-invalid one (parses but fails schema → log
+	// only, since it may be a recoverable hand-edit or forward-compat case).
+	// Both used to collapse to a silent `null` (issue #146).
+	const data = bestEffort("autoresearch-read-current-contract:parse", () =>
+		JSON.parse(fs.readFileSync(fp, "utf8")), { level: "error" });
+	if (data === undefined) {
+		quarantineCorrupt(fp, "autoresearch-contract-corrupt");
 		return null;
 	}
+	const validation = validateContractV1(data);
+	if (validation.valid) return data as AutoresearchContractV1;
+	logBestEffortFailure(
+		"autoresearch-read-current-contract:validate",
+		new Error(`schema invalid: ${validation.errors.join("; ")}`),
+	);
+	return null;
 }
 
 export function writeLockFile(cwd: string, lock: LockFile): void {
@@ -226,14 +236,21 @@ export function writeLockFile(cwd: string, lock: LockFile): void {
 export function readLockFile(cwd: string): LockFile | null {
 	const fp = currentLockPath(cwd);
 	if (!fs.existsSync(fp)) return null;
-	try {
-		const data = JSON.parse(fs.readFileSync(fp, "utf8"));
-		const validation = validateLockFileV1(data);
-		if (validation.valid) return data as LockFile;
-		return null;
-	} catch {
+	// See readCurrentContract: corrupt JSON is quarantined; schema-invalid is
+	// logged but left in place (issue #146).
+	const data = bestEffort("autoresearch-read-lock-file:parse", () =>
+		JSON.parse(fs.readFileSync(fp, "utf8")), { level: "error" });
+	if (data === undefined) {
+		quarantineCorrupt(fp, "autoresearch-lock-file-corrupt");
 		return null;
 	}
+	const validation = validateLockFileV1(data);
+	if (validation.valid) return data as LockFile;
+	logBestEffortFailure(
+		"autoresearch-read-lock-file:validate",
+		new Error(`schema invalid: ${validation.errors.join("; ")}`),
+	);
+	return null;
 }
 
 // ---------------------------------------------------------------------------

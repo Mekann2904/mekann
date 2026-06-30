@@ -3,6 +3,7 @@ import * as fsp from "node:fs/promises";
 import path from "node:path";
 import type { AgentMetadata, ApplyRecord, EscrowRecord, RejectReason, ResultFilter, SemanticApplyLogEntry, StoredResultStatus, StoredSubagentResult, SubagentResultV1 } from "./types.js";
 import { tryParseSubagentResult } from "./resultSchema.js";
+import { bestEffort, bestEffortAsync, quarantineCorrupt } from "../../utils/best-effort.js";
 import { isPatchRefUnderDir } from "./pathSafety.js";
 
 let counter = 0;
@@ -191,12 +192,21 @@ export class SubagentResultStore {
       const id = name.slice(0, -5);
       const cached = this.entryCache.get(id);
       if (cached) { entries.push(cached); continue; }
-      try {
-        const raw = JSON.parse(await fsp.readFile(path.join(this.dir, name), "utf8"));
-        const stored = this.validateStoredResult(raw, id, await this.resolvePatchAsync((raw as StoredSubagentResult).result));
+      const fp = path.join(this.dir, name);
+      // A corrupt/unreadable result used to be silently skipped on every scan,
+      // hiding broken JSON, schema violations, and dangling patch refs.
+      // Surface the failure and quarantine the file aside so the next scan
+      // converges on clean state instead of re-tripping forever (issue #146).
+      const stored = await bestEffortAsync(`subagent-result-scan:${id}`, async () => {
+        const raw = JSON.parse(await fsp.readFile(fp, "utf8"));
+        return this.validateStoredResult(raw, id, await this.resolvePatchAsync((raw as any).result));
+      });
+      if (stored) {
         this.entryCache.set(id, stored);
         entries.push(stored);
-      } catch { /* skip corrupt/unreadable entries */ }
+      } else {
+        quarantineCorrupt(fp, `subagent-result-corrupt:${id}`);
+      }
     }
     entries.sort((a, b) => a.created_at - b.created_at);
     this.listCache = entries;
@@ -268,17 +278,19 @@ export class SubagentResultStore {
     const terminalStatuses = new Set<StoredResultStatus>(["applied", "rejected", "superseded", "needs_review"]);
     for (const s of await this.list()) {
       if (terminalStatuses.has(s.status) && s.created_at < cutoff) {
-        try {
+        // Best-effort unlink: a failing prune (permission, EBUSY) must not abort
+        // the whole sweep, but should be observable so stale results are not
+        // silently retained forever (issue #146).
+        const done = bestEffort(`subagent-result-prune:${s.result_id}`, () => {
           const jsonPath = this.jsonPath(s.result_id);
           const patchPath = this.patchPath(s.result_id);
           if (existsSync(jsonPath)) { unlinkSync(jsonPath); }
           if (existsSync(patchPath)) { unlinkSync(patchPath); }
           this.invalidate(s.result_id);
           this.pendingIds.delete(s.result_id);
-          pruned++;
-        } catch {
-          // best-effort; skip on error
-        }
+          return true;
+        });
+        if (done) pruned++;
       }
     }
     return pruned;
@@ -320,12 +332,14 @@ export class SubagentResultStore {
 
   /** Get the retry count for a result chain (follows retry_of links). */
   getRetryCount(resultId: string): number {
-    try {
-      const stored = this.load(resultId);
-      return stored.retry_count ?? 0;
-    } catch {
-      return 0;
-    }
+    // load() throws on missing/corrupt results; a missing chain root is a normal
+    // "no retries yet" case, so fall back to 0. A corrupt result is logged via
+    // the structured best-effort sink rather than vanishing silently (issue #146).
+    return bestEffort(
+      `subagent-result-retry-count:${resultId}`,
+      () => this.load(resultId).retry_count ?? 0,
+      { silentOnMissing: true },
+    ) ?? 0;
   }
   appendSemanticLog(entry: SemanticApplyLogEntry): void { appendFileSync(path.join(this.dir, "semantic-log.jsonl"), `${JSON.stringify(entry)}\n`, "utf8"); }
   readSemanticLog(): SemanticApplyLogEntry[] { const p = path.join(this.dir, "semantic-log.jsonl"); if (!existsSync(p)) return []; return readFileSync(p, "utf8").split(/\r?\n/).filter(Boolean).flatMap((l) => { try { return [JSON.parse(l) as SemanticApplyLogEntry]; } catch { return []; } }); }

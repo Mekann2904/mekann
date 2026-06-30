@@ -16,6 +16,7 @@ import {
 } from "./store.js";
 import { searchToolOutputs, type SearchToolOutputsInput } from "./search.js";
 import type { RecordToolOutputArtifactInput } from "../recording.js";
+import { bestEffortAsync } from "../../utils/best-effort.js";
 
 // ---------------------------------------------------------------------------
 // Config (injected)
@@ -171,8 +172,11 @@ export class OutputGateController {
 		input: ToolResultInput,
 		gated: { artifactId: string; originalBytes: number; originalLines: number; stubBytes?: number },
 	): Promise<void> {
-		try {
-			await this.recorder!.recordToolOutputArtifact({
+		// Ledger recording is best-effort (must not break the output-gate), but a
+		// failure here produces "saved artifact but invisible from the ledger"
+		// gaps — surface it through the structured best-effort sink (issue #146).
+		await bestEffortAsync("output-gate-ledger-record", () =>
+			this.recorder!.recordToolOutputArtifact({
 				cwd: input.cwd,
 				toolName: input.toolName,
 				artifactId: gated.artifactId,
@@ -184,10 +188,8 @@ export class OutputGateController {
 				turnId: input.turnId,
 				toolCallId: input.toolCallId,
 				branchId: input.branchId,
-			});
-		} catch {
-			// Best-effort: ledger recording must not break output-gate.
-		}
+			}),
+		);
 	}
 
 	// -----------------------------------------------------------------------
