@@ -9,6 +9,7 @@ import { admitPatchProposal } from "../subagent/patchProposalIntake.js";
 import { getChangedFiles } from "./runner.js";
 import { getPlanDir, readState } from "./layout.js";
 import { safeRepoRelativePath } from "../../safety/sandbox/permissions.js";
+import { safeRemoveWorktree } from "../../utils/issue/worktree.js";
 import { createSequentialId, randomIdSuffix } from "../../utils/id.js";
 
 export type CandidateStatus = "pending" | "leased" | "trial_applied" | "evaluating" | "kept" | "discarded" | "stale_base" | "rejected_policy" | "paused_dirty";
@@ -204,8 +205,11 @@ export function createCandidateWorktree(cwd: string, c: AutoresearchCandidateV1)
 	return wt;
 }
 export function removeCandidateWorktree(cwd: string, c: AutoresearchCandidateV1): void {
+	const expectedRootPrefix = path.join(cwd, ".pi", "autoresearch-worktrees");
 	const wt = c.trial?.worktree_path ?? candidateWorktreePath(cwd, c.candidate_id);
-	try { execFileSync("git", ["worktree", "remove", "--force", wt], { cwd, stdio: ["ignore", "pipe", "pipe"] }); } catch { if (fs.existsSync(wt)) fs.rmSync(wt, { recursive: true, force: true }); }
+	const expected = candidateWorktreePath(cwd, c.candidate_id);
+	if (path.resolve(wt) !== path.resolve(expected)) throw new Error(`Refusing to remove unexpected candidate worktree path: ${wt}`);
+	safeRemoveWorktree(cwd, { path: wt, expectedRootPrefix });
 	c.trial = { ...(c.trial ?? { mode: "isolated_worktree" as const }), removed_at: Date.now() };
 	writeCandidate(cwd, c);
 }

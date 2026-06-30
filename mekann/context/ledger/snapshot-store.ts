@@ -74,13 +74,14 @@ export async function writeLatestSnapshot(
 export interface RetainSnapshotsResult {
 	kept: string[];
 	removed: number;
+	trashed?: string[];
 }
 
 const TIMESTAMPED_SNAPSHOT_RE = /^snapshot-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[a-f0-9]{6}\.xml$/;
 
 /**
  * Keep the `keepCount` newest timestamped snapshots in the snapshots dir,
- * unlinking older ones. `latest.xml` is never pruned (it does not match the
+ * moving older ones into `.trash/` rather than unlinking them. `latest.xml` is never pruned (it does not match the
  * `snapshot-*` pattern). Filenames carry an ISO-8601 timestamp (colon/dot
  * replaced with `-`), so lexicographic order matches creation order; ties
  * within the same millisecond fall back to the random hex suffix.
@@ -106,15 +107,27 @@ export async function retainSnapshots(cwd: string, keepCount: number): Promise<R
 	if (names.length <= limit) return { kept: names, removed: 0 };
 	const toRemove = names.slice(limit);
 	let removed = 0;
+	const trashed: string[] = [];
+	const trashDir = path.join(dir, ".trash");
+	await fsp.mkdir(trashDir, { recursive: true });
 	for (const name of toRemove) {
 		try {
-			await fsp.unlink(path.join(dir, name));
+			const dest = path.join(trashDir, `${Date.now()}-${name}`);
+			await fsp.rename(path.join(dir, name), dest);
+			trashed.push(path.basename(dest));
 			removed++;
 		} catch {
-			/* ignore missing/unlinkable file */
+			/* ignore missing/unmovable file */
 		}
 	}
-	return { kept: names.slice(0, limit), removed };
+	if (removed > 0) {
+		try {
+			await fsp.appendFile(path.join(dir, "retention.audit.jsonl"), `${JSON.stringify({ createdAt: Date.now(), event: "snapshots_retained", keepCount: limit, kept: names.slice(0, limit), trashed })}\n`, "utf8");
+		} catch {
+			/* audit is best-effort */
+		}
+	}
+	return { kept: names.slice(0, limit), removed, trashed };
 }
 
 // ─── Read ──────────────────────────────────────────────────────

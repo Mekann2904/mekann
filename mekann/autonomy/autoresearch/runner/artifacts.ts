@@ -15,6 +15,7 @@ import * as path from "node:path";
 import type { ChecksResult, RunManifest, RunManifestChecks, RunResult } from "./types.js";
 import { gitExecSync } from "./git.js";
 import { redactText } from "./secrets.js";
+import { writeFileAtomicSync } from "../layout.js";
 
 // ---------------------------------------------------------------------------
 // Artifact directory management
@@ -103,7 +104,7 @@ function readManifest(runDir: string): RunManifest | null {
 function writeManifest(runDir: string, manifest: RunManifest): void {
 	manifest.stdoutLogSize = fileSize(path.join(runDir, "stdout.log"));
 	manifest.stderrLogSize = fileSize(path.join(runDir, "stderr.log"));
-	fs.writeFileSync(path.join(runDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
+	writeFileAtomicSync(path.join(runDir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
 }
 
 /**
@@ -175,21 +176,21 @@ export function createRunArtifactDir(
 	if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
 	fs.mkdirSync(runDir, { recursive: false });
 
-	fs.writeFileSync(path.join(runDir, "command.txt"), command, "utf8");
+	writeFileAtomicSync(path.join(runDir, "command.txt"), command, "utf8");
 
 	try {
 		const status = gitExecSync(["status", "--porcelain"], cwd);
-		fs.writeFileSync(path.join(runDir, "git.status.txt"), status, "utf8");
+		writeFileAtomicSync(path.join(runDir, "git.status.txt"), status, "utf8");
 	} catch {
-		fs.writeFileSync(path.join(runDir, "git.status.txt"), "(git unavailable)", "utf8");
+		writeFileAtomicSync(path.join(runDir, "git.status.txt"), "(git unavailable)", "utf8");
 	}
 
 	try {
 		const diffUnstaged = gitExecSync(["diff"], cwd, 10_000);
 		const diffStaged = gitExecSync(["diff", "--cached"], cwd, 10_000);
-		fs.writeFileSync(path.join(runDir, "git.diff"), diffUnstaged + (diffStaged ? "\n--- staged ---\n" + diffStaged : ""), "utf8");
+		writeFileAtomicSync(path.join(runDir, "git.diff"), diffUnstaged + (diffStaged ? "\n--- staged ---\n" + diffStaged : ""), "utf8");
 	} catch {
-		fs.writeFileSync(path.join(runDir, "git.diff"), "(git diff unavailable)", "utf8");
+		writeFileAtomicSync(path.join(runDir, "git.diff"), "(git diff unavailable)", "utf8");
 	}
 
 	return runDir;
@@ -210,24 +211,24 @@ export function writeRunArtifacts(
 	// stdout.log — skip if streaming already wrote content
 	const stdoutPath = path.join(runDir, "stdout.log");
 	if (!fs.existsSync(stdoutPath) || fs.statSync(stdoutPath).size === 0) {
-		fs.writeFileSync(stdoutPath, redactText(result.stdout), "utf8");
+		writeFileAtomicSync(stdoutPath, redactText(result.stdout), "utf8");
 	}
 
 	// stderr.log — skip if streaming already wrote content
 	const stderrPath = path.join(runDir, "stderr.log");
 	if (!fs.existsSync(stderrPath) || fs.statSync(stderrPath).size === 0) {
-		fs.writeFileSync(stderrPath, redactText(result.stderr), "utf8");
+		writeFileAtomicSync(stderrPath, redactText(result.stderr), "utf8");
 	}
 
 	// metrics.json
-	fs.writeFileSync(
+	writeFileAtomicSync(
 		path.join(runDir, "metrics.json"),
 		JSON.stringify(result.parsedMetrics ?? {}, null, 2),
 		"utf8",
 	);
 
 	// result.json
-	fs.writeFileSync(path.join(runDir, "result.json"), JSON.stringify({
+	writeFileAtomicSync(path.join(runDir, "result.json"), JSON.stringify({
 		piRunId,
 		passed: result.passed,
 		exitCode: result.exitCode,
@@ -251,10 +252,10 @@ export function writeRunArtifacts(
 export function writeChecksArtifacts(runDir: string, checksResult: ChecksResult): void {
 	// Save checks stdout/stderr logs (already filtered)
 	if (checksResult.stdout) {
-		fs.writeFileSync(path.join(runDir, "checks.stdout.log"), redactText(checksResult.stdout), "utf8");
+		writeFileAtomicSync(path.join(runDir, "checks.stdout.log"), redactText(checksResult.stdout), "utf8");
 	}
 	if (checksResult.stderr) {
-		fs.writeFileSync(path.join(runDir, "checks.stderr.log"), redactText(checksResult.stderr), "utf8");
+		writeFileAtomicSync(path.join(runDir, "checks.stderr.log"), redactText(checksResult.stderr), "utf8");
 	}
 
 	const safeChecksResult = {
@@ -263,7 +264,7 @@ export function writeChecksArtifacts(runDir: string, checksResult: ChecksResult)
 		stderr: redactText(checksResult.stderr ?? ""),
 		output: redactText(checksResult.output ?? ""),
 	};
-	fs.writeFileSync(path.join(runDir, "checks-result.json"), JSON.stringify(safeChecksResult, null, 2), "utf8");
+	writeFileAtomicSync(path.join(runDir, "checks-result.json"), JSON.stringify(safeChecksResult, null, 2), "utf8");
 
 	// Update the manifest with a checks SUMMARY only (no body), then mark
 	// complete. The full filtered checks body stays in checks-result.json /
