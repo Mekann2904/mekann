@@ -52,6 +52,16 @@ describe("outputGateSavings.parseOutputGateEvent", () => {
 		expect(parsed).toEqual({ toolName: "read", artifactId: "og_bb12cd_42", bytes: 5120, lines: 30, stubBytes: null });
 	});
 
+	it("parses 3-segment artifact ids (cross-process random suffix, issue #144)", () => {
+		// Since #144, nextArtifactId emits og_<time>_<counter>_<rand>. The
+		// summary round-trips the id verbatim, so the parser must accept the
+		// optional random suffix (legacy 2-segment ids still parse too).
+		const parsed = parseOutputGateEvent(
+			ledgerEvent({ summary: "Large bash output stored as og_8m2wz_z_a1b2c3 (100000 bytes, 1200 lines)" }),
+		);
+		expect(parsed).toEqual({ toolName: "bash", artifactId: "og_8m2wz_z_a1b2c3", bytes: 100000, lines: 1200, stubBytes: null });
+	});
+
 	it("parses the stub-bytes tail when present", () => {
 		const parsed = parseOutputGateEvent(
 			ledgerEvent({ summary: "Large bash output stored as og_aaaaaa_1 (100000 bytes, 1200 lines, stub 850 bytes)" }),

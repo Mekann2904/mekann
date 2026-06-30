@@ -10,6 +10,7 @@ import { outputGateSettingsSchema } from "../context/output-gate/settingsSchema.
 import { contextLedgerSettingsSchema } from "../context/ledger/settingsSchema.js";
 import { contextTrackerSettingsSchema } from "../context/context-tracker/settingsSchema.js";
 import { cacheableContextSettingsSchema } from "../context/cacheable-context/settingsSchema.js";
+import { contextControlSettingsSchema } from "../context/context-control/settingsSchema.js";
 import { codexSharedSettingsSchema } from "../utils/codex-shared/settingsSchema.js";
 import { codexWebSearchSettingsSchema } from "../utils/codex-web-search/settingsSchema.js";
 import { modelOptimizerSettingsSchema } from "../core/model-optimizer/settingsSchema.js";
@@ -22,7 +23,7 @@ import { terminalShortcutsSettingsSchema } from "../utils/terminal-shortcuts/set
 import { settingsEditorSettingsSchema } from "../utils/settings-editor/settingsSchema.js";
 import { skillSurfaceSettingsSchema } from "../skill-surface/settingsSchema.js";
 
-export const mekannSettingsSchemas: FeatureSettingsSchema[] = [modesSettingsSchema, sandboxSettingsSchema, goalSettingsSchema, subagentSettingsSchema, autoresearchSettingsSchema, reviewFixerSettingsSchema, commandNormalizationSettingsSchema, outputGateSettingsSchema, contextLedgerSettingsSchema, contextTrackerSettingsSchema, cacheableContextSettingsSchema, codexSharedSettingsSchema, codexWebSearchSettingsSchema, codexLimitsSettingsSchema, dashboardSettingsSchema, zipRepoSettingsSchema, terminalShortcutsSettingsSchema, settingsEditorSettingsSchema, skillSurfaceSettingsSchema, modelOptimizerSettingsSchema, terminalSettingsSchema, issueSettingsSchema];
+export const mekannSettingsSchemas: FeatureSettingsSchema[] = [modesSettingsSchema, sandboxSettingsSchema, goalSettingsSchema, subagentSettingsSchema, autoresearchSettingsSchema, reviewFixerSettingsSchema, commandNormalizationSettingsSchema, outputGateSettingsSchema, contextLedgerSettingsSchema, contextTrackerSettingsSchema, cacheableContextSettingsSchema, contextControlSettingsSchema, codexSharedSettingsSchema, codexWebSearchSettingsSchema, codexLimitsSettingsSchema, dashboardSettingsSchema, zipRepoSettingsSchema, terminalShortcutsSettingsSchema, settingsEditorSettingsSchema, skillSurfaceSettingsSchema, modelOptimizerSettingsSchema, terminalSettingsSchema, issueSettingsSchema];
 export function findSettingSchema(feature: string, key: string) {
   return mekannSettingsSchemas.find((s) => s.feature === feature)?.settings.find((s) => s.key === key);
 }

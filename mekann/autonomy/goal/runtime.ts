@@ -8,6 +8,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { GoalStore, type Goal, type GoalStateEntry, CONTINUATION_COOLDOWN_MS } from "./state.js";
 import { continuationPrompt, budgetLimitPrompt, objectiveUpdatedPrompt } from "./prompts.js";
+import { isPersistedSession } from "./session.js";
 
 // ---------------------------------------------------------------------------
 // Compaction threshold
@@ -254,7 +255,7 @@ export class GoalRuntime {
   maybeContinueIfIdle(ctx: ExtensionContext): void {
     // Check all preconditions
     if (this.pi.getFlag("goals") !== true) return;
-    if (!(ctx.sessionManager as any).isPersisted?.()) return;
+    if (!isPersistedSession(ctx)) return;
     if (this.continuationSuppressed) return;
     if (this.active_turn_marker) return;
     if (this.continuation_active) return;
