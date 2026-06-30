@@ -22,23 +22,27 @@ const execFileAsync = promisify(execFile);
 const VIEWER_QUERY = `query { viewer { login name bio location url avatarUrl } }`;
 const DEFAULT_GITHUB_TIMEOUT_MS = 5000;
 
+// Exposed for tests so the parameterised query + variable builder can be asserted
+// without making a network call.
+export const DASHBOARD_QUERY = `query($from: DateTime!, $to: DateTime!) {
+	viewer {
+		login name bio location url avatarUrl
+		contributionsCollection(from: $from, to: $to) {
+			contributionCalendar { weeks { contributionDays { date contributionCount contributionLevel } } }
+			pullRequestContributionsByRepository(maxRepositories: 100) { contributions(first: 100) { totalCount } }
+			issueContributionsByRepository(maxRepositories: 100) { contributions(first: 100) { totalCount } }
+			pullRequestReviewContributionsByRepository(maxRepositories: 100) { contributions(first: 100) { totalCount } }
+		}
+	}
+}`;
+
 function timeoutMs(env: NodeJS.ProcessEnv = process.env): number {
 	const parsed = Number(env.MEKANN_DASHBOARD_GITHUB_TIMEOUT_MS);
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_GITHUB_TIMEOUT_MS;
 }
 
-function dashboardQuery(from: string, to: string): string {
-	return `query {
-		viewer {
-			login name bio location url avatarUrl
-			contributionsCollection(from: "${from}", to: "${to}") {
-				contributionCalendar { weeks { contributionDays { date contributionCount contributionLevel } } }
-				pullRequestContributionsByRepository(maxRepositories: 100) { contributions(first: 100) { totalCount } }
-				issueContributionsByRepository(maxRepositories: 100) { contributions(first: 100) { totalCount } }
-				pullRequestReviewContributionsByRepository(maxRepositories: 100) { contributions(first: 100) { totalCount } }
-			}
-		}
-	}`;
+function dashboardVariables(from: string, to: string): Record<string, string> {
+	return { from, to };
 }
 
 async function fromGh(): Promise<GitHubProfile> {
@@ -51,12 +55,18 @@ async function fromToken(token: string): Promise<GitHubProfile> {
 	return parseGitHubViewer(parsed.data?.viewer);
 }
 
-async function runGhGraphql(query: string, timeout = timeoutMs()): Promise<unknown> {
-	const { stdout } = await execFileAsync("gh", ["api", "graphql", "-f", `query=${query}`], { maxBuffer: 8 * 1024 * 1024, timeout });
+async function runGhGraphql(query: string, variables: Record<string, unknown> = {}, timeout = timeoutMs()): Promise<unknown> {
+	const args = ["api", "graphql", "-f", `query=${query}`];
+	// -F passes a typed raw field per variable; gh forwards them as GraphQL variables,
+	// so values are never interpolated into the query text.
+	for (const [key, value] of Object.entries(variables)) {
+		args.push("-F", `${key}=${value}`);
+	}
+	const { stdout } = await execFileAsync("gh", args, { maxBuffer: 8 * 1024 * 1024, timeout });
 	return JSON.parse(stdout);
 }
 
-async function runTokenGraphql(token: string, query: string, timeout = timeoutMs()): Promise<unknown> {
+async function runTokenGraphql(token: string, query: string, variables: Record<string, unknown> = {}, timeout = timeoutMs()): Promise<unknown> {
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), timeout);
 	let response: Response;
@@ -64,7 +74,7 @@ async function runTokenGraphql(token: string, query: string, timeout = timeoutMs
 		response = await fetch("https://api.github.com/graphql", {
 			method: "POST",
 			headers: { authorization: `Bearer ${token}`, "content-type": "application/json", "user-agent": "mekann-dashboard" },
-			body: JSON.stringify({ query }),
+			body: JSON.stringify({ query, variables }),
 			signal: controller.signal,
 		});
 	} finally {
@@ -80,20 +90,20 @@ export async function collectGitHubDashboard(env: NodeJS.ProcessEnv = process.en
 	const to = now.toISOString();
 	const fromDate = new Date(now);
 	fromDate.setDate(fromDate.getDate() - 365);
-	const query = dashboardQuery(fromDate.toISOString(), to);
+	const variables = dashboardVariables(fromDate.toISOString(), to);
 	const timeout = timeoutMs(env);
 	try {
-		return { ok: true, data: normalizeDashboardResponse(await runGhGraphql(query, timeout), now) };
+		return { ok: true, data: normalizeDashboardResponse(await runGhGraphql(DASHBOARD_QUERY, variables, timeout), now) };
 	} catch (ghError) {
 		const token = githubToken(env);
 		if (token) {
 			try {
-				return { ok: true, data: normalizeDashboardResponse(await runTokenGraphql(token.value, query, timeout), now) };
+				return { ok: true, data: normalizeDashboardResponse(await runTokenGraphql(token.value, DASHBOARD_QUERY, variables, timeout), now) };
 			} catch (tokenError) {
-				return { ok: false, error: `gh failed: ${message(ghError)}; ${token.name} failed: ${message(tokenError)}` };
+				return { ok: false, error: `gh failed: ${message(ghError, env)}; ${token.name} failed: ${message(tokenError, env)}` };
 			}
 		}
-		return { ok: false, error: `gh failed: ${message(ghError)}; run gh auth login or set GITHUB_TOKEN/GH_TOKEN` };
+		return { ok: false, error: `gh failed: ${message(ghError, env)}; run gh auth login or set GITHUB_TOKEN/GH_TOKEN` };
 	}
 }
 
@@ -106,10 +116,10 @@ export async function collectGitHubProfile(env: NodeJS.ProcessEnv = process.env)
 			try {
 				return { ok: true, profile: await fromToken(token.value) };
 			} catch (tokenError) {
-				return { ok: false, error: `gh failed: ${message(ghError)}; ${token.name} failed: ${message(tokenError)}` };
+				return { ok: false, error: `gh failed: ${message(ghError, env)}; ${token.name} failed: ${message(tokenError, env)}` };
 			}
 		}
-		return { ok: false, error: `gh failed: ${message(ghError)}; run gh auth login or set GITHUB_TOKEN/GH_TOKEN` };
+		return { ok: false, error: `gh failed: ${message(ghError, env)}; run gh auth login or set GITHUB_TOKEN/GH_TOKEN` };
 	}
 }
 
@@ -119,11 +129,25 @@ function githubToken(env: NodeJS.ProcessEnv): { name: "GITHUB_TOKEN" | "GH_TOKEN
 	return undefined;
 }
 
-function message(error: unknown): string {
+/** Strip configured token values from a string so secrets can never leak through error paths. */
+export function maskSecrets(text: string, env: NodeJS.ProcessEnv = process.env): string {
+	let out = text;
+	for (const secret of [env.GITHUB_TOKEN, env.GH_TOKEN]) {
+		if (secret && secret.length >= 8) {
+			out = out.split(secret).join("[REDACTED]");
+		}
+	}
+	return out;
+}
+
+function message(error: unknown, env: NodeJS.ProcessEnv = process.env): string {
 	const text = error instanceof Error ? error.message : String(error);
 	const authHint = "To get started with GitHub CLI";
+	let summary: string;
 	if (text.includes(authHint) || text.includes("gh auth login") || text.includes("GH_TOKEN")) {
-		return "GitHub CLI is not authenticated";
+		summary = "GitHub CLI is not authenticated";
+	} else {
+		summary = text.replace(/\s+/g, " ").trim().slice(0, 300);
 	}
-	return text.replace(/\s+/g, " ").trim().slice(0, 300);
+	return maskSecrets(summary, env);
 }

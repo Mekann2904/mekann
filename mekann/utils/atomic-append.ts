@@ -277,6 +277,53 @@ export async function appendJsonlLine(target: string, line: string, options: Ato
 	);
 }
 
+/** Options for {@link atomicReplaceFile} / {@link atomicReplaceFileSync}. */
+export interface AtomicReplaceOptions {
+	/** Permission bits for the temp file (and, after rename, `target`). */
+	mode?: number;
+}
+
+/**
+ * Atomically replace `target` with `data` by writing a temp file in the same
+ * directory and renaming it into place. Because the temp lives next to
+ * `target`, the rename is same-volume and atomic: a crash (or `SIGKILL`)
+ * during the write leaves only a partial temp, while `target` is either the
+ * previous version (intact) or the fully-written new version — never a torn
+ * mix. On any failure the temp is best-effort removed and the original
+ * `target` is left untouched.
+ *
+ * This is the crash-safe primitive for manifest compaction, ledger snapshots,
+ * and any single-writer full rewrite (issues #150 / #151 / #161). It does NOT
+ * coordinate with concurrent writers; callers that need read-modify-write
+ * atomicity across processes must wrap it in {@link withAppendLock}.
+ *
+ * `data` may be a string (written utf8) or a Buffer. The target's existing
+ * permission bits are NOT preserved: the file is (re)created with
+ * `options.mode ?? 0o644` (default owner/group/other read+write). Callers that
+ * need a specific mode must pass it explicitly.
+ */
+export async function atomicReplaceFile(target: string, data: string | Buffer, options: AtomicReplaceOptions = {}): Promise<void> {
+	const dir = path.dirname(target);
+	await fsp.mkdir(dir, { recursive: true });
+	const mode = options.mode ?? 0o644;
+	const tmp = `${target}.${process.pid}.${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}.tmp`;
+	try {
+		const fh = await fsp.open(tmp, "w", mode);
+		try {
+			await fh.writeFile(data);
+		} finally {
+			await fh.close();
+		}
+		// Same-directory rename: atomic on POSIX for a process kill / SIGKILL. The
+		// target therefore flips from the old version to the complete new one in a
+		// single step, never exposing a half-written file.
+		await fsp.rename(tmp, target);
+	} catch (e) {
+		await fsp.unlink(tmp).catch(() => { /* best-effort cleanup of partial temp */ });
+		throw e;
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Sync variants (autoresearch ledgers, whose callers use a sync API)
 // ---------------------------------------------------------------------------
@@ -375,4 +422,26 @@ export function appendJsonlLineSync(target: string, line: string, options: Atomi
 		},
 		options,
 	);
+}
+
+/**
+ * Synchronous twin of {@link atomicReplaceFile}.
+ */
+export function atomicReplaceFileSync(target: string, data: string | Buffer, options: AtomicReplaceOptions = {}): void {
+	const dir = path.dirname(target);
+	fs.mkdirSync(dir, { recursive: true });
+	const mode = options.mode ?? 0o644;
+	const tmp = `${target}.${process.pid}.${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}.tmp`;
+	try {
+		const fd = fs.openSync(tmp, "w", mode);
+		try {
+			fs.writeFileSync(fd, data);
+		} finally {
+			fs.closeSync(fd);
+		}
+		fs.renameSync(tmp, target);
+	} catch (e) {
+		try { fs.unlinkSync(tmp); } catch { /* best-effort cleanup of partial temp */ }
+		throw e;
+	}
 }

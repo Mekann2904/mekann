@@ -27,8 +27,10 @@ function fmtPct(v: unknown): string {
   return Number.isFinite(n) ? `${(n * 100).toFixed(1)}%` : "n/a";
 }
 
-function esc(v: unknown): string {
-  return String(v ?? "—").replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]!));
+export function esc(v: unknown): string {
+  // OWASP-recommended HTML-escape set: & < > " '.
+  // ' is escaped to &#39; so single-quoted attributes (e.g. alt='${esc(...)}') cannot be broken out of.
+  return String(v ?? "—").replace(/[&<>'"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]!));
 }
 
 const currentScope = currentContextScope;
@@ -194,7 +196,7 @@ ${webNav()}
 <div class="spacer"></div>
 <h2>By tool order hash</h2><div class="panel">${actualRows(summary.actualByToolOrderHash)}</div>
 <p class="sub" style="margin-top:20px">JSON: <a href="/cache-efficiency/snapshot">/cache-efficiency/snapshot</a> / Existing report: <a href="/snapshot">/snapshot</a></p>
-</main><script>(()=>{async function refresh(){try{const u=new URL(location.href);u.searchParams.set('partial','1');const r=await fetch(u,{cache:'no-store'});if(!r.ok)return;const h=await r.text();const d=new DOMParser().parseFromString(h,'text/html');const n=d.querySelector('main')?.innerHTML??'';const m=document.querySelector('main');if(n&&m&&n!==m.innerHTML){const y=scrollY;m.innerHTML=n;scrollTo({top:y,behavior:'instant'});}}catch{}}setInterval(refresh,5000);})();</script></body></html>`;
+</main><script>(()=>{async function refresh(){try{const u=new URL(location.href);u.searchParams.set('partial','1');const r=await fetch(u,{cache:'no-store'});if(!r.ok)return;const h=await r.text();const d=new DOMParser().parseFromString(h,'text/html');const nm=d.querySelector('main');const n=nm?.innerHTML??'';const m=document.querySelector('main');if(n&&m&&nm&&n!==m.innerHTML){const y=scrollY;m.replaceChildren(...nm.childNodes);scrollTo({top:y,behavior:'instant'});}}catch{}}setInterval(refresh,5000);})();</script></body></html>`;
 }
 
 export function renderDashboard(scope: ContextMonitorScope = currentScope()): string {
@@ -335,11 +337,14 @@ ${samples.map((s) => {
       if (!res.ok) return;
       const html = await res.text();
       const doc = new DOMParser().parseFromString(html, 'text/html');
-      const next = doc.querySelector('main')?.innerHTML ?? '';
+      const nextMain = doc.querySelector('main');
+      const next = nextMain?.innerHTML ?? '';
       if (next && next !== last) {
         const y = window.scrollY;
         const main = document.querySelector('main');
-        if (main) main.innerHTML = next;
+        // Replace children with parsed nodes instead of assigning innerHTML, so a
+        // server-side escape regression cannot inject executable markup directly.
+        if (main && nextMain) main.replaceChildren(...nextMain.childNodes);
         window.scrollTo({ top: y, behavior: 'instant' });
         last = next;
       }

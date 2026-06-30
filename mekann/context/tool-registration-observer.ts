@@ -1,15 +1,14 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { canonicalizeJson } from "../core/prompt-core/index.js";
+import { safeByteLen } from "../utils/safe-bytes/index.js";
 import { recordToolSchemaCurrent } from "./context-control/tool-schemas.js";
-
-function byteLen(value: unknown): number {
-	if (typeof value === "string") return Buffer.byteLength(value, "utf8");
-	try { return Buffer.byteLength(canonicalizeJson(value), "utf8"); } catch { return 0; }
-}
 
 function recordToolRegistrationObservation(name: string, parameters: unknown): void {
 	try {
-		recordToolSchemaCurrent(name, byteLen(parameters ?? {}));
+		// canonicalizeJson gives a stable representation so the same logical schema
+		// always reports the same byte length; safeByteLen never collapses to 0
+		// even if canonicalization throws (cyclic parameters, BigInt, etc.).
+		recordToolSchemaCurrent(name, safeByteLen(parameters ?? {}, canonicalizeJson));
 	} catch {
 		// Best-effort by contract: monitoring must not break the caller.
 	}
