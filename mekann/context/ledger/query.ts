@@ -86,7 +86,10 @@ export function truncate(str: string, maxLen: number): string {
 }
 
 export function sortByPriorityThenNewest<T extends { priority: number; createdAt: number }>(events: T[]): T[] {
-	return events.sort((a, b) => {
+	// Non-destructive: sort a shallow copy so shared/cached input arrays are not
+	// mutated (IC-192). The name reads as "return a sorted view"; callers must
+	// use the return value, the input array is left unchanged.
+	return [...events].sort((a, b) => {
 		if (a.priority !== b.priority) return a.priority - b.priority;
 		return b.createdAt - a.createdAt;
 	});
@@ -134,7 +137,7 @@ export async function searchEvents(input: SearchEventsInput): Promise<ProjectedC
 	if (input.kind) events = events.filter((e) => e.kind === input.kind);
 	if (input.priorityMax != null) events = events.filter((e) => e.priority <= input.priorityMax!);
 	if (input.query) events = events.filter((e) => matchQuery(e, input.query!));
-	sortByPriorityThenNewest(events);
+	events = sortByPriorityThenNewest(events);
 	return events.slice(0, input.maxResults ?? 20);
 }
 
