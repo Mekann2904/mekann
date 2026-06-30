@@ -68,9 +68,21 @@ export function computeStats(events: ProjectedContextEvent[] | MekannContextEven
 	return { totalEvents: projected.length, byKind, byPriority, byStatus, byEffectiveStatus, oldest: new Date(oldestTs).toISOString(), newest: new Date(newestTs).toISOString() };
 }
 
+/**
+ * Truncate a display field (event title / summary / ref) to `maxLen`
+ * *characters*, appending an ellipsis. Iterates by code point so a surrogate
+ * pair (emoji) or multi-byte CJK character is never split mid-character —
+ * this is the char-budget display analog of byte-safe slicing. The overall
+ * snapshot byte budget is enforced separately by `trimSnapshotToBudget`, so
+ * per-field limits stay character-based for consistent visual length (see
+ * issue #157 / IC-193: the old `str.slice` could split a surrogate pair and
+ * emit a lone surrogate / U+FFFD).
+ */
 export function truncate(str: string, maxLen: number): string {
-	if (str.length <= maxLen) return str;
-	return str.slice(0, maxLen - 1) + "…";
+	if (maxLen <= 0) return "";
+	const chars = Array.from(str);
+	if (chars.length <= maxLen) return str;
+	return chars.slice(0, Math.max(0, maxLen - 1)).join("") + "…";
 }
 
 export function sortByPriorityThenNewest<T extends { priority: number; createdAt: number }>(events: T[]): T[] {

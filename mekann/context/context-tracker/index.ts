@@ -6,6 +6,7 @@ import { safeByteLen } from "../../utils/safe-bytes/index.js";
 import { ensureContextMonitorServer, recordCompaction } from "./server.js";
 import { recordContextObservation } from "../observations.js";
 import type { ContextObservation, MessageBreakdownItem } from "../context-control/observation.js";
+import { estimateTokens } from "../../core/prompt-core/index.js";
 
 // ─── helpers ─────────────────────────────────────────────────────
 
@@ -45,12 +46,16 @@ function messageBreakdown(messages: unknown, limit = 20): MessageBreakdownItem[]
   return messages
     .map((message, index) => {
       const bytes = safeByteLen(message);
+      const text = typeof message === "string" ? message : (typeof message === "object" && message !== null ? JSON.stringify(message) : String(message ?? ""));
       return {
         index,
         role: String(asRecord(message).role ?? asRecord(message).type ?? "message"),
         source: shortSource(message),
         bytes,
-        estimatedTokens: Math.ceil(bytes / 4),
+        // Byte-aware estimate: weight by character class (ASCII ~4 chars/token,
+        // CJK/emoji ~1 token/char) so Japanese/CJK-heavy messages are no longer
+        // underestimated ~4x by a flat `bytes / 4` (issue #157 / IC-220).
+        estimatedTokens: estimateTokens(text),
       };
     })
     .sort((a, b) => Number(b.bytes) - Number(a.bytes))
