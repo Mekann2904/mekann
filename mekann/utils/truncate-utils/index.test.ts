@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { truncateTail, truncateHead, truncateToBytesFromEnd, truncateToBytesFromStart } from "./index.js";
+import { truncateTail, truncateHead, truncateToBytesFromEnd, truncateToBytesFromStart, safeUtf8Slice } from "./index.js";
 
 // Deterministic LCG so property tests are reproducible.
 function makeRng(seed: number): () => number {
@@ -124,6 +124,55 @@ describe("byte-safe helpers", () => {
     expect(truncateToBytesFromEnd("😀😁", 5)).not.toContain("\uFFFD");
     expect(Buffer.byteLength(truncateToBytesFromEnd("😀😁", 5), "utf-8")).toBeLessThanOrEqual(5);
     expect(truncateToBytesFromEnd("x", 0)).toBe("");
+  });
+});
+
+describe("safeUtf8Slice", () => {
+  it("returns input unchanged when within budget", () => {
+    expect(safeUtf8Slice("abc", 10)).toBe("abc");
+    expect(safeUtf8Slice("あいう", 100)).toBe("あいう");
+  });
+
+  it("returns empty string for maxBytes <= 0", () => {
+    expect(safeUtf8Slice("hello", 0)).toBe("");
+    expect(safeUtf8Slice("hello", -1)).toBe("");
+    expect(safeUtf8Slice("あ", -5)).toBe("");
+  });
+
+  it("head cut lands on a CJK boundary (issue verification example)", () => {
+    // 'あ'.repeat(10) = 30 bytes; 5 bytes holds exactly one 'あ' (3 bytes).
+    expect(safeUtf8Slice("あ".repeat(10), 5)).toBe("あ");
+    expect(Buffer.byteLength(safeUtf8Slice("あ".repeat(10), 5), "utf-8")).toBeLessThanOrEqual(5);
+  });
+
+  it("head cut never emits U+FFFD for emoji", () => {
+    // 'abc😀def': abc=3B, 😀=4B, def=3B. 5 bytes => 'abc' (no partial emoji).
+    const head = safeUtf8Slice("abc😀def", 5, false);
+    expect(head).not.toContain("\uFFFD");
+    expect(head).toBe("abc");
+  });
+
+  it("tail cut never starts mid-character", () => {
+    expect(safeUtf8Slice("abc😀def", 5, true)).toBe("def");
+    expect(safeUtf8Slice("abc😀def", 6, true)).toBe("def");
+    expect(safeUtf8Slice("😀😀😀", 0, true)).toBe("");
+  });
+
+  it("keeps pure CJK / pure emoji / mixed within maxBytes (property)", () => {
+    const CJK = Array.from("あいうえお漢字表覗");
+    const EMOJI = Array.from("😀😁😂🤔😃😄🥳🤯🦄");
+    const MIXED = Array.from("abcあ😁de漢😂fgえ");
+    const rng = makeRng(777);
+    for (let i = 0; i < 300; i++) {
+      const alphabet = [CJK, EMOJI, MIXED][i % 3];
+      const content = buildRandomContent(rng, alphabet);
+      const maxBytes = 1 + Math.floor(rng() * 40);
+      for (const fromEnd of [false, true]) {
+        const out = safeUtf8Slice(content, maxBytes, fromEnd);
+        expect(Buffer.byteLength(out, "utf-8")).toBeLessThanOrEqual(maxBytes);
+        expect(out).not.toContain("\uFFFD");
+      }
+    }
   });
 });
 

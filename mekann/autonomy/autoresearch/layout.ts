@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { MEKANN_AUTORESEARCH_RUNS_DEFAULTS } from "../../config.js";
+import { bestEffort, quarantineCorrupt } from "../../utils/best-effort.js";
 
 export interface PlanDefinition {
 	planMarkdown: string;
@@ -85,8 +86,19 @@ export function currentPlanPath(cwd: string): string { return path.join(getAutor
 export function journalPath(cwd: string): string { return path.join(getAutoresearchRoot(cwd), "journal.jsonl"); }
 
 export function readState(cwd: string): AutoresearchStateV2 {
-	try { return JSON.parse(fs.readFileSync(statePath(cwd), "utf8")) as AutoresearchStateV2; }
-	catch { return { version: 2, updatedAt: new Date().toISOString() }; }
+	const fp = statePath(cwd);
+	// silentOnMissing: a fresh repo has no state.json yet; that is the common
+	// case and must not be flagged. A corrupt-but-present file is logged and
+	// quarantined so a human can inspect it rather than silently substituting an
+	// empty state (issue #146).
+	const parsed = bestEffort(
+		"autoresearch-read-state",
+		() => JSON.parse(fs.readFileSync(fp, "utf8")) as AutoresearchStateV2,
+		{ silentOnMissing: true },
+	);
+	if (parsed !== undefined) return parsed;
+	if (fs.existsSync(fp)) quarantineCorrupt(fp, "autoresearch-state-corrupt");
+	return { version: 2, updatedAt: new Date().toISOString() };
 }
 
 export function writeState(cwd: string, state: AutoresearchStateV2): void {

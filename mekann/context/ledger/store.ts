@@ -1,6 +1,7 @@
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { withAppendLock } from "../../utils/atomic-append.js";
+import { bestEffortAsync } from "../../utils/best-effort.js";
 import { createSequentialId, randomIdSuffix } from "../../utils/id.js";
 import { VALID_EVIDENCE_LEVELS, VALID_KINDS, VALID_REF_ROLES, VALID_REF_TYPES, VALID_STATUSES, type MekannContextEvent, type MekannContextEventKind, type MekannContextEventStatus, type MekannContextEvidenceLevel, type MekannContextRef, type MekannContextScope, type ProjectedContextEvent } from "./schema.js";
 
@@ -285,7 +286,10 @@ const PRUNE_RETAIN_MS = 2 * 60 * 60 * 1000; // retain non-active events for 2 ho
 
 async function rotateIfNeeded(cwd: string, filePath: string, maxBytes?: number): Promise<void> {
 	const limit = maxBytes ?? DEFAULT_MAX_FILE_SIZE_BYTES;
-	try {
+	// Rotation must never break event appending, but a disk-full or permission
+	// failure used to vanish silently. Surface it via the structured best-effort
+	// sink so operators can detect a ledger that stopped rotating (issue #146).
+	await bestEffortAsync("context-ledger-rotate", async () => {
 		const stat = await fsp.stat(filePath).catch(() => undefined);
 		if (!stat || stat.size < limit) return;
 		const raw = await fsp.readFile(filePath, "utf8");
@@ -311,16 +315,17 @@ async function rotateIfNeeded(cwd: string, filePath: string, maxBytes?: number):
 		// missing current log immediately after rotation.
 		await fsp.writeFile(rp, `${lines.slice(0, -1).join("\n")}\n`, "utf8");
 		await fsp.writeFile(filePath, `${lines[lines.length - 1]}\n`, "utf8");
-	} catch {
-		// Rotation must never break event appending
-	}
+	});
 }
 
 async function pruneEventLog(cwd: string, filePath: string): Promise<void> {
 	const now = Date.now();
 	if (now - lastPruneCheck < PRUNE_CHECK_INTERVAL_MS) return;
 	lastPruneCheck = now;
-	try {
+	// Like rotation, pruning must never break appending — but its failures
+	// (disk full mid-compaction, permission) must be observable, not silent
+	// (issue #146).
+	await bestEffortAsync("context-ledger-prune", async () => {
 		const stat = await fsp.stat(filePath).catch(() => undefined);
 		if (!stat) return;
 		// Rough estimate: if file is small enough, skip
@@ -348,9 +353,7 @@ async function pruneEventLog(cwd: string, filePath: string): Promise<void> {
 			const compacted = kept.map((e) => JSON.stringify(e)).join("\n") + "\n";
 			await fsp.writeFile(filePath, compacted, "utf8");
 		}
-	} catch {
-		// Pruning must never break event appending
-	}
+	});
 }
 
 export async function clearContext(cwd: string): Promise<void> {

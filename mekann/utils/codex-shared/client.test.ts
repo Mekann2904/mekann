@@ -4,7 +4,9 @@ import {
 	resolveCodexEndpoint,
 	buildCodexHeaders,
 	getDefaultClientVersion,
+	fetchCodexJson,
 } from "./client.js";
+import { CodexError } from "./errors.js";
 
 describe("normalizeCodexBaseUrl", () => {
 	it("returns default URL when undefined", () => {
@@ -96,5 +98,44 @@ describe("getDefaultClientVersion", () => {
 	it("returns env var value when set", () => {
 		process.env.PI_CODEX_WEB_SEARCH_CLIENT_VERSION = "2.5.0";
 		expect(getDefaultClientVersion()).toBe("2.5.0");
+	});
+});
+
+describe("fetchCodexJson error masking (IC-225)", () => {
+	function mockFetch(status: number, body: string) {
+		return vi.fn(async () => ({
+			ok: false,
+			status,
+			text: async () => body,
+		}));
+	}
+
+	it("masks Bearer token / accountId echoed in the error body", async () => {
+		const accountId = "acct-xyz-123";
+		const body = `Authorization: Bearer eyJleGNsdWRl.nonsecret.jwt chatgpt-account-id ${accountId}`;
+		const fetchImpl = mockFetch(401, body);
+		await expect(
+			fetchCodexJson("https://example.test/codex/models", {
+				token: "tok",
+				accountId,
+				fetchImpl: fetchImpl as unknown as typeof fetch,
+			}),
+		).rejects.toThrow(CodexError);
+
+		await expect(
+			fetchCodexJson("https://example.test/codex/models", {
+				token: "tok",
+				accountId,
+				fetchImpl: fetchImpl as unknown as typeof fetch,
+			}),
+		).rejects.toThrow(/HTTP 401/);
+
+		await expect(
+			fetchCodexJson("https://example.test/codex/models", {
+				token: "tok",
+				accountId,
+				fetchImpl: fetchImpl as unknown as typeof fetch,
+			}),
+		).rejects.not.toThrow(/eyJleGNsdWRl\.nonsecret\.jwt|acct-xyz-123/);
 	});
 });

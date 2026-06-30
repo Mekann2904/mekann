@@ -68,13 +68,28 @@ export function computeStats(events: ProjectedContextEvent[] | MekannContextEven
 	return { totalEvents: projected.length, byKind, byPriority, byStatus, byEffectiveStatus, oldest: new Date(oldestTs).toISOString(), newest: new Date(newestTs).toISOString() };
 }
 
+/**
+ * Truncate a display field (event title / summary / ref) to `maxLen`
+ * *characters*, appending an ellipsis. Iterates by code point so a surrogate
+ * pair (emoji) or multi-byte CJK character is never split mid-character —
+ * this is the char-budget display analog of byte-safe slicing. The overall
+ * snapshot byte budget is enforced separately by `trimSnapshotToBudget`, so
+ * per-field limits stay character-based for consistent visual length (see
+ * issue #157 / IC-193: the old `str.slice` could split a surrogate pair and
+ * emit a lone surrogate / U+FFFD).
+ */
 export function truncate(str: string, maxLen: number): string {
-	if (str.length <= maxLen) return str;
-	return str.slice(0, maxLen - 1) + "…";
+	if (maxLen <= 0) return "";
+	const chars = Array.from(str);
+	if (chars.length <= maxLen) return str;
+	return chars.slice(0, Math.max(0, maxLen - 1)).join("") + "…";
 }
 
 export function sortByPriorityThenNewest<T extends { priority: number; createdAt: number }>(events: T[]): T[] {
-	return events.sort((a, b) => {
+	// Non-destructive: sort a shallow copy so shared/cached input arrays are not
+	// mutated (IC-192). The name reads as "return a sorted view"; callers must
+	// use the return value, the input array is left unchanged.
+	return [...events].sort((a, b) => {
 		if (a.priority !== b.priority) return a.priority - b.priority;
 		return b.createdAt - a.createdAt;
 	});
@@ -122,7 +137,7 @@ export async function searchEvents(input: SearchEventsInput): Promise<ProjectedC
 	if (input.kind) events = events.filter((e) => e.kind === input.kind);
 	if (input.priorityMax != null) events = events.filter((e) => e.priority <= input.priorityMax!);
 	if (input.query) events = events.filter((e) => matchQuery(e, input.query!));
-	sortByPriorityThenNewest(events);
+	events = sortByPriorityThenNewest(events);
 	return events.slice(0, input.maxResults ?? 20);
 }
 
