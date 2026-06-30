@@ -238,3 +238,57 @@ describe("GoalStore: objective validation", () => {
 	});
 });
 
+// ---------------------------------------------------------------------------
+// IC-213: token accounting must normalize cache semantics per provider
+// ---------------------------------------------------------------------------
+
+describe("GoalRuntime: IC-213 cache-usage normalization (no double-subtraction)", () => {
+	it("does not double-subtract cache read for non-cached-input providers", () => {
+		const { store } = createStoreWithGoal("obj", 100000);
+		const pi = createMockPi();
+		const runtime = new GoalRuntime(store, pi as any);
+		const ctx = createMockCtx();
+
+		runtime.onSessionStart(ctx as any);
+		runtime.onAgentStart();
+
+		// Anthropic-style usage: usage.input is the NON-cached input (100); cache
+		// read (500) and cache write (200) are reported separately. The old code
+		// computed input(100) - cacheRead(500), clamped to 0, plus output 50 =
+		// 50 tokens (a massive underreport). After normalization the total input
+		// is 100 + 500 + 200 = 800, so the non-cached budget proxy is
+		// 800 - 500 + 50 = 350.
+		runtime.onMessageEnd({
+			message: {
+				role: "assistant",
+				usage: { input: 100, output: 50, cacheRead: 500, cacheWrite: 200 },
+				timestamp: 2000,
+			},
+		}, ctx as any);
+
+		expect(store.getGoal()!.tokens_used).toBe(350);
+	});
+
+	it("converges to the same delta for total-input providers", () => {
+		const { store } = createStoreWithGoal("obj", 100000);
+		const pi = createMockPi();
+		const runtime = new GoalRuntime(store, pi as any);
+		const ctx = createMockCtx();
+
+		runtime.onSessionStart(ctx as any);
+		runtime.onAgentStart();
+
+		// Same physical request expressed with total_input semantics
+		// (inputTotal already includes cache read): 800 - 500 + 50 = 350, matching
+		// the non-cached-input case above.
+		runtime.onMessageEnd({
+			message: {
+				role: "assistant",
+				usage: { inputTotal: 800, output: 50, cacheRead: 500 },
+				timestamp: 3000,
+			},
+		}, ctx as any);
+
+		expect(store.getGoal()!.tokens_used).toBe(350);
+	});
+});

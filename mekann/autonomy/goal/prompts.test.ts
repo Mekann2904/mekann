@@ -49,6 +49,19 @@ describe("goal/prompts", () => {
     it("returns plain text unchanged", () => {
       expect(escapeXmlText("hello world")).toBe("hello world");
     });
+
+    it("escapes single and double quotes (OWASP five-char set, IC-214)", () => {
+      expect(escapeXmlText(`she said "hi" & 'bye'`)).toBe("she said &quot;hi&quot; &amp; &apos;bye&apos;");
+    });
+
+    it("escapes quotes so attribute injection is blocked", () => {
+      const malicious = `x' onclick="evil"><img src=x>`;
+      const escaped = escapeXmlText(malicious);
+      expect(escaped).toContain("&apos;");
+      expect(escaped).toContain("&quot;");
+      expect(escaped).not.toContain(`'`);
+      expect(escaped).not.toContain(`"`);
+    });
   });
 
   describe("formatDuration", () => {

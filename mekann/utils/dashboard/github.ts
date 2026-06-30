@@ -12,6 +12,7 @@ import {
 	type GitHubProfileResult,
 	type GitHubDashboardResult,
 } from "./github-parse.js";
+import { redactSecrets } from "../../context/tool-output/redact.js";
 
 // Re-export types and parse functions for backward compatibility
 export type { GitHubProfile, ContributionDay, GitHubActivitySummary, GitHubDashboardData, GitHubProfileResult, GitHubDashboardResult } from "./github-parse.js";
@@ -140,7 +141,7 @@ export function maskSecrets(text: string, env: NodeJS.ProcessEnv = process.env):
 	return out;
 }
 
-function message(error: unknown, env: NodeJS.ProcessEnv = process.env): string {
+export function message(error: unknown, env: NodeJS.ProcessEnv = process.env): string {
 	const text = error instanceof Error ? error.message : String(error);
 	const authHint = "To get started with GitHub CLI";
 	let summary: string;
@@ -149,5 +150,8 @@ function message(error: unknown, env: NodeJS.ProcessEnv = process.env): string {
 	} else {
 		summary = text.replace(/\s+/g, " ").trim().slice(0, 300);
 	}
-	return maskSecrets(summary, env);
+	// IC-243: a token-derived error string can flow into dashboard output. Mask
+	// configured env tokens (maskSecrets) AND run the canonical `redactSecrets`
+	// (Bearer/sk-/ghp_ patterns) so neither surface leaks through error paths.
+	return redactSecrets(maskSecrets(summary, env)).text;
 }

@@ -118,6 +118,20 @@ describe("fetchCodexModels", () => {
 		);
 		warnSpy.mockRestore();
 	});
+
+	it("masks token/accountId echoed in the error body (IC-225)", async () => {
+		const accountId = "acct-secret-99";
+		const fetchImpl = mockFetch({
+			status: 401,
+			body: `Authorization: Bearer leaky.jwt.token account=${accountId}`,
+		});
+		await expect(
+			fetchCodexModels({ token: "tok", accountId, fetchImpl }),
+		).rejects.toThrow(CodexError);
+		await expect(
+			fetchCodexModels({ token: "tok", accountId, fetchImpl }),
+		).rejects.not.toThrow(/leaky\.jwt\.token|acct-secret-99/);
+	});
 });
 
 // ---------------------------------------------------------------------------

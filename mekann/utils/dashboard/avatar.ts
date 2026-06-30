@@ -10,13 +10,55 @@ export { isLikelyKitty };
 
 export type DashboardAvatarResult = { ok: true; path: string; columns: number; rows: number } | { ok: false; error: string };
 
+/** PNG signature bytes (IC-232: validate downloaded avatar is actually a PNG). */
+export const AVATAR_PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** Upper bound for an avatar download (IC-232: bound tmpdir write size). */
+export const AVATAR_MAX_BYTES = 4 * 1024 * 1024;
+
+/** Trusted avatar hosts. GitHub avatars are always served from here. */
+export const AVATAR_TRUSTED_HOSTS = new Set(["avatars.githubusercontent.com"]);
+
+export type AvatarUrlClassification = { ok: true; parsed: URL } | { ok: false; error: string };
+
+/**
+ * Classify an avatar URL for SSRF safety (IC-232).
+ *
+ * Only HTTPS URLs on a trusted host are accepted. This prevents route
+ * tampering or a future user-configurable URL from reaching internal
+ * network endpoints (cloud metadata, localhost, link-local ranges).
+ */
+export function classifyAvatarUrl(url: string): AvatarUrlClassification {
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		return { ok: false, error: "Avatar URL is invalid" };
+	}
+	if (parsed.protocol !== "https:") {
+		return { ok: false, error: "Avatar URL must use HTTPS" };
+	}
+	if (!AVATAR_TRUSTED_HOSTS.has(parsed.hostname)) {
+		return { ok: false, error: "Avatar host is not trusted" };
+	}
+	return { ok: true, parsed };
+}
+
 export async function fetchKittyAvatar(url: string | undefined, options: { enabled: boolean; columns?: number; rows?: number } = { enabled: true }): Promise<DashboardAvatarResult | undefined> {
 	if (!options.enabled || !url) return undefined;
 	if (!isLikelyKitty()) return { ok: false, error: "Kitty graphics unavailable" };
+	const classified = classifyAvatarUrl(url);
+	if (!classified.ok) return { ok: false, error: classified.error };
 	try {
-		const response = await fetch(url);
+		const response = await fetch(classified.parsed);
 		if (!response.ok) return { ok: false, error: `Avatar download failed: ${response.status}` };
 		const bytes = Buffer.from(await response.arrayBuffer());
+		// IC-232: reject oversized or non-PNG payloads before touching tmpdir so a
+		// tampered route cannot drop arbitrary bytes on disk.
+		if (bytes.length > AVATAR_MAX_BYTES) return { ok: false, error: "Avatar exceeds size limit" };
+		if (bytes.length < AVATAR_PNG_MAGIC.length || !bytes.subarray(0, AVATAR_PNG_MAGIC.length).equals(AVATAR_PNG_MAGIC)) {
+			return { ok: false, error: "Avatar is not a valid PNG" };
+		}
 		const dir = await mkdtemp(join(tmpdir(), "mekann-dashboard-avatar-"));
 		registerCleanupPath(dir);
 		const path = join(dir, "avatar.png");

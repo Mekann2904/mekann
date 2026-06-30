@@ -7,7 +7,15 @@
 import { type Goal, type GoalStatus, remainingTokens } from "./state.js";
 
 export function escapeXmlText(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // OWASP-recommended five-character XML/HTML escaper (same root as IC-024/#148).
+  // Escaping `'`/`"` keeps the output safe even if the text is later placed in
+  // an attribute value, not only in element content.
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 export function formatDuration(seconds: number): string {
