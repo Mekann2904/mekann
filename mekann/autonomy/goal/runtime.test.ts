@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { GoalRuntime } from "./runtime.js";
+import { GoalRuntime, MAX_ACCOUNTED_USAGE_KEYS, trimSetFifo } from "./runtime.js";
 import { GoalStore, type GoalStateEntry } from "./state.js";
 
 // ---------------------------------------------------------------------------
@@ -983,5 +983,71 @@ describe("GoalRuntime", () => {
 
       expect(ctx.compact).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bounded dedup state (issue #165, IC-212)
+// ---------------------------------------------------------------------------
+
+describe("accounted usage dedup bounds (issue #165)", () => {
+  it("exports a finite MAX_ACCOUNTED_USAGE_KEYS cap", () => {
+    expect(typeof MAX_ACCOUNTED_USAGE_KEYS).toBe("number");
+    expect(MAX_ACCOUNTED_USAGE_KEYS).toBeGreaterThan(0);
+    expect(Number.isFinite(MAX_ACCOUNTED_USAGE_KEYS)).toBe(true);
+  });
+
+  it("trimSetFifo drops the oldest insertions until size <= max", () => {
+    const set = new Set<number>();
+    for (let i = 0; i < 5; i++) set.add(i);
+    trimSetFifo(set, 3);
+    expect(set.size).toBe(3);
+    // FIFO: oldest (0,1) evicted; newest (2,3,4) retained.
+    expect(Array.from(set)).toEqual([2, 3, 4]);
+  });
+
+  it("trimSetFifo is a no-op when already within capacity", () => {
+    const set = new Set<number>([1, 2]);
+    trimSetFifo(set, 3);
+    expect(Array.from(set)).toEqual([1, 2]);
+  });
+
+  it("does not grow unboundedly across many distinct usage events", () => {
+    const { runtime, ctx, store } = setupRuntimeWithGoal();
+    runtime.onTurnStart({ turnIndex: 0 }, ctx);
+
+    // Send MAX + 256 distinct usage events. Set must cap at MAX_ACCOUNTED_USAGE_KEYS.
+    const total = MAX_ACCOUNTED_USAGE_KEYS + 256;
+    for (let i = 0; i < total; i++) {
+      runtime.onMessageEnd(
+        {
+          message: {
+            role: "assistant",
+            timestamp: 1_000_000 + i,
+            usage: { input: i + 1, output: 1, cacheRead: 0 },
+          },
+        },
+        ctx,
+      );
+    }
+
+    // Every event should have been accounted (no false dedup), and the
+    // process must complete without runaway memory. tokens_used is a sum so
+    // we just assert it is non-zero and finite.
+    expect(store.getGoal()!.tokens_used).toBeGreaterThan(0);
+    // The runtime still works after eviction: a previously-seen key that was
+    // evicted is now counted again (idempotency only holds within the window).
+    const tokensBefore = store.getGoal()!.tokens_used;
+    runtime.onMessageEnd(
+      {
+        message: {
+          role: "assistant",
+          timestamp: 1_000_000, // oldest key, definitely evicted by now
+          usage: { input: 1, output: 1, cacheRead: 0 },
+        },
+      },
+      ctx,
+    );
+    expect(store.getGoal()!.tokens_used).toBeGreaterThan(tokensBefore);
   });
 });

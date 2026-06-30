@@ -31,8 +31,8 @@ export interface OrchestrationDeps {
 	getDependencyStatus(childNumber: number): Promise<{ openBlockers: number[] }>;
 	/** GitHub issue labels. Failures should safely return [] in production wiring. */
 	getIssueLabels(childNumber: number): Promise<string[]>;
-	/** PR merge status for the child's branch `issue-<number>`. */
-	getPrMergeStatus(childNumber: number): Promise<{ merged: boolean; exists: boolean }>;
+	/** PR status for the child's branch `issue-<number>` (merge/closed/draft/existence). */
+	getPrMergeStatus(childNumber: number): Promise<{ merged: boolean; closed: boolean; isDraft: boolean; exists: boolean }>;
 	/** Local: an `issue-<number>` worktree exists on disk. */
 	hasWorktree(childNumber: number): boolean;
 	/** Local: a Kitty pane titled `Issue #<number>` is currently open. */
@@ -63,6 +63,8 @@ export async function collectSnapshot(parentNumber: number, deps: OrchestrationD
 				url: child.url,
 				prMerged: pr.merged,
 				prExists: pr.exists,
+				prClosed: pr.closed,
+				prDraft: pr.isDraft,
 				openBlockers: dependency.openBlockers,
 				readyForAgent: labels.includes("ready-for-agent"),
 				hasWorktree,

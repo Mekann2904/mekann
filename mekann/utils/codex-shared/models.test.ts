@@ -6,6 +6,8 @@ import {
 	invalidateCodexModelsCache,
 	clearCodexModelsCache,
 	normalizeReasoningEffortForModel,
+	sweepCodexModelsCache,
+	codexModelsCacheSize,
 } from "./models.js";
 import type { CodexModel } from "./types.js";
 import { CodexError } from "./errors.js";
@@ -351,5 +353,79 @@ describe("clearCodexModelsCache", () => {
 			fetchImpl,
 		});
 		expect(fetchImpl).toHaveBeenCalledTimes(4);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Bounded cache: TTL sweep + entry cap (issue #165, IC-226)
+// ---------------------------------------------------------------------------
+
+describe("sweepCodexModelsCache (issue #165)", () => {
+	beforeEach(() => clearCodexModelsCache());
+	afterEach(() => clearCodexModelsCache());
+
+	it("removes TTL-expired entries", async () => {
+		const fetchImpl = mockFetch({ status: 200, body: { models: [{ slug: "m1" }] } });
+		await getCachedCodexModels(
+			{ token: "tok", accountId: "acct", fetchImpl },
+			5000,
+		);
+		expect(codexModelsCacheSize()).toBe(1);
+
+		// Advance past TTL and sweep with an explicit `now`.
+		sweepCodexModelsCache(Date.now() + 6000);
+		expect(codexModelsCacheSize()).toBe(0);
+	});
+
+	it("keeps entries that are still within TTL", async () => {
+		const fetchImpl = mockFetch({ status: 200, body: { models: [{ slug: "m1" }] } });
+		await getCachedCodexModels(
+			{ token: "tok", accountId: "acct", fetchImpl },
+			5000,
+		);
+		sweepCodexModelsCache(Date.now() + 1000);
+		expect(codexModelsCacheSize()).toBe(1);
+	});
+
+	it("trims the cache to MAX_CACHE_ENTRIES via FIFO eviction", async () => {
+		// Populate 70 distinct accounts (MAX_CACHE_ENTRIES = 64).
+		const fetchImpl = mockFetch({ status: 200, body: { models: [{ slug: "m1" }] } });
+		for (let i = 0; i < 70; i++) {
+			await getCachedCodexModels({
+				token: "tok",
+				accountId: `acct-${i}`,
+				fetchImpl,
+			});
+		}
+		// Each access sweeps; the cap must hold.
+		expect(codexModelsCacheSize()).toBeLessThanOrEqual(64);
+	});
+
+	it("does not resurrect evicted entries: stale account refetches", async () => {
+		const fetchImpl = mockFetch({ status: 200, body: { models: [{ slug: "m1" }] } });
+		await getCachedCodexModels({
+			token: "tok",
+			accountId: "acct-old",
+			fetchImpl,
+		});
+		const callsBefore = (fetchImpl as ReturnType<typeof mockFetch>).mock.calls.length;
+
+		// Fill with enough distinct accounts to evict acct-old.
+		for (let i = 0; i < 70; i++) {
+			await getCachedCodexModels({
+				token: "tok",
+				accountId: `acct-${i}`,
+				fetchImpl,
+			});
+		}
+
+		// acct-old was evicted; re-requesting must refetch.
+		await getCachedCodexModels({
+			token: "tok",
+			accountId: "acct-old",
+			fetchImpl,
+		});
+		const callsAfter = (fetchImpl as ReturnType<typeof mockFetch>).mock.calls.length;
+		expect(callsAfter).toBeGreaterThan(callsBefore);
 	});
 });

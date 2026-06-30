@@ -17,7 +17,7 @@ export function spreadSessionMeta(input: { sessionId?: string; turnId?: string; 
 }
 import { redactSecrets } from "../tool-output/redact.js";
 import { buildStructuredPreview, type OutputContentType } from "./preview.js";
-import { appendJsonlLine, withAppendLock } from "../../utils/atomic-append.js";
+import { appendJsonlLine, atomicReplaceFile, withAppendLock } from "../../utils/atomic-append.js";
 
 export interface OutputGateManifestEntry {
 	schemaVersion?: "output-gate/v1";
@@ -295,6 +295,17 @@ export async function retainArtifacts(cwd: string, keepCount: number): Promise<R
 		if (entries.length <= normalizedKeepCount) return { kept: entries, removed: 0 };
 		const sorted = [...entries].sort((a, b) => b.createdAt - a.createdAt);
 		const toRemove = sorted.slice(normalizedKeepCount);
+		const kept = sorted.slice(0, normalizedKeepCount);
+		// Replace the manifest FIRST (atomic tmp+rename), then unlink the dropped
+		// artifact files. This ordering is crash-safe: a kill mid-flight leaves
+		// either the old manifest (all entries) or the new compacted one — never a
+		// torn manifest, and never a manifest row pointing at an already-deleted
+		// file (dangling reference). At worst a crash before the unlinks leaves a
+		// few orphaned artifact files on disk, which are harmless and unreferenced.
+		await atomicReplaceFile(
+			manifest,
+			kept.length ? `${kept.map((e) => JSON.stringify(e)).join("\n")}\n` : "",
+		);
 		let removed = 0;
 		for (const entry of toRemove) {
 			const abs = resolveArtifactPath(cwd, entry);
@@ -305,12 +316,6 @@ export async function retainArtifacts(cwd: string, keepCount: number): Promise<R
 				} catch { /* ignore missing/unlinkable file */ }
 			}
 		}
-		const kept = sorted.slice(0, normalizedKeepCount);
-		await fsp.writeFile(
-			manifest,
-			kept.length ? `${kept.map((e) => JSON.stringify(e)).join("\n")}\n` : "",
-			"utf8",
-		);
 		return { kept, removed };
 	});
 }

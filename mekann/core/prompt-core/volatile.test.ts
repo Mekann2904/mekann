@@ -25,6 +25,20 @@ const representativeVolatileHeaderLines = [
   "Time used: 5s",
   "Remaining tokens: 100",
   "Token budget: 200000",
+  // CJK (Japanese) runtime header equivalents (issue #147).
+  "現在日付: 2026-06-20",
+  "現在時刻: 12:00:00",
+  "現在日時: 2026-06-20 12:00",
+  "現在のディレクトリ: /tmp/x",
+  "現在のファイル: src/render.ts",
+  "作業ディレクトリ: /tmp/x",
+  "開いているファイル: a.ts",
+  "オープン中のファイル: a.ts",
+  "直近のツール: bash",
+  "最近のコマンド: ls",
+  "トークン使用量: 42",
+  "残りトークン: 100",
+  "続き: turn 2",
 ];
 
 describe("volatileRuntimeLinePatterns (shared source)", () => {
@@ -56,6 +70,10 @@ describe("volatileRuntimeLinePatterns (shared source)", () => {
     expect(isVolatileRuntimeLine("See git status output below for changes.")).toBe(false);
     expect(isVolatileRuntimeLine("Track tokens used across the session in a summary.")).toBe(false);
     expect(isVolatileRuntimeLine("This is a continuation of the previous turn.")).toBe(false);
+    // Japanese policy prose must likewise NOT be extracted (issue #147).
+    expect(isVolatileRuntimeLine("現在時刻を聞かれたらコマンドを実行してください。")).toBe(false);
+    expect(isVolatileRuntimeLine("トークン使用量はサマリーで追跡します。")).toBe(false);
+    expect(isVolatileRuntimeLine("続きを読む場合は指示してください。")).toBe(false);
   });
 });
 

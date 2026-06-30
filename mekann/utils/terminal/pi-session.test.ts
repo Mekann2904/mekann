@@ -6,14 +6,23 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockExecFileCb, mockAnchor } = vi.hoisted(() => ({
+const { mockExecFileCb, mockAnchor, mockWriteExpectedHello } = vi.hoisted(() => ({
 	mockExecFileCb: vi.fn(),
 	// Mutable so individual tests can simulate an existing Issue Pi pane without
 	// re-declaring the module mock. `undefined` models the first /issue call.
 	mockAnchor: { value: undefined as { windowId: number; location: "vsplit" | "hsplit" } | undefined },
+	// IC-246: launchPiSessionInKittySplit drops an expected-child manifest into
+	// the child worktree via writeExpectedHello. These are marker-construction
+	// unit tests with a fake cwd ("/repo"), so the real FS write must be mocked
+	// (on CI "/repo" is not writable → EACCES). hello.test.ts covers the write.
+	mockWriteExpectedHello: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("node:child_process", () => ({ execFile: mockExecFileCb }));
+
+vi.mock("../issue/orchestration/hello.js", () => ({
+	writeExpectedHello: mockWriteExpectedHello,
+}));
 
 vi.mock("./kitty/control.js", () => ({
 	// No existing Issue Pi pane → no --source-window anchor (first-launch path),
@@ -44,6 +53,7 @@ beforeEach(() => {
 	kittenLaunchArgs = null;
 	mockAnchor.value = undefined;
 	mockExecFileCb.mockImplementation(defaultExecFile as never);
+	mockWriteExpectedHello.mockClear();
 });
 
 afterEach(() => {
@@ -74,6 +84,9 @@ describe("launchPiSessionInKittySplit issue-work Pi marker", () => {
 		expect(kittenLaunchArgs).toContain("MEKANN_ISSUE_PI=1");
 		expect(kittenLaunchArgs).toContain("MEKANN_ORCHESTRATION_PARENT=1");
 		expect(kittenLaunchArgs).toContain("MEKANN_ORCHESTRATION_CHILD=7");
+		// IC-246: orchestration launch also writes the expected-child manifest into
+		// the child worktree (mocked here; see hello.test.ts for the real write).
+		expect(mockWriteExpectedHello).toHaveBeenCalledWith("/repo", { parent: 1, child: 7 });
 	});
 });
 

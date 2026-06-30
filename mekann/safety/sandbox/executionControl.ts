@@ -7,6 +7,32 @@ import { formatSandboxedBashOutputForLlm } from "./output.js";
 
 export const SANDBOX_BLOCK_HINT = " このコマンドの実行が必要な場合は、request_elevation ツールを使ってユーザーに許可を求めてください。";
 
+/**
+ * Detects sandbox permission failures from command output (issue #162, IC-166).
+ *
+ * Prefers stable machine identifiers (EACCES/EPERM) and also matches the human
+ * messages macOS/tools emit in English and Japanese locales, so the
+ * request_elevation hint is surfaced regardless of the runtime locale.
+ */
+export const SANDBOX_PERMISSION_ERROR_PATTERN = new RegExp([
+	"Operation not permitted",
+	"Permission denied",
+	"EPERM",
+	"EACCES",
+	// Japanese-locale messages emitted by shells/tools.
+	"操作は許可され",
+	"許可がありません",
+	"権限がありません",
+	"権限が不足",
+	"アクセスが拒否",
+	"アクセス権(が)?(ない|ありません|不足)",
+	"アクセスできません",
+].join("|"));
+
+export function isSandboxPermissionError(output: string): boolean {
+	return SANDBOX_PERMISSION_ERROR_PATTERN.test(output);
+}
+
 export type SandboxExecutionControlDeps = {
 	isExplicitlyDisabled(): boolean;
 	startupBlockedReason(): string | undefined;
@@ -40,8 +66,7 @@ export class SandboxExecutionControl {
 		const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
 		const { shown, outputGate } = await formatSandboxedBashOutputForLlm({ cwd: this.deps.cwd(), command, output });
 		if (result.code !== 0) {
-			const isPermissionError = /Operation not permitted|Permission denied|EPERM|EACCES/.test(shown.text);
-			const hint = isPermissionError ? SANDBOX_BLOCK_HINT : "";
+			const hint = isSandboxPermissionError(shown.text) ? SANDBOX_BLOCK_HINT : "";
 			throw new Error(`サンドボックスコマンドが終了コード ${result.code} で終了しました${shown.text ? `:\n${shown.text}` : ""}${hint}`);
 		}
 		return {

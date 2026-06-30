@@ -63,7 +63,7 @@ export const METRIC_INFERENCE_RULES: MetricInferenceRule[] = [
 	{
 		id: "score",
 		patterns: [/(スコア|score|accuracy|pass\s*rate|success\s*rate|win\s*rate)/],
-		require: /(上げ|改善|向上)/,
+		require: /(上げ|改善|向上|高く|増や|良く|伸ば|引き上げ)/,
 		name: (query) => {
 			const match = query.match(/(スコア|score|accuracy|pass\s*rate|success\s*rate|win\s*rate)/);
 			return match ? match[1].replace(/\s+/g, "_") : "score";
@@ -74,7 +74,7 @@ export const METRIC_INFERENCE_RULES: MetricInferenceRule[] = [
 	{
 		id: "error_count",
 		patterns: [/(エラー|error|failure|crash|flaky)/],
-		require: /(減ら|削減)/,
+		require: /(減ら|削減|少なく|下げ|無く|落と)/,
 		name: "error_count",
 		unit: null,
 		direction: "lower",
