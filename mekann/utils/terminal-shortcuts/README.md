@@ -18,7 +18,7 @@
 - pass-through shortcut は agent が idle でない場合、agent に送らず、何もしません。
 - split shortcut は Pi の current TTY を奪わないため、agent が idle でない場合でも split 起動を試します。split 起動に失敗した場合、non-idle 中は pass-through に fallback しません。
 - 既定では Pi TUI を一時停止し、現在の terminal を command に渡します。
-- built-in の `lg` と split 指定された shortcut は、対応 terminal emulator 上で現在の window の長い方に split pane を作って起動します。
+- built-in の `lg` と `zed`、および split 指定された shortcut は、対応 terminal emulator 上で現在の window の長い方に split pane を作って起動します。`zed` は LLM の推論中（agent が streaming 中）でも split pane 経由で発火します。
 - split が使えない場合は pass-through に fallback します。
 - pass-through 成功時は Pi TUI に自動復帰します。
 - pass-through で起動失敗や非 0 exit code の場合だけ、terminal 側で Enter 待ちします。
@@ -36,10 +36,10 @@ MEKANN_TERMINAL_SHORTCUTS='vi=nvim .,fz=fzf' pi
 
 ## Launcher strategy
 
-既定は `pass-through` です。ただし built-in の `lg` は split を試します。追加で特定 shortcut を split にしたい場合は `MEKANN_TERMINAL_SPLIT_SHORTCUTS` に comma-separated で指定します。
+既定は `pass-through` です。ただし built-in の `lg` と `zed` は split を試します。追加で特定 shortcut を split にしたい場合は `MEKANN_TERMINAL_SPLIT_SHORTCUTS` に comma-separated で指定します。
 
 ```bash
-MEKANN_TERMINAL_SPLIT_SHORTCUTS='zed' pi
+MEKANN_TERMINAL_SPLIT_SHORTCUTS='vi' pi
 ```
 
 全 shortcut の実行方式を明示的に固定したい場合は `MEKANN_TERMINAL_STRATEGY` を使います。

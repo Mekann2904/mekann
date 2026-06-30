@@ -1,4 +1,4 @@
-import { execFile as execFileCb } from "node:child_process";
+import { execFile as execFileCb, spawn as spawnCb } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	AUTOPILOT_CHILD_ENV_MARKER,
@@ -453,7 +453,7 @@ describe("chooseIssuePaneSplitForIssue", () => {
 // vi.fn would make generic promisify resolve to a single value, so we attach
 // promisify.custom (well-known symbol) to mirror child_process.execFile.
 // vi.hoisted keeps the shared map/factory reachable from the hoisted vi.mock.
-const { execResults, mockExecFile } = vi.hoisted(() => {
+const { execResults, mockExecFile, mockSpawn } = vi.hoisted(() => {
 	const PROMISIFY_CUSTOM = Symbol.for("nodejs.util.promisify.custom");
 	const execResults = new Map<string, { stdout?: string } | Error>();
 	function buildMockExecFile() {
@@ -472,12 +472,29 @@ const { execResults, mockExecFile } = vi.hoisted(() => {
 			});
 		return fn;
 	}
-	return { execResults, mockExecFile: buildMockExecFile() };
+	// Minimal ChildProcess-like emitter for `spawn`: renderImage awaits "close",
+	// so the mock emits it on the next microtask to mimic a child that exits.
+	function buildMockSpawn() {
+		return vi.fn(() => {
+			const handlers = new Map<string, Array<(...args: unknown[]) => void>>();
+			const emitter = {
+				on(event: string, cb: (...args: unknown[]) => void) {
+					const list = handlers.get(event) ?? [];
+					list.push(cb);
+					handlers.set(event, list);
+					if (event === "close") queueMicrotask(() => list.forEach((h) => h(0)));
+					return emitter;
+				},
+			};
+			return emitter;
+		});
+	}
+	return { execResults, mockExecFile: buildMockExecFile(), mockSpawn: buildMockSpawn() };
 });
 
 vi.mock("node:child_process", () => ({
 	execFile: mockExecFile,
-	spawnSync: vi.fn(() => ({ stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), status: 0 })),
+	spawn: mockSpawn,
 }));
 
 describe("KittyControl.findIssuePiAnchorWindowId", () => {
@@ -802,5 +819,29 @@ describe("KittyControl.hasIssuePiPane", () => {
 	it("returns false when kitten @ ls fails", async () => {
 		execResults.set("kitten @ ls", new Error("remote control unavailable"));
 		expect(await new KittyControl().hasIssuePiPane(42)).toBe(false);
+	});
+});
+
+describe("KittyControl.renderImage (async, non-blocking — IC-088)", () => {
+	beforeEach(() => execResults.clear());
+	afterEach(() => vi.mocked(spawnCb).mockClear());
+
+	it("invokes kitten icat via async spawn with an inherited TTY (not blocking spawnSync)", async () => {
+		// renderImage must not block the event loop for the hundreds of ms icat can
+		// take. The mock spawn emits "close" on the next microtask so the awaited
+		// promise resolves; what matters is that it went through the async spawn
+		// path (not spawnSync) with the right argv and stdio: "inherit".
+		const kitty = new KittyControl();
+		await kitty.renderImage({ path: "/tmp/img.png", columns: 10, rows: 5, x: 1, y: 2 });
+
+		const call = vi.mocked(spawnCb).mock.calls.at(-1);
+		expect(call?.[0]).toBe("kitten");
+		const args = call?.[1] as string[];
+		expect(args[0]).toBe("icat");
+		expect(args).toContain("--place");
+		expect(args).toContain("10x5@1x2");
+		expect(args).toContain("/tmp/img.png");
+		const opts = call?.[2] as { stdio?: string };
+		expect(opts?.stdio).toBe("inherit");
 	});
 });
