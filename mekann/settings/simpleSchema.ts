@@ -5,7 +5,7 @@ export function boolSetting(
 	category: string,
 	defaultValue: boolean,
 	description: string,
-	restartRequired = true,
+	restartRequired = false,
 ): SettingSchema<boolean> {
 	return {
 		key,

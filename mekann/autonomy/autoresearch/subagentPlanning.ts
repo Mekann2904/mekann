@@ -1,6 +1,7 @@
 import type { AutoresearchContractV1 } from "./contractV1.js";
 import { contractViewForAgent, visibleChecks } from "./contractV1.js";
 import type { SubagentAuthority, ValidationCommand } from "../subagent/types.js";
+import { MEKANN_SUBAGENT_DEFAULTS } from "../../config.js";
 
 export type AutoresearchSubagentRole = "scout" | "proposer" | "critic" | "historian";
 
@@ -17,7 +18,7 @@ export function authorityFromContract(contract: AutoresearchContractV1, role: Au
 		write_scope: contract.scope.allowedWritePaths,
 		require_base_hash: true,
 		isolated_worktree: "preferred",
-		max_patch_bytes: 50_000,
+		max_patch_bytes: MEKANN_SUBAGENT_DEFAULTS.maxPatchBytes,
 		allowed_commands: visibleChecks(contract).map(commandToValidationCommand).filter((v): v is ValidationCommand => Boolean(v)),
 	};
 }

@@ -28,6 +28,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import type { GoalStateEntry, GoalStore } from "./state.js";
 import { DEFAULT_OBJECTIVE_LENGTH, clampObjectiveLimit } from "./state.js";
 import { featureRawConfig } from "../../settings/enabled.js";
+import { MEKANN_GOAL_DEFAULTS } from "../../config.js";
 import type { GoalRuntime } from "./runtime.js";
 import { registerGoalCommand } from "./command.js";
 import { createGoalWidgetController } from "./goalWidget.js";
@@ -100,6 +101,26 @@ export default function goalExtension(pi: ExtensionAPI): void {
     }
   }
 
+  /**
+   * Resolve the compaction reserve used to gate goal continuation. Reads the
+   * merged mekann.json `goal.compactReserveTokens` so the threshold can be
+   * re-aligned with Pi's `CompactionSettings.reserveTokens`. Defaults are used
+   * in tests and on any read error so a malformed setting never blocks
+   * continuation (issue #167 / IC-211).
+   */
+  function getCompactReserveTokens(): number {
+    if (process.env.VITEST || process.env.NODE_ENV === "test") return MEKANN_GOAL_DEFAULTS.compactReserveTokens;
+    try {
+      const raw = featureRawConfig("goal").compactReserveTokens;
+      if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0) {
+        return MEKANN_GOAL_DEFAULTS.compactReserveTokens;
+      }
+      return Math.floor(raw);
+    } catch {
+      return MEKANN_GOAL_DEFAULTS.compactReserveTokens;
+    }
+  }
+
   // ─── Wire focused modules ─────────────────────────────────────
 
   // UI widget + model-tool surface control
@@ -127,6 +148,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
     syncToolSurface: widget.syncToolSurface,
     updateWidget: widget.updateWidget,
     getMaxObjectiveLength,
+    getCompactReserveTokens,
   });
 
   // /goal command

@@ -47,6 +47,8 @@ export interface GoalLifecycleDeps {
   updateWidget(ctx: ExtensionContext): void;
   /** Resolve the configured objective-length limit for the reconstructed store. */
   getMaxObjectiveLength(): number;
+  /** Resolve the compaction reserve (tokens) used to gate continuation. */
+  getCompactReserveTokens(): number;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +144,7 @@ export function registerGoalLifecycle(deps: GoalLifecycleDeps): void {
         source: "runtime",
         ctx,
       });
-    });
+    }, { getCompactReserveTokens: deps.getCompactReserveTokens });
     deps.setStore(store);
     deps.setRuntime(runtime);
 

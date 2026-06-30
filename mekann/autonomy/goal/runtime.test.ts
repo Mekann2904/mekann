@@ -965,6 +965,24 @@ describe("GoalRuntime", () => {
       expect(ctx.compact).toHaveBeenCalledTimes(1);
       expect(pi.sendUserMessage).not.toHaveBeenCalled();
     });
+
+    it("honors a configured compactReserveTokens override (issue #167 / IC-211)", () => {
+      // Default reserve is 16384 → threshold at 200000 - 16384 = 183616.
+      // Override the reserve to 100000 → threshold at 200000 - 100000 = 100000.
+      // 150000 tokens is below the default threshold (no compact) but above the
+      // overridden threshold (compact), proving the override takes effect.
+      const persistFn = vi.fn();
+      const store = new GoalStore(persistFn);
+      store.createGoal("test-thread-1", "Build the feature");
+      const runtime = new GoalRuntime(store, createMockPi() as any, undefined, {
+        getCompactReserveTokens: () => 100_000,
+      });
+
+      const ctx = createHighContextCtx(200_000, 150_000);
+      runtime.maybeContinueIfIdle(ctx);
+
+      expect(ctx.compact).toHaveBeenCalledTimes(1);
+    });
   });
 });
 

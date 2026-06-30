@@ -75,8 +75,14 @@ const DEFAULT_OBJECTIVE_LENGTH = 100_000;
  * Hard sanity ceiling that caps any configured objective length. Protects
  * against pathological inputs regardless of the `goal.maxObjectiveLength`
  * setting so a malformed mekann.json cannot disable the limit entirely.
+ *
+ * Objectives are re-injected into the prompt on every continuation turn, so an
+ * oversized objective directly inflates context usage and degrades prompt-cache
+ * hit rate. The ceiling is therefore bounded to a still-generous value (2× the
+ * default) rather than the previous 500 000-char ceiling, which let a single
+ * objective consume ~125k tokens of every turn (issue #167 / IC-210).
  */
-export const HARD_MAX_OBJECTIVE_LENGTH = 500_000;
+export const HARD_MAX_OBJECTIVE_LENGTH = 200_000;
 
 /** Default maximum objective length (characters). Exported for schema/tools. */
 export { DEFAULT_OBJECTIVE_LENGTH };

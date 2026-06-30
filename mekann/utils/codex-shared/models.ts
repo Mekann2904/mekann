@@ -78,7 +78,12 @@ export function selectDefaultModel(models: CodexModel[]): string | undefined {
 // Effort normalization
 // ---------------------------------------------------------------------------
 
-const VALID_REASONING_EFFORTS = new Set<string>([
+/**
+ * Effort levels Mekann recognises. Used only to *warn* about unknown values;
+ * unknown efforts are still preserved (passthrough) so a newly-introduced
+ * effort is not silently dropped (issue #167 / IC-230).
+ */
+const KNOWN_REASONING_EFFORTS = new Set<string>([
 	"none",
 	"minimal",
 	"low",
@@ -89,12 +94,18 @@ const VALID_REASONING_EFFORTS = new Set<string>([
 
 function normalizeReasoningEfforts(
 	raw?: Array<{ effort?: string; reasoningEffort?: string }>,
-): CodexReasoningEffort[] | undefined {
+): string[] | undefined {
 	if (!raw || !Array.isArray(raw)) return undefined;
 	const efforts = raw
 		.map((entry) => entry.effort ?? entry.reasoningEffort)
-		.filter((v): v is string => typeof v === "string")
-		.filter((v) => VALID_REASONING_EFFORTS.has(v)) as CodexReasoningEffort[];
+		.filter((v): v is string => typeof v === "string");
+	for (const effort of efforts) {
+		if (!KNOWN_REASONING_EFFORTS.has(effort)) {
+			console.warn(
+				`[mekann/codex-shared] model reports unknown reasoning effort "${effort}"; preserving it, but the API may reject it (issue #167 / IC-230).`,
+			);
+		}
+	}
 	return efforts.length > 0 ? efforts : undefined;
 }
 
@@ -102,7 +113,8 @@ function normalizeReasoningEfforts(
  * Normalize the requested effort for a given model.
  * If the model lists supportedReasoningEfforts, validate against it.
  * Falls back to "low" if the requested effort is unsupported, or undefined if
- * even "low" is not supported.
+ * even "low" is not supported. Each fallback emits a warning so a request
+ * (e.g. `xhigh`) is never silently downgraded (issue #167 / IC-229).
  */
 export function normalizeReasoningEffortForModel(
 	requested: CodexReasoningEffort | undefined,
@@ -119,10 +131,17 @@ export function normalizeReasoningEffortForModel(
 		return requested;
 	}
 
+	const supportedLabel = `supported: ${supported.join(", ")}`;
 	if (supported.includes("low")) {
+		console.warn(
+			`[mekann/codex-shared] reasoning effort "${requested}" is not supported by model "${model?.id}" (${supportedLabel}); falling back to "low" (issue #167 / IC-229).`,
+		);
 		return "low";
 	}
 
+	console.warn(
+		`[mekann/codex-shared] reasoning effort "${requested}" is not supported by model "${model?.id}" (${supportedLabel}) and "low" is unavailable; sending no effort (issue #167 / IC-229).`,
+	);
 	return undefined;
 }
 
