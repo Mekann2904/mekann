@@ -13,13 +13,24 @@ import type {
   LifecycleEvent,
   RegistrySubscriber,
 } from "./types.js";
+import crypto from "node:crypto";
 
 // ─── Reservation token ───────────────────────────────────────────
 
-let reservationCounter = 0;
+/**
+ * Reservation tokens only need to be unique within the reservations set so a
+ * rollback/register pair never collides. A process-local counter collides
+ * across parallel pi processes (issue #152 / IC-157, same root as #144); use a
+ * short crypto-random id instead. The value is opaque and never compared
+ * across processes, so randomness is sufficient and no shared helper is
+ * needed here.
+ */
+function nextReservationToken(): string {
+  return crypto.randomBytes(8).toString("hex");
+}
 
 export interface Reservation {
-  readonly token: number;
+  readonly token: string;
   readonly maxAgents: number;
   consumed: boolean;
   rolledBack: boolean;
@@ -110,7 +121,7 @@ export class AgentRegistry {
       );
     }
     const reservation: Reservation = {
-      token: ++reservationCounter,
+      token: nextReservationToken(),
       maxAgents: this._maxAgents,
       consumed: false,
       rolledBack: false,

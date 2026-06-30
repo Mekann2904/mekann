@@ -51,6 +51,14 @@ vi.mock("./childPrompt.js", () => ({
   buildChildPrompt: () => "stub-child-prompt",
 }));
 
+vi.mock("./runLock.js", () => ({
+  acquireReviewFixerLock: async () => ({ acquired: true, lockDir: "/tmp/lock", info: {}, release: async () => {} }),
+}));
+
+vi.mock("./attempts.js", () => ({
+  recordReviewFixerAttempt: async () => ({ allowed: true, state: { attempts: 1 } }),
+}));
+
 vi.mock("node:child_process", async (importOriginal) => {
   // index.ts no longer shells out to git directly (snapshots come from
   // changedFiles.js, mocked above). Keep the real module intact for any

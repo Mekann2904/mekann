@@ -355,7 +355,10 @@ export function parseMetricLines(output: string): Record<string, number> {
 		const name = rest.slice(0, eqIdx).trim();
 		const valueStr = rest.slice(eqIdx + 1).trim();
 		const value = Number(valueStr);
-		if (name && !isNaN(value)) {
+		// Reject Infinity/-Infinity and overflow (e.g. "1e999"): they serialize to
+		// `null` via JSON.stringify, which would corrupt isBestMetric comparisons
+		// and downstream aggregation. Number.isFinite excludes NaN and ±Infinity.
+		if (name && Number.isFinite(value)) {
 			metrics[name] = value;
 		}
 	}

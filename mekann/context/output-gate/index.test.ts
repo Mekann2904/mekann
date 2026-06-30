@@ -105,12 +105,15 @@ describe("output-gate extension execute handler", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("execute handles missing params gracefully", async () => {
+	it("execute returns 'Query is required.' for an empty query", async () => {
 		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
 		outputGateExtension(pi);
 		const toolDef = pi.registerTool.mock.calls[0][0];
 		const cwd = await tmp();
-		const result = await toolDef.execute("id1", {}, undefined, undefined, { cwd });
+		// pi validates required fields, so `{}` cannot reach execute in production;
+		// the realistic empty-input case is an empty query string, which the
+		// controller turns into its graceful "Query is required." response.
+		const result = await toolDef.execute("id1", { query: "" }, undefined, undefined, { cwd });
 		expect(result.content[0].text).toBe("Query is required.");
 	});
 });
@@ -263,6 +266,82 @@ describe("output-gate command handler", () => {
 		await cmdDef.handler("show og_nonexistent", { cwd, ui: { notify } });
 		const msg = notify.mock.calls[0][0];
 		expect(msg).toContain("Artifact not found");
+	});
+
+	it("show accepts a single-quoted id (IC-199)", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "hello world", idGenerator: () => "og_q_1", now: () => 1000 });
+		const notify = vi.fn();
+		// Quotes must be stripped, otherwise slice(5) would leave 'og_q_1'
+		await cmdDef.handler("show 'og_q_1'", { cwd, ui: { notify } });
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("id: og_q_1");
+		expect(msg).not.toContain("'og_q_1'");
+	});
+
+	it("show accepts --id <id> flag form (IC-199)", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "hello world", idGenerator: () => "og_idf_1", now: () => 1000 });
+		const notify = vi.fn();
+		await cmdDef.handler("show --id og_idf_1", { cwd, ui: { notify } });
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("id: og_idf_1");
+	});
+
+	it("show accepts --id=<id> equals form (IC-199)", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "hello world", idGenerator: () => "og_ideq_1", now: () => 1000 });
+		const notify = vi.fn();
+		await cmdDef.handler("show --id=og_ideq_1", { cwd, ui: { notify } });
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("id: og_ideq_1");
+	});
+
+	it("show accepts show=<id> shorthand (IC-199)", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "hello world", idGenerator: () => "og_eq_1", now: () => 1000 });
+		const notify = vi.fn();
+		await cmdDef.handler("show=og_eq_1", { cwd, ui: { notify } });
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("id: og_eq_1");
+	});
+
+	it("show with no id shows usage instead of status (IC-199)", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		const notify = vi.fn();
+		await cmdDef.handler("show", { cwd, ui: { notify } });
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("Usage:");
+		expect(msg).toContain("show");
+	});
+
+	it("purge --keep=1 supports the equals form", async () => {
+		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
+		outputGateExtension(pi);
+		const cmdDef = pi.registerCommand.mock.calls[0][1];
+		const cwd = await tmp();
+		await saveArtifact({ cwd, toolName: "bash", text: "first", idGenerator: () => "og_pke_1", now: () => 1000 });
+		await saveArtifact({ cwd, toolName: "bash", text: "second", idGenerator: () => "og_pke_2", now: () => 2000 });
+		const notify = vi.fn();
+		await cmdDef.handler("purge --keep=1", { cwd, ui: { notify } });
+		const msg = notify.mock.calls[0][0];
+		expect(msg).toContain("Purged 1");
+		expect(msg).toContain("Kept 1");
 	});
 
 	it("purge --keep 1 retains only most recent artifact", async () => {

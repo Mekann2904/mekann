@@ -1,8 +1,13 @@
 /**
- * Scan-based truncateTail/truncateHead.
+ * Scan-based truncateTail/truncateHead plus byte-safe UTF-8 cut helpers.
  *
  * Replaces split("\n") full-line array allocation with direct string
  * scanning using lastIndexOf/indexOf, avoiding O(n) intermediate arrays.
+ *
+ * `truncateToBytesFromStart` / `truncateToBytesFromEnd` operate at the UTF-8
+ * byte level so they are robust for CJK (3 bytes/char) and emoji / surrogate
+ * pairs (4 bytes/char): results never contain a stray U+FFFD and always
+ * satisfy `Buffer.byteLength(result) <= maxBytes`.
  */
 
 export interface TruncateOptions {
@@ -68,18 +73,21 @@ export function truncateTail(content: string, options: TruncateOptions): Truncat
   }
 
   // Find the start position: last entry in lineEnds
-  let startPos = lineEnds[0];
+  const startPos = lineEnds[0];
+
+  let resultContent = content.slice(startPos);
+  let truncatedBy: "lines" | "bytes" = "lines";
 
   // Check byte limit
-  let truncatedBy: "lines" | "bytes" = "lines";
-  const candidateBytes = Buffer.byteLength(content.slice(startPos), "utf-8");
-  if (candidateBytes > maxBytes) {
+  if (Buffer.byteLength(resultContent, "utf-8") > maxBytes) {
     truncatedBy = "bytes";
-    // Take the end of content within byte limit
-    startPos = findByteBoundaryFromEnd(content, maxBytes);
+    // Byte-safe tail (robust for CJK/emoji), then snap to the first following
+    // newline so the result still starts on a line boundary when possible. The
+    // snap only removes content, so the result stays within maxBytes.
+    const byteTail = truncateToBytesFromEnd(content, maxBytes);
+    const nl = byteTail.indexOf("\n");
+    resultContent = nl !== -1 && nl < byteTail.length - 1 ? byteTail.slice(nl + 1) : byteTail;
   }
-
-  const resultContent = content.slice(startPos);
   const outputBytes = Buffer.byteLength(resultContent, "utf-8");
   const outputLines = countLines(resultContent);
 
@@ -138,7 +146,7 @@ export function truncateHead(content: string, options: TruncateOptions): Truncat
   // Check byte limit
   if (Buffer.byteLength(resultContent, "utf-8") > maxBytes) {
     truncatedBy = "bytes";
-    resultContent = truncateStringToBytesFromStart(resultContent, maxBytes);
+    resultContent = truncateToBytesFromStart(resultContent, maxBytes);
   }
 
   const outputBytes = Buffer.byteLength(resultContent, "utf-8");
@@ -156,43 +164,33 @@ export function truncateHead(content: string, options: TruncateOptions): Truncat
 }
 
 /**
- * Find a byte-aligned start position from the end of a string,
- * ensuring we don't split a multi-byte UTF-8 character.
+ * Largest suffix of `text` whose UTF-8 byte length is <= maxBytes, never
+ * starting mid-character. Operates at the UTF-8 byte level so it is robust for
+ * CJK (3 bytes/char) and emoji / surrogate pairs (4 bytes/char): the result
+ * never contains a stray U+FFFD and always satisfies
+ * `Buffer.byteLength(result) <= maxBytes`.
  */
-function findByteBoundaryFromEnd(content: string, maxBytes: number): number {
-  // Estimate character position (chars <= bytes for UTF-8)
-  let charPos = content.length;
-  // Walk backwards until byte length fits
-  while (charPos > 0 && Buffer.byteLength(content.slice(charPos), "utf-8") === 0) {
-    charPos--;
-  }
-  // Binary search for the right position
-  let lo = 0;
-  let hi = content.length;
-  while (lo < hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    const bytes = Buffer.byteLength(content.slice(mid), "utf-8");
-    if (bytes > maxBytes) {
-      lo = mid + 1;
-    } else {
-      hi = mid;
-    }
-  }
-  // Ensure we don't start mid-character (advance past any leading continuation bytes)
-  // Since we're slicing from `lo`, and UTF-8 continuation bytes are 0x80-0xBF,
-  // we need to make sure `lo` is at a character boundary.
-  // For safety, find the next newline after lo
-  const nlPos = content.indexOf("\n", lo);
-  if (nlPos !== -1 && nlPos < content.length - 1) {
-    return nlPos + 1;
-  }
-  return lo;
+export function truncateToBytesFromEnd(text: string, maxBytes: number): string {
+  const buf = Buffer.from(text, "utf-8");
+  if (buf.byteLength <= maxBytes) return text;
+  // Keep the last maxBytes bytes, advancing past any UTF-8 continuation bytes
+  // (0x80-0xBF) at the front so the suffix begins on a lead byte.
+  let start = Math.max(0, buf.byteLength - maxBytes);
+  while (start < buf.byteLength && (buf[start] & 0xc0) === 0x80) start++;
+  return buf.subarray(start).toString("utf-8");
 }
 
-function truncateStringToBytesFromStart(str: string, maxBytes: number): string {
-  const buf = Buffer.from(str, "utf-8");
-  if (buf.length <= maxBytes) return str;
-  let end = maxBytes;
-  while (end < buf.length && (buf[end] & 0xc0) === 0x80) end++;
-  return buf.slice(0, end).toString("utf-8");
+/**
+ * Largest prefix of `text` whose UTF-8 byte length is <= maxBytes, never ending
+ * mid-character. Byte-level and robust for CJK / emoji; the result always
+ * satisfies `Buffer.byteLength(result) <= maxBytes`.
+ */
+export function truncateToBytesFromStart(text: string, maxBytes: number): string {
+  const buf = Buffer.from(text, "utf-8");
+  if (buf.byteLength <= maxBytes) return text;
+  // Cut at maxBytes, then back up over a partial multi-byte character so we end
+  // on a character boundary (the partial char is excluded entirely).
+  let end = Math.min(maxBytes, buf.byteLength);
+  while (end > 0 && (buf[end] & 0xc0) === 0x80) end--;
+  return buf.subarray(0, end).toString("utf-8");
 }
