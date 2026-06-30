@@ -1,8 +1,8 @@
-import * as crypto from "node:crypto";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { withAppendLock } from "../../utils/atomic-append.js";
 import { bestEffortAsync } from "../../utils/best-effort.js";
+import { createSequentialId, randomIdSuffix } from "../../utils/id.js";
 import { VALID_EVIDENCE_LEVELS, VALID_KINDS, VALID_REF_ROLES, VALID_REF_TYPES, VALID_STATUSES, type MekannContextEvent, type MekannContextEventKind, type MekannContextEventStatus, type MekannContextEvidenceLevel, type MekannContextRef, type MekannContextScope, type ProjectedContextEvent } from "./schema.js";
 
 // ─── Paths ──────────────────────────────────────────────────────
@@ -48,13 +48,12 @@ const DEFAULT_MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 let eventCounter = 0;
 
 export function createEventId(createdAt: number, counter: number, random = ""): string {
-	const suffix = random ? `_${random}` : "";
-	return `ctx_${createdAt.toString(36)}_${counter.toString(36)}${suffix}`;
+	return createSequentialId("ctx", createdAt, counter, random);
 }
 
 export function nextEventId(createdAt: number): string {
 	eventCounter += 1;
-	return createEventId(createdAt, eventCounter, crypto.randomBytes(3).toString("hex"));
+	return createEventId(createdAt, eventCounter, randomIdSuffix());
 }
 
 // ─── Append ─────────────────────────────────────────────────────

@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { emptySettings, getGlobalMekannSettingsPath, getWorkspaceMekannSettingsPath, invalidateSettingsCache, loadSettings, loadSettingsReadonly, saveSettingsChecked, setFeatureValue } from "./store.js";
+import { emptySettings, getGlobalMekannSettingsPath, getWorkspaceMekannSettingsPath, invalidateSettingsCache, loadSettings, loadSettingsReadonly, saveSettingsChecked, setFeatureValue, withSettingsLock } from "./store.js";
 import { featureConfig, featureValue } from "./featureConfig.js";
 import { featureRawConfig } from "./enabled.js";
 
@@ -227,6 +228,106 @@ describe("settings store read-only accessor (issue #168 / IC-169)", () => {
       expect(readonly.settings.features.sandbox?.bashMode).toBe("ask");
       // Read-only reads after the save keep returning the refreshed canonical value.
       expect(loadSettingsReadonly(path).settings).toBe(readonly.settings);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// IC-032 / IC-033 / IC-034 / IC-035 — robustness added in issue #150.
+// The rename-fallback failure path is covered separately in
+// `store.save-fallback.test.ts` (it needs a node:fs mock, which is module-wide).
+// ---------------------------------------------------------------------------
+
+/** Pre-create a settings lock directory with the given owner info, simulating a
+ * lock held by another (possibly crashed) process. */
+function holdSettingsLock(settingsPath: string, owner: { pid: number; token: string; startedAt: number }): string {
+  const lockDir = `${settingsPath}.lock`;
+  mkdirSync(lockDir);
+  writeFileSync(join(lockDir, "owner.json"), JSON.stringify(owner), "utf8");
+  return lockDir;
+}
+
+describe("settings save atomicity (IC-032)", () => {
+  afterEach(() => invalidateSettingsCache());
+
+  it("leaves no tmp file (and no lock) behind after a successful save", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mekann-save-clean-"));
+    try {
+      const path = join(dir, "mekann.json");
+      const loaded = loadSettings(path);
+      saveSettingsChecked(path, setFeatureValue(loaded.settings, "subagent", "maxSubagents", 2), loaded.hash);
+      expect(readdirSync(dir).filter((n) => n.includes(".tmp."))).toEqual([]);
+      expect(existsSync(`${path}.lock`)).toBe(false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("settings lock staleness (IC-033)", () => {
+  afterEach(() => invalidateSettingsCache());
+
+  it("breaks a stale lock whose owner process has died", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mekann-lock-dead-"));
+    try {
+      const path = join(dir, "mekann.json");
+      // A child that has already exited by the time spawnSync returns → its pid
+      // is definitively dead (ESRCH), mirroring a writer that crashed mid-save.
+      const dead = spawnSync(process.execPath, ["--eval", "process.exit(0)"]);
+      const deadPid = dead.pid as number;
+      const lockDir = holdSettingsLock(path, { pid: deadPid, token: "crashed", startedAt: Date.now() });
+
+      // The dead holder's lock is broken immediately; our fn runs and releases.
+      const result = withSettingsLock(path, () => "acquired", { timeoutMs: 1000, pollMs: 5 });
+      expect(result).toBe("acquired");
+      expect(existsSync(lockDir)).toBe(false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("does not steal a lock held by a live process (waits, then times out)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mekann-lock-live-"));
+    try {
+      const path = join(dir, "mekann.json");
+      // Our own pid is alive with a fresh startedAt → not stale → not breakable.
+      holdSettingsLock(path, { pid: process.pid, token: "alive", startedAt: Date.now() });
+
+      expect(() => withSettingsLock(path, () => "x", { timeoutMs: 120, pollMs: 10 })).toThrow(/lock timeout/);
+      // The live holder's lock is left intact (not displaced).
+      expect(existsSync(`${path}.lock`)).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("breaks a lock older than staleMs even when the owner pid is alive (pid-reuse safety valve)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mekann-lock-age-"));
+    try {
+      const path = join(dir, "mekann.json");
+      holdSettingsLock(path, { pid: process.pid, token: "ancient", startedAt: Date.now() - 60_000 });
+
+      const result = withSettingsLock(path, () => "acquired", { staleMs: 1_000, timeoutMs: 1000, pollMs: 5 });
+      expect(result).toBe("acquired");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("settings lock SharedArrayBuffer fallback (IC-034)", () => {
+  afterEach(() => invalidateSettingsCache());
+
+  it("keeps working (no TypeError crash) when SharedArrayBuffer is unavailable", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mekann-lock-sab-"));
+    try {
+      const path = join(dir, "mekann.json");
+      // Live holder so acquisition contends and exercises sleepSync backoff.
+      holdSettingsLock(path, { pid: process.pid, token: "alive", startedAt: Date.now() });
+
+      const original = (globalThis as { SharedArrayBuffer?: unknown }).SharedArrayBuffer;
+      // Simulate a sandbox that disables SharedArrayBuffer: without the busy-wait
+      // fallback, `Atomics.wait`/`new SharedArrayBuffer` would throw TypeError and
+      // crash the lock loop.
+      Object.defineProperty(globalThis, "SharedArrayBuffer", { configurable: true, value: undefined });
+      try {
+        expect(() => withSettingsLock(path, () => "x", { timeoutMs: 120, pollMs: 10 })).toThrow(/lock timeout/);
+      } finally {
+        Object.defineProperty(globalThis, "SharedArrayBuffer", { configurable: true, value: original });
+      }
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });

@@ -19,7 +19,7 @@ import {
 	CONTEXT_LEDGER_COMMAND_COMPLETIONS,
 	clampInt,
 	runContextLedgerCommand,
-	searchContextEventsText,
+	searchContextEvents,
 	summarizeSessionContextText,
 } from "./projection.js";
 
@@ -91,14 +91,14 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 			// Type-safe decode: schema↔handler field drift surfaces as a compile
 			// error instead of silently returning undefined.
 			const p: SearchContextEventsParams = parseParams(searchContextEventsParams, params);
-			const text = await searchContextEventsText({
+			const result = await searchContextEvents({
 				cwd,
 				query: p.query,
 				kind: p.kind,
 				maxResults: p.maxResults,
 				priorityMax: p.priorityMax,
 			});
-			return { content: [{ type: "text", text }], details: {} as Record<string, unknown> };
+			return { content: [{ type: "text", text: result.text }], details: result.details };
 		},
 	});
 

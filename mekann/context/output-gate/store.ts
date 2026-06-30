@@ -18,6 +18,7 @@ export function spreadSessionMeta(input: { sessionId?: string; turnId?: string; 
 import { redactSecrets } from "../tool-output/redact.js";
 import { buildStructuredPreview, type OutputContentType } from "./preview.js";
 import { appendJsonlLine, atomicReplaceFile, withAppendLock } from "../../utils/atomic-append.js";
+import { createSequentialId, randomIdSuffix } from "../../utils/id.js";
 
 export interface OutputGateManifestEntry {
 	schemaVersion?: "output-gate/v1";
@@ -107,13 +108,22 @@ export function outputGateDir(cwd: string): string { return path.join(cwd, ".pi"
 export function artifactsDir(cwd: string): string { return path.join(outputGateDir(cwd), "artifacts"); }
 export function manifestPath(cwd: string): string { return path.join(outputGateDir(cwd), "manifest.jsonl"); }
 
-export function createArtifactId(createdAt: number, counter: number): string {
-	return `og_${createdAt.toString(36)}_${counter.toString(36)}`;
+/**
+ * Artifact id format: `og_<time-base36>_<counter-base36>[_<rand>]`.
+ *
+ * The optional random suffix (added by {@link nextArtifactId}) makes ids
+ * unique across parallel pi processes sharing one cwd; without it the legacy
+ * 2-segment form is produced so historical callers/tests are unchanged. The
+ * `_<rand>` segment is optional in every validator so existing on-disk
+ * manifests (2-segment ids) still parse. See ADR-0029.
+ */
+export function createArtifactId(createdAt: number, counter: number, random = ""): string {
+	return createSequentialId("og", createdAt, counter, random);
 }
 
 export function nextArtifactId(createdAt: number): string {
 	artifactCounter += 1;
-	return createArtifactId(createdAt, artifactCounter);
+	return createArtifactId(createdAt, artifactCounter, randomIdSuffix());
 }
 
 export function countLines(text: string): number {
@@ -223,7 +233,7 @@ export async function saveArtifact(input: SaveArtifactInput): Promise<{ entry: O
 	await ensureOutputGateDirs(input.cwd);
 	const createdAt = input.now?.() ?? Date.now();
 	const id = input.idGenerator?.(createdAt) ?? nextArtifactId(createdAt);
-	if (!/^og_[a-z0-9]+_[a-z0-9]+$/.test(id)) throw new Error(`Invalid output-gate artifact id: ${id}`);
+	if (!/^og_[a-z0-9]+_[a-z0-9]+(_[a-z0-9]+)?$/.test(id)) throw new Error(`Invalid output-gate artifact id: ${id}`);
 	const redacted = input.redacted ? { text: input.text, redacted: true } : redactSecrets(input.text);
 	const artifactAbs = path.join(artifactsDir(input.cwd), `${id}.txt`);
 	const relPath = path.relative(input.cwd, artifactAbs);
@@ -270,7 +280,7 @@ export async function readManifest(cwd: string): Promise<OutputGateManifestEntry
 		if (!line.trim()) continue;
 		try {
 			const entry = JSON.parse(line) as OutputGateManifestEntry;
-			if (entry?.id && entry?.path && /^og_[a-z0-9]+_[a-z0-9]+$/.test(entry.id)) out.push(entry);
+			if (entry?.id && entry?.path && /^og_[a-z0-9]+_[a-z0-9]+(_[a-z0-9]+)?$/.test(entry.id)) out.push(entry);
 		} catch { /* skip corrupt jsonl */ }
 	}
 	return out;

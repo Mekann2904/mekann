@@ -4,6 +4,8 @@
 
 import { contributionText, box, rowBox, padEnd } from "./layout.js";
 import { truncatePlain, visibleWidth, dashboardTextColor } from "./terminal.js";
+import { resolveDashboardConfig } from "./config.js";
+import type { MekannDashboardConfig } from "../../config.js";
 import type { DashboardRenderModel } from "./view-model-assembler.js";
 import { formatCurrentRepoLine } from "./view-model.js";
 
@@ -12,9 +14,10 @@ export { dashboardTextColor };
 export function renderDashboardText(
 	source: DashboardRenderModel,
 	width = process.stdout.columns || 120,
+	layout: MekannDashboardConfig = resolveDashboardConfig(),
 ): string {
 	const { vm, images } = source;
-	const w = Math.max(20, Math.min(width, 140));
+	const w = Math.max(layout.widthMin, Math.min(width, layout.widthMax));
 	const profileIndent = images.avatar
 		? " ".repeat(images.avatar.columns + 4)
 		: "";

@@ -1,3 +1,5 @@
+import { randomToken } from "../id.js";
+
 /**
  * Generic worker pool for reusing workers across multiple tasks.
  *
@@ -41,11 +43,8 @@ export function createWorkerPool(options: WorkerPoolOptions) {
   const pendingQueue: { input: unknown; task: PendingTask }[] = [];
   const idleTimers: ReturnType<typeof setTimeout>[] = [];
   let shutdown = false;
-  // Monotonic per-pool task id. `Date.now()` collided when two tasks were
-  // dispatched within the same millisecond (issue #152 / IC-038, same root as
-  // #144); a strictly increasing counter is unique for the pool lifetime and
-  // immune to same-ms dispatch races.
-  let taskCounter = 0;
+  // Task ids are now cryptographically-random tokens via randomToken() (issue
+  // #144 / IC-157: unify process-local ids/tokens on the shared crypto helper).
 
   function drainQueue() {
     while (pendingQueue.length > 0) {
@@ -98,7 +97,7 @@ export function createWorkerPool(options: WorkerPoolOptions) {
     worker.once("message", onMessage);
     worker.once("error", onError);
 
-    worker.postMessage({ taskId: ++taskCounter, input });
+    worker.postMessage({ taskId: randomToken(), input });
   }
 
   function removeActive(active: ActiveWorker) {

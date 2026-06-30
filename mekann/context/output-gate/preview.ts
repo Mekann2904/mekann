@@ -1,3 +1,6 @@
+import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
+import { featureConfig } from "../../settings/featureConfig.js";
+
 export type OutputContentType = "json" | "diff" | "search-results" | "test-output" | "log" | "text" | "unknown";
 
 export interface OutputPreview {
@@ -12,6 +15,11 @@ const TEST_RE = /\b(test|spec|suite)s?\b.*\b(fail|failed|failure|pass|passed)\b|
 const DIFF_RE = /^(diff --git|@@\s+-\d|\+\+\+\s|---\s)/m;
 const RG_RE = /^(?:[^\n:]+):(\d+):/m;
 const LOG_RE = /^\[?\d{4}[-/]\d{2}[-/]\d{2}|\b(INFO|WARN|WARNING|ERROR|DEBUG|TRACE|FATAL)\b/m;
+
+function resolveDefaultContextLines(): number {
+	const n = Number(featureConfig("output-gate").defaultContextLines);
+	return Number.isFinite(n) && n >= 0 ? Math.floor(n) : MEKANN_OUTPUT_GATE_DEFAULTS.defaultContextLines;
+}
 
 function byteLength(text: string): number { return Buffer.byteLength(text, "utf8"); }
 
@@ -53,14 +61,18 @@ function jsonPreview(text: string): { preview: string; hints: string[] } | undef
 	return undefined;
 }
 
-function lineFocusedPreview(text: string, matcher: RegExp, maxLines = 80): { preview: string; hints: string[] } {
+function lineFocusedPreview(text: string, matcher: RegExp, maxLines = 80, contextLines = resolveDefaultContextLines()): { preview: string; hints: string[] } {
 	const lines = text.split(/\r?\n/);
 	const hits: number[] = [];
 	for (let i = 0; i < lines.length; i++) if (matcher.test(lines[i])) hits.push(i);
 	if (!hits.length) return { preview: truncateLines(lines, maxLines).join("\n"), hints: [] };
 	const kept = new Set<number>();
+	// Symmetric window around each hit (issue #166 / IC-196). Previously this was
+	// an asymmetric `hit - 2 .. hit + 3` with no documented intent and a value
+	// unrelated to the search_tool_outputs `contextLines` default. It now uses a
+	// single `contextLines` knob shared with search_tool_outputs.
 	for (const hit of hits.slice(0, 12)) {
-		for (let i = Math.max(0, hit - 2); i <= Math.min(lines.length - 1, hit + 3); i++) kept.add(i);
+		for (let i = Math.max(0, hit - contextLines); i <= Math.min(lines.length - 1, hit + contextLines); i++) kept.add(i);
 	}
 	const out = [...kept].sort((a, b) => a - b).map((i) => `${i + 1}: ${lines[i]}`);
 	return { preview: out.join("\n"), hints: [...new Set(hits.slice(0, 8).map((i) => lines[i].trim().slice(0, 80)).filter(Boolean))] };
@@ -85,12 +97,13 @@ function searchResultsPreview(text: string): { preview: string; hints: string[] 
 
 export function buildStructuredPreview(text: string, opts: { toolName?: string; maxBytes: number }): OutputPreview {
 	const contentType = detectOutputContentType(text, opts.toolName);
+	const contextLines = resolveDefaultContextLines();
 	let built: { preview: string; hints: string[] } | undefined;
 	if (contentType === "json") built = jsonPreview(text);
 	else if (contentType === "diff") built = diffPreview(text);
 	else if (contentType === "search-results") built = searchResultsPreview(text);
-	else if (contentType === "test-output") built = lineFocusedPreview(text, ERROR_RE, 100);
-	else if (contentType === "log") built = lineFocusedPreview(text, ERROR_RE, 100);
+	else if (contentType === "test-output") built = lineFocusedPreview(text, ERROR_RE, 100, contextLines);
+	else if (contentType === "log") built = lineFocusedPreview(text, ERROR_RE, 100, contextLines);
 	if (!built) built = { preview: truncateLines(text.split(/\r?\n/), 80).join("\n"), hints: [] };
 	let preview = built.preview;
 	if (byteLength(preview) > opts.maxBytes) preview = Buffer.from(preview, "utf8").subarray(0, opts.maxBytes).toString("utf8").replace(/�$/u, "") + "\n[structured preview truncated]";
