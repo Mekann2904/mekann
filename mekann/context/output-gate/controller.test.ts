@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as fsp from "node:fs/promises";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -10,6 +10,7 @@ import {
 	extractTextContent,
 } from "./controller.js";
 import { saveArtifact, readManifest, manifestPath, artifactsDir, resolveArtifactPath } from "./store.js";
+import { registerOutputGateBypassTools, resetOutputGateBypassTools } from "./bypass.js";
 import type { RecordToolOutputArtifactInput } from "../recording.js";
 
 // ---------------------------------------------------------------------------
@@ -76,7 +77,14 @@ describe("extractTextContent", () => {
 // ---------------------------------------------------------------------------
 
 describe("OutputGateController handleToolResult", () => {
-	it("returns undefined for ignored tools", async () => {
+	beforeEach(() => resetOutputGateBypassTools());
+
+	it("returns undefined for bypass tools declared in the registry (IC-273)", async () => {
+		registerOutputGateBypassTools([
+			"search_tool_outputs",
+			"search_context_events",
+			"summarize_session_context",
+		]);
 		const controller = createController();
 		for (const toolName of [
 			"search_tool_outputs",
@@ -90,6 +98,20 @@ describe("OutputGateController handleToolResult", () => {
 			});
 			expect(result).toBeUndefined();
 		}
+	});
+
+	it("gates large output from a tool that did not declare bypass (no name-based exemption)", async () => {
+		const cwd = await tmp();
+		const controller = createController();
+		// A brand-new search/aggregation tool that forgot to declare bypass is
+		// still gated — confirms there is no residual hard-coded name list.
+		const result = await controller.handleToolResult({
+			cwd,
+			toolName: "new_search_tool",
+			content: bigText(),
+		});
+		expect(result).toBeDefined();
+		expect(result!.details.outputGate.stored).toBe(true);
 	});
 
 	it("returns undefined for small output", async () => {

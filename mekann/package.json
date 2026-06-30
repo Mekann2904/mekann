@@ -5,7 +5,7 @@
   "main": "index.ts",
   "type": "module",
   "scripts": {
-    "test": "vitest run mekann.test.ts settings/settings.test.ts settings/store.test.ts settings/store.save-fallback.test.ts settings/store.fswatch.test.ts utils/**/*.test.ts context/context-control/scope.test.ts context/cacheable-context/index.test.ts context/command-normalization/index.test.ts context/context-tracker/index.test.ts"
+    "test": "vitest run mekann.test.ts settings/settings.test.ts settings/store.test.ts settings/store.save-fallback.test.ts settings/store.fswatch.test.ts utils/**/*.test.ts context/cacheable-context/index.test.ts context/command-normalization/index.test.ts context/tool-registration-observer.test.ts context/context-control/**/*.test.ts context/context-tracker/index.test.ts"
   },
   "keywords": [
     "pi-extension"

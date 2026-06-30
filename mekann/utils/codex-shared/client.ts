@@ -4,7 +4,7 @@
  * Framework-independent. No Pi imports.
  */
 
-import { CodexError, classifyHttpStatus } from "./errors.js";
+import { throwCodexHttpError } from "./errors.js";
 
 const DEFAULT_BASE_URL = "https://chatgpt.com/backend-api";
 const DEFAULT_CLIENT_VERSION = "1.0.0";
@@ -67,12 +67,7 @@ export async function fetchCodexJson<T>(
 		signal: options.signal,
 	});
 	if (!response.ok) {
-		const status = response.status;
-		throw new CodexError(
-			classifyHttpStatus(status),
-			`Codex request failed: HTTP ${status} ${await response.text()}`,
-			status,
-		);
+		return throwCodexHttpError(response, "Codex request failed", options.accountId);
 	}
 	return (await response.json()) as T;
 }

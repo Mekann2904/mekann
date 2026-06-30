@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { bestEffort, quarantineCorrupt } from "../../utils/best-effort.js";
 import { truncateToBytesFromStart } from "../../utils/truncate-utils/index.js";
 
 export type CacheableContextConfig = {
@@ -265,4 +266,14 @@ export async function buildCacheableContext(cwd: string, cfg: CacheableContextCo
 }
 
 export async function readPrefix(cwd: string): Promise<string | undefined> { return readIfExists(prefixPath(cwd)); }
-export async function readManifest(cwd: string): Promise<Manifest | undefined> { const text = await readIfExists(manifestPath(cwd)); return text ? JSON.parse(text) : undefined; }
+export async function readManifest(cwd: string): Promise<Manifest | undefined> {
+  const fp = manifestPath(cwd);
+  const text = await readIfExists(fp);
+  if (!text) return undefined;
+  // A present-but-corrupt manifest previously threw out of JSON.parse unhandled.
+  // Log the failure and quarantine the file so the next build regenerates a
+  // clean manifest rather than crashing every read (issue #146).
+  const parsed = bestEffort("cacheable-context-read-manifest", () => JSON.parse(text) as Manifest);
+  if (parsed === undefined) quarantineCorrupt(fp, "cacheable-context-manifest-corrupt");
+  return parsed;
+}

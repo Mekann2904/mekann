@@ -194,3 +194,22 @@ export function truncateToBytesFromStart(text: string, maxBytes: number): string
   while (end > 0 && (buf[end] & 0xc0) === 0x80) end--;
   return buf.subarray(0, end).toString("utf-8");
 }
+
+/**
+ * Canonical byte-safe UTF-8 slice used across the codebase (output-gate store,
+ * sandbox truncation, structured preview, ...). Returns the largest prefix
+ * (`fromEnd = false`, default) or suffix (`fromEnd = true`) of `text` whose
+ * UTF-8 byte length is <= `maxBytes`, never cutting mid-character.
+ *
+ * Robust for CJK (3 bytes/char) and emoji / surrogate pairs (4 bytes/char):
+ * the result never contains a stray U+FFFD and always satisfies
+ * `Buffer.byteLength(result) <= maxBytes`. `maxBytes <= 0` yields `""`.
+ *
+ * Backs the historical `safeUtf8Slice` reference in `output-gate/store.ts`; it
+ * delegates to the efficient `truncateToBytesFrom*` (continuation-byte scan)
+ * instead of re-decoding per step, so it is O(boundary) rather than O(n).
+ */
+export function safeUtf8Slice(text: string, maxBytes: number, fromEnd = false): string {
+  if (maxBytes <= 0) return "";
+  return fromEnd ? truncateToBytesFromEnd(text, maxBytes) : truncateToBytesFromStart(text, maxBytes);
+}

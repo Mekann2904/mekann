@@ -6,6 +6,7 @@ import { CONTEXT_EVENT_KINDS, type MekannContextEventKind } from "./schema.js";
 import { buildSnapshot } from "./snapshot.js";
 import { readLatestSnapshot } from "./snapshot-store.js";
 import { handleClear } from "../clear.js";
+import { registerOutputGateBypassTools } from "../output-gate/bypass.js";
 import { featureBooleanValue, featureStringValue } from "../../settings/enabled.js";
 import { setToolsActive } from "../../settings/toolSurface.js";
 import { parseParams } from "../../utils/typed-params.js";
@@ -33,6 +34,11 @@ const CONTEXT_LEDGER_TOOL_NAMES = ["search_context_events", "summarize_session_c
 
 export default function contextLedgerExtension(pi: ExtensionAPI): void {
 	let manualToolsActive = false;
+
+	// IC-273: these tools aggregate/summarise stored session context; gating
+	// their results would re-store them and create a save→search→save cycle.
+	// Declare bypass at the registration site, co-located with the tools below.
+	registerOutputGateBypassTools(CONTEXT_LEDGER_TOOL_NAMES);
 
 	// ── post-compaction working-memory restore ───────────────────────
 	// Re-read the toggle on session_start; arm on session_compact; disarm once

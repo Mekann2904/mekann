@@ -13,6 +13,7 @@ import { featureConfig, featureValue } from "../../settings/featureConfig.js";
 import { featureStringValue } from "../../settings/enabled.js";
 import { setToolsActive } from "../../settings/toolSurface.js";
 import { outputGateDir, readManifest } from "./store.js";
+import { registerOutputGateBypassTools } from "./bypass.js";
 import { handleClear } from "../clear.js";
 import { recordToolOutputArtifact } from "../recording.js";
 import { OutputGateController } from "./controller.js";
@@ -129,6 +130,10 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 	}
 
 	// --- search_tool_outputs tool ---
+	// IC-273: this tool aggregates stored outputs, so gating its results would
+	// re-store them and create a save→search→save cycle. Declare bypass at the
+	// registration site so new search/aggregation tools opt out here too.
+	registerOutputGateBypassTools(OUTPUT_GATE_TOOL_NAMES);
 	const searchToolOutputsParams = Type.Object({
 		query: Type.String({ description: "Search query" }),
 		artifact: Type.Optional(

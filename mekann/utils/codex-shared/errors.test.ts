@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
 	CodexError,
 	classifyError,
@@ -7,6 +7,7 @@ import {
 	isAuthError,
 	isModelAvailabilityError,
 	isOverloadedError,
+	redactCodexErrorBody,
 } from "./errors.js";
 
 describe("CodexError", () => {
@@ -181,5 +182,78 @@ describe("isOverloadedError", () => {
 	it("returns false for non-CodexError", () => {
 		expect(isOverloadedError(new Error("overloaded"))).toBe(false);
 		expect(isOverloadedError(null)).toBe(false);
+	});
+});
+
+describe("CodexError.debugBody (IC-225)", () => {
+	it("debugBody is undefined when omitted", () => {
+		const err = new CodexError("auth", "bad token", 401);
+		expect(err.debugBody).toBeUndefined();
+	});
+
+	it("preserves debugBody when provided", () => {
+		const err = new CodexError("transport", "fail", 502, "full body");
+		expect(err.debugBody).toBe("full body");
+	});
+});
+
+describe("redactCodexErrorBody (IC-225 / IC-218)", () => {
+	const ORIGINAL_PI_CODEX_DEBUG = process.env.PI_CODEX_DEBUG;
+	const ORIGINAL_CODEX_DEBUG = process.env.CODEX_DEBUG;
+
+	beforeEach(() => {
+		delete process.env.PI_CODEX_DEBUG;
+		delete process.env.CODEX_DEBUG;
+	});
+
+	afterEach(() => {
+		if (ORIGINAL_PI_CODEX_DEBUG !== undefined) process.env.PI_CODEX_DEBUG = ORIGINAL_PI_CODEX_DEBUG;
+		else delete process.env.PI_CODEX_DEBUG;
+		if (ORIGINAL_CODEX_DEBUG !== undefined) process.env.CODEX_DEBUG = ORIGINAL_CODEX_DEBUG;
+		else delete process.env.CODEX_DEBUG;
+	});
+
+	it("masks Authorization Bearer tokens in the preview", () => {
+		const body = "Authorization: Bearer eyJhbGc.secret.jwt echoed back";
+		const { message } = redactCodexErrorBody(body);
+		expect(message).toContain("[REDACTED]");
+		expect(message).not.toContain("eyJhbGc.secret.jwt");
+	});
+
+	it("masks the specific accountId value when provided", () => {
+		const accountId = "acct-1234-5678";
+		const body = `chatgpt-account-id ${accountId} was rejected`;
+		const { message } = redactCodexErrorBody(body, { accountId });
+		expect(message).not.toContain(accountId);
+		expect(message).toContain("[REDACTED_ACCOUNT_ID]");
+	});
+
+	it("masks API keys and OpenAI keys", () => {
+		const body = "error: sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456 invalid";
+		const { message } = redactCodexErrorBody(body);
+		expect(message).not.toContain("sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456");
+		expect(message).toContain("[REDACTED_OPENAI_KEY]");
+	});
+
+	it("truncates the preview but preserves model_not_found detection substrings", () => {
+		const body = `{"error":{"code":"model_not_found","message":"The model does not exist","type":"invalid_request_error"}}`;
+		const { message } = redactCodexErrorBody(body);
+		expect(message.length).toBeLessThanOrEqual(300);
+		expect(message).toContain("model_not_found");
+	});
+
+	it("discards the full body unless PI_CODEX_DEBUG is set", () => {
+		const body = "x".repeat(500);
+		expect(redactCodexErrorBody(body).debugBody).toBeUndefined();
+		process.env.PI_CODEX_DEBUG = "1";
+		expect(redactCodexErrorBody(body).debugBody).toBe(body);
+	});
+
+	it("debugBody is also redacted, not raw", () => {
+		process.env.CODEX_DEBUG = "1";
+		const body = "Authorization: Bearer secret.jwt.value";
+		const { debugBody } = redactCodexErrorBody(body);
+		expect(debugBody).toContain("[REDACTED]");
+		expect(debugBody).not.toContain("secret.jwt.value");
 	});
 });

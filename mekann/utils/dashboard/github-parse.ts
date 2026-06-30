@@ -95,17 +95,17 @@ export function normalizeDashboardResponse(value: unknown, now = new Date()): Gi
 			});
 		}
 	}
-	const today = localDateKey(now);
-	const weekStart = startOfLocalWeek(now);
-	const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-	const yearStart = new Date(now.getFullYear(), 0, 1);
+	const today = utcDateKey(now);
+	const weekStart = startOfUtcWeek(now);
+	const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+	const yearStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
 	return {
 		profile: parseGitHubViewer(viewer),
 		contributionDays,
 		activity: {
 			contributionsThisWeek: sumDays(contributionDays, weekStart, today),
 			contributionsThisMonth: sumDays(contributionDays, monthStart, today),
-			activeDaysThisYear: contributionDays.filter((d) => d.count > 0 && d.date >= localDateKey(yearStart) && d.date <= today).length,
+			activeDaysThisYear: contributionDays.filter((d) => d.count > 0 && d.date >= utcDateKey(yearStart) && d.date <= today).length,
 			pullRequests: sumContributionGroups(collection?.pullRequestContributionsByRepository),
 			issuesOpened: sumContributionGroups(collection?.issueContributionsByRepository),
 			reviews: sumContributionGroups(collection?.pullRequestReviewContributionsByRepository),
@@ -122,19 +122,23 @@ function sumContributionGroups(value: GitHubContributionGroup[] | null | undefin
 }
 
 function sumDays(days: ContributionDay[], from: Date, toKey: string): number {
-	const fromKey = localDateKey(from);
+	const fromKey = utcDateKey(from);
 	return days.filter((d) => d.date >= fromKey && d.date <= toKey).reduce((sum, d) => sum + d.count, 0);
 }
 
-function startOfLocalWeek(date: Date): Date {
-	const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-	start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+function startOfUtcWeek(date: Date): Date {
+	const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+	start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7));
 	return start;
 }
 
-function localDateKey(date: Date): string {
-	const y = date.getFullYear();
-	const m = String(date.getMonth() + 1).padStart(2, "0");
-	const d = String(date.getDate()).padStart(2, "0");
+// GitHub contribution day dates are calendar dates on a fixed basis (treated
+// here as UTC/server). Derive the comparison keys from UTC as well so a user in
+// a non-UTC timezone does not see contributionsThisWeek / contributionsThisMonth
+// drift by a day around the local midnight boundary (IC-237).
+function utcDateKey(date: Date): string {
+	const y = date.getUTCFullYear();
+	const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+	const d = String(date.getUTCDate()).padStart(2, "0");
 	return `${y}-${m}-${d}`;
 }

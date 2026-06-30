@@ -21,6 +21,7 @@ import {
 	isGitDirty,
 	getRunArtifactDir,
 } from "../runner.js";
+import { bestEffort } from "../../../utils/best-effort.js";
 
 import type { SessionStore, ToolResponse } from "./sessionStore.js";
 import { STATUS_LABELS, STATUS_PREFIX } from "./sessionStore.js";
@@ -239,21 +240,21 @@ export async function executeLog(
 			state.results.push(failedEntry);
 			state.runCount = run;
 
-			// Event ledger: revert_failed
-			try {
+			// Event ledger: revert_failed (best-effort but observable, issue #146)
+			bestEffort("autoresearch-revert-failed-event-ledger", () => {
 				ensureSessionDir(ctx.cwd, state.sessionId, deps.sessionDir);
 				appendToJsonl(deps.eventsLedgerPath(ctx.cwd, state.sessionId), {
 					schemaVersion: 1, event: "revert_failed", piRunId: matchedPiRunId ?? "",
 					timestamp: Date.now(),
 					details: { error: revertResult.error, originalStatus: params.status },
 				} satisfies EventLedgerEntry);
-			} catch { /* best effort */ }
+			});
 
-			// Main JSONL
-			try {
+			// Main JSONL (best-effort but observable, issue #146)
+			bestEffort("autoresearch-revert-failed-jsonl", () => {
 				const jp = deps.jsonlPath(ctx.cwd);
 				fs.appendFileSync(jp, JSON.stringify({ ...failedEntry }) + "\n");
-			} catch { /* best effort */ }
+			});
 
 			// P0-6: loop を強制停止
 			store.autoLoop = false;
