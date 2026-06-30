@@ -154,6 +154,31 @@ describe("fetchCodexWebSearch", () => {
     }
   });
 
+  it("masks token/accountId echoed in the non-200 body (IC-218)", async () => {
+    const accountId = "acct-123";
+    const fetchImpl = createMockFetch({
+      ok: false,
+      status: 401,
+      text: `Authorization: Bearer leaky.jwt.token account=${accountId}`,
+    });
+
+    await expect(
+      fetchCodexWebSearch(makeOptions({ fetchImpl, accountId })),
+    ).rejects.toThrow(CodexError);
+
+    await expect(
+      fetchCodexWebSearch(makeOptions({ fetchImpl, accountId })),
+    ).rejects.not.toThrow(/leaky\.jwt\.token/);
+
+    try {
+      await fetchCodexWebSearch(makeOptions({ fetchImpl, accountId }));
+    } catch (e) {
+      expect((e as Error).message).not.toContain(accountId);
+      expect((e as Error).message).not.toContain("leaky.jwt.token");
+      expect((e as Error).message).toContain("[REDACTED");
+    }
+  });
+
   it("throws CodexError 'transport' when body is null", async () => {
     const fetchImpl = createMockFetch({ ok: true });
 

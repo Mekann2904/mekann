@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DASHBOARD_QUERY, maskSecrets, normalizeDashboardResponse, parseGitHubViewer } from "./github.js";
+import { DASHBOARD_QUERY, maskSecrets, message, normalizeDashboardResponse, parseGitHubViewer } from "./github.js";
 
 describe("DASHBOARD_QUERY", () => {
 	it("passes from/to via GraphQL variables, not string interpolation", () => {
@@ -95,5 +95,30 @@ describe("maskSecrets", () => {
 		const env = { GITHUB_TOKEN: "ghp_longtokenvalue123", GH_TOKEN: "ghp_othertokenvalue456" };
 		const out = maskSecrets("first ghp_longtokenvalue123 second ghp_othertokenvalue456", env);
 		expect(out).toBe("first [REDACTED] second [REDACTED]");
+	});
+});
+
+describe("message (IC-243 secret masking)", () => {
+	it("returns the auth hint for unauthenticated gh errors", () => {
+		expect(message(new Error("To get started with GitHub CLI"))).toBe("GitHub CLI is not authenticated");
+	});
+
+	it("masks Bearer tokens in the error text", () => {
+		const out = message(new Error("Authorization: Bearer eyJhbGc.leaky.token"));
+		expect(out).not.toContain("eyJhbGc.leaky.token");
+		expect(out).toContain("[REDACTED]");
+	});
+
+	it("masks OpenAI/GitHub keys and api_key values", () => {
+		const out = message(new Error("failed with ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcd and sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456"));
+		expect(out).not.toContain("ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcd");
+		expect(out).not.toContain("sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZ123456");
+		expect(out).toContain("[REDACTED_GITHUB_TOKEN]");
+		expect(out).toContain("[REDACTED_OPENAI_KEY]");
+	});
+
+	it("truncates long messages to 300 chars after masking", () => {
+		const out = message(new Error("x".repeat(500)));
+		expect(out.length).toBeLessThanOrEqual(300);
 	});
 });
