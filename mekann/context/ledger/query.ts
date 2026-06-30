@@ -100,11 +100,32 @@ export interface SearchEventsInput {
 	priorityMax?: number;
 }
 
+/**
+ * Normalize text for context-event search (issue #162, IC-191).
+ *
+ * - NFKC folds full-width/half-width and compatibility forms so ｆｕｌｌ ≡ full.
+ * - NFD + combining-mark strip (U+0300–U+036F, Latin/Greek accents only — not
+ *   Japanese dakuten U+3099/U+309A) so café ≡ cafe. A trailing NFKC recomposes
+ *   Japanese dakuten so カ vs ガ stay distinct.
+ * - `toLowerCase` (not `toLocaleLowerCase`) avoids locale drift like Turkish-I.
+ */
+function normalizeForSearch(text: string): string {
+	return text
+		.normalize("NFKC")
+		.normalize("NFD")
+		.replace(/[\u0300-\u036f]/g, "")
+		.normalize("NFKC")
+		.toLowerCase();
+}
+
 function matchQuery(event: ProjectedContextEvent, query: string): boolean {
-	const q = query.toLocaleLowerCase();
-	if (event.title.toLocaleLowerCase().includes(q)) return true;
-	if (event.summary.toLocaleLowerCase().includes(q)) return true;
-	return Boolean(event.refs?.some((ref) => ref.value.toLocaleLowerCase().includes(q)));
+	const terms = normalizeForSearch(query).split(/\s+/).filter(Boolean);
+	if (terms.length === 0) return true;
+	const haystack = normalizeForSearch(
+		[event.title, event.summary, ...(event.refs?.map((ref) => ref.value) ?? [])].join("\n"),
+	);
+	// AND across query terms, order-independent: "bug login" ≡ "login bug".
+	return terms.every((term) => haystack.includes(term));
 }
 
 export async function searchEvents(input: SearchEventsInput): Promise<ProjectedContextEvent[]> {

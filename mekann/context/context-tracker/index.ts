@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
+import { safeByteLen } from "../../utils/safe-bytes/index.js";
 import { ensureContextMonitorServer, recordCompaction } from "./server.js";
 import { recordContextObservation } from "../observations.js";
 import type { ContextObservation, MessageBreakdownItem } from "../context-control/observation.js";
@@ -9,24 +10,9 @@ import { estimateTokens } from "../../core/prompt-core/index.js";
 
 // ─── helpers ─────────────────────────────────────────────────────
 
-function byteLen(value: unknown): number {
-  if (typeof value === "string") return Buffer.byteLength(value, "utf8");
-  try { return Buffer.byteLength(JSON.stringify(value), "utf8"); } catch { return 0; }
-}
-
-/**
- * Serialize a message to a stable string for both byte length and byte-aware
- * token estimation, without re-stringifying twice. Mirrors `byteLen`'s
- * JSON.stringify path so the two numbers describe the same text.
- */
-function messageText(message: unknown): string {
-  if (typeof message === "string") return message;
-  try { return JSON.stringify(message); } catch { return String(message ?? ""); }
-}
-
 function countMessages(messages: unknown): { count: number; bytes: number } {
   if (!Array.isArray(messages)) return { count: 0, bytes: 0 };
-  return { count: messages.length, bytes: byteLen(messages) };
+  return { count: messages.length, bytes: safeByteLen(messages) };
 }
 
 function shortSource(message: any): string {
@@ -54,8 +40,8 @@ function messageBreakdown(messages: unknown, limit = 20): MessageBreakdownItem[]
   if (!Array.isArray(messages)) return [];
   return messages
     .map((message: any, index) => {
-      const text = messageText(message);
-      const bytes = Buffer.byteLength(text, "utf8");
+      const bytes = safeByteLen(message);
+      const text = typeof message === "string" ? message : (typeof message === "object" && message !== null ? JSON.stringify(message) : String(message ?? ""));
       return {
         index,
         role: String(message?.role ?? message?.type ?? "message"),
@@ -73,17 +59,17 @@ function messageBreakdown(messages: unknown, limit = 20): MessageBreakdownItem[]
 
 function systemPromptParts(options: any, systemPrompt: unknown): Array<Record<string, unknown>> {
   const parts: Array<Record<string, unknown>> = [
-    { name: "systemPromptTotal", bytes: byteLen(systemPrompt ?? "") },
+    { name: "systemPromptTotal", bytes: safeByteLen(systemPrompt ?? "") },
   ];
   const contextFiles = Array.isArray(options?.contextFiles) ? options.contextFiles : [];
   for (const [index, file] of contextFiles.entries()) {
-    parts.push({ name: `contextFile:${file?.path ?? index}`, bytes: byteLen(file?.content ?? file) });
+    parts.push({ name: `contextFile:${file?.path ?? index}`, bytes: safeByteLen(file?.content ?? file) });
   }
   const skills = Array.isArray(options?.skills) ? options.skills : [];
-  parts.push({ name: "skillsIndex", bytes: byteLen(skills) });
-  parts.push({ name: "toolSnippets", bytes: byteLen(options?.toolSnippets ?? []) });
-  parts.push({ name: "promptGuidelines", bytes: byteLen(options?.promptGuidelines ?? []) });
-  parts.push({ name: "appendSystemPrompt", bytes: byteLen(options?.appendSystemPrompt ?? "") });
+  parts.push({ name: "skillsIndex", bytes: safeByteLen(skills) });
+  parts.push({ name: "toolSnippets", bytes: safeByteLen(options?.toolSnippets ?? []) });
+  parts.push({ name: "promptGuidelines", bytes: safeByteLen(options?.promptGuidelines ?? []) });
+  parts.push({ name: "appendSystemPrompt", bytes: safeByteLen(options?.appendSystemPrompt ?? "") });
   return parts.filter((p) => Number(p.bytes) > 0).sort((a, b) => Number(b.bytes) - Number(a.bytes));
 }
 
@@ -143,8 +129,8 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
     publish({
       phase: "prompt",
       summary: {
-        promptBytes: byteLen(event?.prompt ?? ""),
-        systemPromptBytes: byteLen(event?.systemPrompt ?? ctx?.getSystemPrompt?.() ?? ""),
+        promptBytes: safeByteLen(event?.prompt ?? ""),
+        systemPromptBytes: safeByteLen(event?.systemPrompt ?? ctx?.getSystemPrompt?.() ?? ""),
         systemPromptParts: systemPromptParts(event?.systemPromptOptions, event?.systemPrompt ?? ctx?.getSystemPrompt?.() ?? ""),
         toolCount: toolNames.length,
         tools: toolNames,
@@ -167,15 +153,15 @@ export default function contextTrackerExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("before_provider_request", async (event: any, ctx: any) => {
-    publish({ phase: "provider_request", summary: { payloadBytes: byteLen(event?.payload) } }, ctx);
+    publish({ phase: "provider_request", summary: { payloadBytes: safeByteLen(event?.payload) } }, ctx);
   });
 
   pi.on("tool_execution_end", async (event: any, ctx: any) => {
     publish({ phase: "tool_end", summary: {
       toolCallId: event?.toolCallId,
       toolName: event?.toolName,
-      argsBytes: byteLen(event?.args),
-      resultBytes: byteLen(event?.result),
+      argsBytes: safeByteLen(event?.args),
+      resultBytes: safeByteLen(event?.result),
       isError: Boolean(event?.isError),
     } }, ctx);
   });

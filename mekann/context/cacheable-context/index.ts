@@ -17,9 +17,18 @@ function cfg(): CacheableContextConfig {
     includeCodeStructure: c.includeCodeStructure === true,
     maxPrefixChars: Number(c.maxPrefixChars ?? 32000) || 32000,
     maxContextTerms: Number(c.maxContextTerms ?? 100) || 100,
+    maxContextTermBytes: Number(c.maxContextTermBytes ?? 1000) || 1000,
     maxAdrEntries: Number(c.maxAdrEntries ?? 80) || 80,
   };
 }
+
+/**
+ * Maximum number of distinct cwds whose last-tracked prefix hash we remember.
+ * Bounds module-level memory in long-running processes that handle many cwds
+ * (autopilot issue worktrees, subagents, …). FIFO eviction drops the oldest.
+ * See issue #165 (IC-204).
+ */
+const MAX_TRACKED_CWDS = 256;
 
 const lastTrackedPrefixByCwd = new Map<string, string>();
 
@@ -28,6 +37,11 @@ function trackCacheableContext(cwd: string, manifest: Manifest, currentCfg: Cach
   const key = `${manifest.prefixHash}:${manifest.configHash}`;
   if (lastTrackedPrefixByCwd.get(cwd) === key) return;
   lastTrackedPrefixByCwd.set(cwd, key);
+  while (lastTrackedPrefixByCwd.size > MAX_TRACKED_CWDS) {
+    const oldest = lastTrackedPrefixByCwd.keys().next().value;
+    if (oldest === undefined) break;
+    lastTrackedPrefixByCwd.delete(oldest);
+  }
   void recordContextObservation({
     cwd,
     phase: "cacheable_context",
@@ -56,6 +70,31 @@ async function ensureBuilt(cwd: string): Promise<void> {
   trackCacheableContext(cwd, current, currentCfg);
 }
 
+/**
+ * Per-process, per-cwd "already ensured" guard (issue #168 / IC-203).
+ *
+ * `ensureBuilt` always re-hashes every source file (`collectSourceHashes`) to
+ * decide freshness, so calling it on every prompt-provider `getFragments`
+ * request added read-all-sources + sha256 jitter to a hot prompt path. The build
+ * itself is effectively session-scoped — Mekann settings do not live-reload and
+ * there is no fs.watch here — so we run the hash check at most once per cwd per
+ * process. Subsequent `getFragments` calls read the already-built manifest from
+ * disk (cheap) without re-hashing. The `mekann-context rebuild` command still
+ * bypasses this guard because it calls `buildCacheableContext` directly.
+ */
+const ensuredCwds = new Set<string>();
+async function ensureBuiltOnce(cwd: string): Promise<void> {
+  if (ensuredCwds.has(cwd)) return;
+  try {
+    await ensureBuilt(cwd);
+  } finally {
+    // Mark ensured even on failure: a broken build should not turn every
+    // subsequent prompt request into another full re-hash attempt. The manifest
+    // read in getFragments degrades gracefully to "no fragments" on its own.
+    ensuredCwds.add(cwd);
+  }
+}
+
 function locatorContent(manifest: Manifest): string {
   const rows = manifest.fragments
     .map((fragment) => `- ${fragment.id}: ${fragment.source}, ${fragment.chars} chars, fragment .mekann/cacheable-context/fragments/${fragment.id}.md`)
@@ -76,7 +115,7 @@ export default function cacheableContextExtension(pi: ExtensionAPI): void {
 
   pi.on("session_start", async (_event: any, ctx: any) => {
     const cwd = ctx?.cwd ?? process.cwd();
-    try { await ensureBuilt(cwd); } catch (error) { ctx?.ui?.notify?.(`Mekann cacheable context build failed: ${String(error)}`, "warn"); }
+    try { await ensureBuiltOnce(cwd); } catch (error) { ctx?.ui?.notify?.(`Mekann cacheable context build failed: ${String(error)}`, "warn"); }
     const configuredSurface = featureStringValue("cacheable-context", "promptSurface", "locator", cwd);
     if (configuredSurface === "full") {
       ctx?.ui?.notify?.('cacheable-context: promptSurface "full" is deprecated and now behaves as "locator". The base system already injects AGENTS.md and domain docs, so "full" caused double injection. Set promptSurface to "locator" or "off".', "warn");
@@ -87,7 +126,7 @@ export default function cacheableContextExtension(pi: ExtensionAPI): void {
     id: "mekann-cacheable-context",
     async getFragments(providerCtx: any) {
       const cwd = providerCtx?.cwd ?? process.cwd();
-      await ensureBuilt(cwd);
+      await ensureBuiltOnce(cwd);
       const manifest = await readManifest(cwd);
       if (!manifest?.fragments.length) return [];
       const promptSurface = normalizePromptSurface(featureStringValue("cacheable-context", "promptSurface", "locator", cwd));

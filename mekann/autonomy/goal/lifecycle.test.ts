@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import goalExtension from "./index.js";
+import { collectGoalEntriesChronologically } from "./goalLifecycle.js";
+import { GoalStore, type GoalStateEntry } from "./state.js";
 import { clearPromptProvidersForTests, collectPromptFragments } from "../../core/prompt-core/index.js";
 
 // ---------------------------------------------------------------------------
@@ -117,7 +119,7 @@ describe("goal lifecycle and events", () => {
       expect(result.content[0].text).toContain("disabled");
     });
 
-    it("replays custom entries from branch in reverse chronological order", async () => {
+    it("replays persisted custom entries into the goal store (chronological)", async () => {
       const mockPi = createMockPi();
       goalExtension(mockPi as any);
       const handlers = (mockPi as any)._handlers;
@@ -135,28 +137,38 @@ describe("goal lifecycle and events", () => {
         initCtx,
       );
 
-      // Capture persisted entries
+      // Capture persisted entries (data payloads only)
       const persistedEntries = mockPi.appendEntry.mock.calls.map(
         (call: any[]) => call[1],
       );
       expect(persistedEntries.length).toBeGreaterThan(0);
 
-      // Simulate new session with those entries (leaf→root order as getBranch returns)
+      // Wrap each persisted payload as a realistic pi custom entry. Each one
+      // carries its own `timestamp` (stamped by the SDK at append time); the
+      // replay now sorts on it, so the branch array order no longer matters.
+      const baseTime = Date.parse("2026-01-01T00:00:00.000Z");
+      const branch = persistedEntries.map((entry: any, i: number) => ({
+        type: "custom" as const,
+        customType: "goal-state",
+        data: entry,
+        id: `entry-${i}`,
+        parentId: i === 0 ? null : `entry-${i - 1}`,
+        timestamp: new Date(baseTime + i * 1000).toISOString(),
+      }));
+
+      // Simulate a new session. getBranch() currently returns root→leaf, but
+      // replay derives order from each entry's own timestamp, so the array
+      // order is irrelevant (order-independence is covered by the
+      // `collectGoalEntriesChronologically` property tests below).
       const newPi = createMockPi();
       goalExtension(newPi as any);
       const newHandlers = (newPi as any)._handlers;
-
-      const branch = persistedEntries.map((entry: any) => ({
-        type: "custom",
-        customType: "goal-state",
-        data: entry,
-      }));
 
       const newCtx = createMockCtx({
         sessionManager: {
           getSessionId: vi.fn(() => "test-thread-1"),
           isPersisted: vi.fn(() => true),
-          getBranch: vi.fn(() => branch.reverse()), // reversed to simulate leaf→root
+          getBranch: vi.fn(() => branch),
         },
       });
       await newHandlers["session_start"]({}, newCtx);
@@ -358,5 +370,121 @@ describe("goal lifecycle and events", () => {
       // setWidget should not be called on no-UI ctx
       expect(noUiCtx.ui.setWidget).not.toHaveBeenCalled();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Order-independent replay (ADR-0028 / IC-216)
+// ---------------------------------------------------------------------------
+// Replay derives chronological order from each pi entry's own `timestamp`
+// instead of trusting the array order returned by getBranch(). These property
+// tests assert that any permutation of the branch yields the same payloads
+// AND the same reconstructed store state — proving replay no longer couples
+// to the SDK's undocumented branch ordering.
+
+describe("collectGoalEntriesChronologically (order-independent replay)", () => {
+  const CUSTOM_TYPE = "goal-state";
+  const BASE_TIME = Date.parse("2026-01-01T00:00:00.000Z");
+
+  /** Wrap goal-state payloads as pi custom entries with chronological metadata. */
+  function wrapBranch(payloads: GoalStateEntry[]): any[] {
+    return payloads.map((data, i) => ({
+      type: "custom" as const,
+      customType: CUSTOM_TYPE,
+      data,
+      id: `e${i}`,
+      parentId: i === 0 ? null : `e${i - 1}`,
+      // Timestamp reflects the entry's true chronological position (index),
+      // not its position in whatever array it ends up in.
+      timestamp: new Date(BASE_TIME + i * 1000).toISOString(),
+    }));
+  }
+
+  /** Reorder an array by a permutation of indices (deterministic shuffle). */
+  function permute<T>(arr: readonly T[], order: number[]): T[] {
+    return order.map((i) => arr[i]);
+  }
+
+  /** Produce realistic goal-state entries via the real (pure) GoalStore. */
+  function captureLifecycleEntries(): GoalStateEntry[] {
+    const captured: GoalStateEntry[] = [];
+    const store = new GoalStore((e) => captured.push(e));
+    store.createGoal("t1", "First", null, "user"); // set: objective "First"
+    store.updateGoal({ objective: "Second" }, undefined, "user"); // set: objective "Second"
+    store.accountGoalUsage(5, 100); // usage: tokens_used 100
+    return captured;
+  }
+
+  it("returns the same payloads for chronological, reversed, and shuffled input", () => {
+    const payloads = captureLifecycleEntries();
+    expect(payloads).toHaveLength(3);
+    const chronological = wrapBranch(payloads);
+
+    const baseline = collectGoalEntriesChronologically(chronological, CUSTOM_TYPE);
+    // Baseline is the payloads in their original chronological order.
+    expect(baseline).toEqual(payloads);
+
+    // Fully reversed array (e.g. if the SDK switched traversal direction).
+    expect(collectGoalEntriesChronologically([...chronological].reverse(), CUSTOM_TYPE)).toEqual(
+      payloads,
+    );
+    // Arbitrary permutation.
+    const shuffled = permute(chronological, [2, 0, 1]);
+    expect(collectGoalEntriesChronologically(shuffled, CUSTOM_TYPE)).toEqual(payloads);
+  });
+
+  it("reconstructs the same final store state regardless of branch order", () => {
+    const payloads = captureLifecycleEntries();
+    const chronological = wrapBranch(payloads);
+
+    const permutations = [
+      chronological, // root→leaf (SDK current)
+      [...chronological].reverse(), // leaf→root
+      permute(chronological, [2, 0, 1]), // arbitrary
+      permute(chronological, [1, 2, 0]), // arbitrary
+    ];
+
+    for (const branch of permutations) {
+      const ordered = collectGoalEntriesChronologically(branch, CUSTOM_TYPE);
+      const goal = GoalStore.fromEntries(ordered, () => {}).getGoal();
+      // Only correct (chronological) application yields the updated objective
+      // AND the accounted usage; any misordering would clobber tokens_used or
+      // revert the objective.
+      expect(goal?.objective).toBe("Second");
+      expect(goal?.tokens_used).toBe(100);
+    }
+  });
+
+  it("handles set→clear order-independently (clear wins only when truly later)", () => {
+    const captured: GoalStateEntry[] = [];
+    const store = new GoalStore((e) => captured.push(e));
+    store.createGoal("t1", "Doomed", null, "user"); // set
+    store.deleteGoal("user"); // clear (later)
+    expect(captured).toHaveLength(2);
+
+    const chronological = wrapBranch(captured);
+    const permutations = [chronological, [...chronological].reverse()];
+
+    for (const branch of permutations) {
+      const ordered = collectGoalEntriesChronologically(branch, CUSTOM_TYPE);
+      // Correct order applies set then clear → no goal. Misordering (clear
+      // then set) would leave a goal present.
+      expect(GoalStore.fromEntries(ordered, () => {}).getGoal()).toBeNull();
+    }
+  });
+
+  it("ignores entries of other custom types", () => {
+    const payloads = captureLifecycleEntries();
+    const goal = wrapBranch(payloads);
+    const other = payloads.map((data, i) => ({
+      type: "custom" as const,
+      customType: "other-extension",
+      data,
+      id: `o${i}`,
+      parentId: null,
+      timestamp: new Date(BASE_TIME + i * 1000).toISOString(),
+    }));
+
+    expect(collectGoalEntriesChronologically([...goal, ...other], CUSTOM_TYPE)).toEqual(payloads);
   });
 });

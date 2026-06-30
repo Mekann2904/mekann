@@ -40,6 +40,42 @@ function scopeFromQuery(url: URL): ContextMonitorScope {
   } satisfies ContextMonitorScope;
 }
 
+// ─── request security helpers ───────────────────────────────────
+
+function isAllowedHostname(hostname: string): boolean {
+  return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1";
+}
+
+/**
+ * Accept only loopback Host headers to mitigate DNS-rebinding attacks that would
+ * let an attacker page issue requests to the local monitor server.
+ */
+function isAllowedHost(header: string): boolean {
+  let hostname = header.trim();
+  if (hostname.startsWith("[")) {
+    // IPv6 literal, e.g. [::1]:4321
+    const end = hostname.indexOf("]");
+    hostname = end > 0 ? hostname.slice(1, end) : hostname.slice(1);
+  } else {
+    const colon = hostname.indexOf(":");
+    if (colon > 0) hostname = hostname.slice(0, colon);
+  }
+  return isAllowedHostname(hostname);
+}
+
+/**
+ * Accept only same-origin (loopback) Origin headers for write requests to mitigate
+ * CSRF. Browser always sends Origin on cross-site POSTs.
+ */
+function isAllowedOrigin(header: string | undefined): boolean {
+  if (!header) return false;
+  try {
+    return isAllowedHostname(new URL(header).hostname);
+  } catch {
+    return false;
+  }
+}
+
 async function readRequestBody(req: http.IncomingMessage, maxBytes = 64 * 1024): Promise<unknown> {
   const chunks: Buffer[] = [];
   let total = 0;
@@ -72,8 +108,32 @@ export async function ensureContextMonitorServer(preferredPort = 0): Promise<{ p
 
   state.server = http.createServer((req, res) => {
     void (async () => {
+      // Mitigate DNS rebinding: only accept requests addressed to loopback hosts.
+      if (!isAllowedHost(req.headers.host ?? "")) {
+        return json(res, 403, { error: "forbidden_host" });
+      }
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
+      const method = req.method ?? "GET";
       const scope = scopeFromQuery(url);
+
+      // Write endpoint: POST-only + same-origin check (CSRF mitigation).
+      if (url.pathname === "/llm/context-decision") {
+        if (method !== "POST") {
+          return json(res, 405, { error: "method_not_allowed", method });
+        }
+        if (!isAllowedOrigin(req.headers.origin)) {
+          return json(res, 403, { error: "forbidden_origin" });
+        }
+        recordContextDecision(await readRequestBody(req));
+        return json(res, 200, { ok: true });
+      }
+
+      // Every other endpoint is read-only; reject non-GET verbs so CSRF / rebinding
+      // cannot trigger side effects through GET routes.
+      if (method !== "GET") {
+        return json(res, 405, { error: "method_not_allowed", method });
+      }
+
       if (url.pathname === "/") return html(res, renderHome());
       if (url.pathname === "/dashboard") return html(res, renderDashboard(scope));
       if (url.pathname === "/cache-efficiency") return html(res, await renderCacheEfficiencyDashboard(scope));
@@ -98,12 +158,16 @@ export async function ensureContextMonitorServer(preferredPort = 0): Promise<{ p
       if (url.pathname === "/llm/context-recommendations") return json(res, 200, getContextIntelligenceReport("recommendations", 20, scope));
       if (url.pathname === "/llm/context-budget") return json(res, 200, getContextIntelligenceReport("budget", 20, scope));
       if (url.pathname === "/llm/context-plan") return json(res, 200, getContextIntelligenceReport("budget", Number(url.searchParams.get("limit") ?? 20), scope));
-      if (url.pathname === "/llm/context-decision" && req.method === "POST") {
-        recordContextDecision(await readRequestBody(req));
-        return json(res, 200, { ok: true });
-      }
       return json(res, 404, { error: "not_found", endpoints: ["/", "/dashboard", "/cache-efficiency", "/cache-efficiency/snapshot", "/health", "/snapshot", "/events", "/tools", "/llm/context-report", "/llm/context-plan", "/llm/context-recommendations"] });
-    })().catch((error) => json(res, String(error?.message ?? "").includes("request body exceeds") ? 413 : 500, { error: "internal_error", message: String(error?.message ?? error) }));
+    })().catch((error) => {
+      // Never leak internal error detail to clients; surface only a stable category.
+      const message = String(error?.message ?? "");
+      if (message.includes("request body exceeds")) {
+        return json(res, 413, { error: "payload_too_large" });
+      }
+      console.error("[context-tracker] internal error:", error);
+      return json(res, 500, { error: "internal_error" });
+    });
   });
   state.server.unref();
 
