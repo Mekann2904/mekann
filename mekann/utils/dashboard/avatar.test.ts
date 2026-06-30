@@ -8,6 +8,12 @@ describe("kitty avatar", () => {
 		expect(isLikelyKitty({ TERM: "xterm-kitty" } as NodeJS.ProcessEnv)).toBe(true);
 		expect(isLikelyKitty({ TERM: "xterm-256color" } as NodeJS.ProcessEnv)).toBe(false);
 	});
+
+	it("does not false-positive on `st-kitty-256color` (st with kitty keyboard, no graphics)", () => {
+		// IC-231: substring match on "kitty" previously sent kitty-graphics escapes here.
+		expect(isLikelyKitty({ TERM: "st-kitty-256color" } as NodeJS.ProcessEnv)).toBe(false);
+		expect(isLikelyKitty({} as NodeJS.ProcessEnv)).toBe(false);
+	});
 });
 
 describe("kittyGraphicsEscape — configurable chunk size (issue #166 / IC-233)", () => {

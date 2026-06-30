@@ -16,20 +16,64 @@ import {
 	type AutoresearchModeEvent,
 } from "../../../safety/policy-core/modes.js";
 
-/** Archive a root-level file into .autoresearch/archived/ with a timestamp suffix. */
-function archiveFile(cwd: string, filename: string, warnings: string[]): void {
+/**
+ * Archive a root-level file into .autoresearch/archived/ with a timestamp suffix.
+ *
+ * Same-volume moves use an atomic `rename`; a cross-volume move (EXDEV) falls
+ * back to a crash-safe copy-via-temp-then-rename so a kill mid-copy never
+ * leaves a torn destination and never deletes the source until the archive is
+ * fully in place (IC-181 / issue #161). On any failure the source is left
+ * intact and a warning is recorded.
+ */
+export function archiveFile(
+	cwd: string,
+	filename: string,
+	warnings: string[],
+	deps: { renameSync?: (src: string, dest: string) => void } = {},
+): void {
+	const renameSync = deps.renameSync ?? fs.renameSync;
 	const src = path.join(cwd, filename);
 	if (!fs.existsSync(src)) return;
 	const archivedDir = path.join(cwd, ".autoresearch", "archived");
 	fs.mkdirSync(archivedDir, { recursive: true });
 	const ts = new Date().toISOString().replace(/[:.]/g, "-");
 	const dest = path.join(archivedDir, `${filename}.${ts}`);
+	const warn = (stage: string, e: unknown): void => {
+		warnings.push(`${filename} の退避に失敗(${stage}): ${e instanceof Error ? e.message : String(e)}`);
+	};
+	// Same-volume rename is atomic when it works.
 	try {
-		fs.renameSync(src, dest);
-	} catch {
-		try { fs.copyFileSync(src, dest); fs.rmSync(src, { force: true }); } catch (e) {
-			warnings.push(`${filename} の退避に失敗: ${e instanceof Error ? e.message : String(e)}`);
+		renameSync(src, dest);
+		return;
+	} catch (e: any) {
+		// Only fall back on a cross-device link error; anything else is unexpected
+		// and we leave src intact rather than risk a torn copy.
+		if (e?.code !== "EXDEV") { warn("rename", e); return; }
+	}
+	// Cross-volume fallback: copy the source into a temp file in the archive dir,
+	// then atomically rename it into place. The source is removed only AFTER the
+	// archive is durable, so any crash leaves src recoverable (worst case a
+	// harmless partial temp, which the next run ignores/overwrites).
+	const tmp = `${dest}.${process.pid}-${Date.now().toString(36)}.tmp`;
+	try {
+		fs.copyFileSync(src, tmp);
+		try {
+			fs.renameSync(tmp, dest);
+		} catch (e) {
+			try { fs.rmSync(tmp, { force: true }); } catch { /* best-effort temp cleanup */ }
+			warn("archive-rename", e);
+			return;
 		}
+	} catch (e) {
+		try { fs.rmSync(tmp, { force: true }); } catch { /* best-effort temp cleanup */ }
+		warn("copy", e);
+		return;
+	}
+	// The archive copy is now durable and atomic; safe to drop the original.
+	try {
+		fs.rmSync(src, { force: true });
+	} catch (e) {
+		warn("cleanup", e);
 	}
 }
 

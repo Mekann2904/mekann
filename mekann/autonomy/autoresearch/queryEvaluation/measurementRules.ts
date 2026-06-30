@@ -8,8 +8,11 @@ export interface MeasurementInfoRuleResult {
 }
 
 export function detectStdoutMetric(query: string, metricName: string | null): MeasurementInfoRuleResult | null {
-	const hasMetricLinePattern = /\bmetric\s+[\w.-]+\s*=/i.test(query);
-	const hasStdoutMetricMention = /(stdout|標準出力)/i.test(query) && /\bmetric\b/i.test(query);
+	// `metric name=value` 形式 (stdout 抽出の強いシグナル)。`\bmetric\b` は
+	// 日本語に隣接しても境界一致するが、区切りに全角 `：`・値に全角 `＝` を許容し、
+	// 日本語ドキュメントでの表記揺れを拾う (issue #147)。
+	const hasMetricLinePattern = /\bmetric\b[\s:：]+[\w.-]+\s*[=＝]/i.test(query);
+	const hasStdoutMetricMention = /(stdout|標準出力)/i.test(query) && (/\bmetric\b|メトリック/i).test(query);
 	if (!hasMetricLinePattern && !hasStdoutMetricMention) return null;
 	return {
 		measurementMethod: "stdout_metric",
