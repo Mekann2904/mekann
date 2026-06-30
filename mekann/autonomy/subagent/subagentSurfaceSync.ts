@@ -87,12 +87,9 @@ export function syncSubagentToolSurface(
 export function createSurfaceSyncSubscriber(
   pi: ExtensionAPI,
   registry: AgentRegistry,
-  resultStoreForCwd: (cwd: string) => SubagentResultStore,
-  getCwd: () => string,
+  resultStore: SubagentResultStore,
 ): () => void {
   return registry.subscribe(() => {
-    const cwd = getCwd();
-    const store = resultStoreForCwd(cwd);
-    syncSubagentToolSurface(pi, registry.list(), store);
+    syncSubagentToolSurface(pi, registry.list(), resultStore);
   });
 }

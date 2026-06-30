@@ -3,6 +3,7 @@ import { fmtBytes } from "./format.js";
 import { currentContextScope, latestSampleWith, scopedContextSamples } from "./query.js";
 import type { ContextMonitorSample } from "./state.js";
 import { getToolSchemaSnapshot } from "./tool-schemas.js";
+import { resolveContextControlConfig, type MekannContextControlConfig } from "./config.js";
 
 export interface Contributor {
   label: string;
@@ -140,10 +141,10 @@ export function latestMessageBreakdown(scope: ContextMonitorScope = currentConte
   return Array.isArray(value) ? value.filter(isMessageBreakdownItem) : [];
 }
 
-export function topMessageItems(limit = 20, scope: ContextMonitorScope = currentContextScope()): TopMessageItem[] {
+export function topMessageItems(limit = 20, scope: ContextMonitorScope = currentContextScope(), config: MekannContextControlConfig = resolveContextControlConfig()): TopMessageItem[] {
   return latestMessageBreakdown(scope).slice(0, limit).map((item, index) => {
     const bytes = Number(item.bytes ?? 0);
-    const policy = bytes > 24 * 1024 ? "SUMMARIZE" : bytes > 8 * 1024 ? "RETRIEVE" : "KEEP";
+    const policy = bytes > config.messageSummarizeBytes ? "SUMMARIZE" : bytes > config.messageRetrieveBytes ? "RETRIEVE" : "KEEP";
     return {
       rank: index + 1,
       type: item.role ?? "message",
@@ -175,7 +176,7 @@ export function growthRate(scope: ContextMonitorScope = currentContextScope()): 
   };
 }
 
-export function computeHealthScore(scope: ContextMonitorScope = currentContextScope()): ContextHealth {
+export function computeHealthScore(scope: ContextMonitorScope = currentContextScope(), config: MekannContextControlConfig = resolveContextControlConfig()): ContextHealth {
   let score = 100;
   const reasons: string[] = [];
   const percent = Number(latestVal("contextPercent", scope));
@@ -186,16 +187,16 @@ export function computeHealthScore(scope: ContextMonitorScope = currentContextSc
   const lastResultBytes = numLatest("resultBytes", scope);
 
   if (Number.isFinite(percent)) {
-    if (percent > 85) { score -= 45; reasons.push("Context is near overflow."); }
-    else if (percent > 70) { score -= 30; reasons.push("Context pressure is high."); }
-    else if (percent > 45) { score -= 15; reasons.push("Context pressure is rising."); }
+    if (percent > config.pressureCriticalPct) { score -= config.penaltyPressureCritical; reasons.push("Context is near overflow."); }
+    else if (percent > config.pressureHighPct) { score -= config.penaltyPressureHigh; reasons.push("Context pressure is high."); }
+    else if (percent > config.pressureMediumPct) { score -= config.penaltyPressureMedium; reasons.push("Context pressure is rising."); }
   }
-  if (msgPct > 75) { score -= 12; reasons.push("Messages dominate payload; retention classification is recommended."); }
-  if (sysPct > 30) { score -= 10; reasons.push("System prompt occupies a large share; audit always-on instructions."); }
-  if (growth.tokensPerRequest > 5000 || growth.payloadBytesPerRequest > 24 * 1024) { score -= 12; reasons.push("Recent growth rate is high."); }
-  if (lastResultBytes > 64 * 1024) { score -= 10; reasons.push("Last tool result is large and should be summarized or externalized."); }
+  if (msgPct > config.messagePctHigh) { score -= config.penaltyMessagePct; reasons.push("Messages dominate payload; retention classification is recommended."); }
+  if (sysPct > config.systemPromptPctHigh) { score -= config.penaltySystemPromptPct; reasons.push("System prompt occupies a large share; audit always-on instructions."); }
+  if (growth.tokensPerRequest > config.growthTokensPerRequest || growth.payloadBytesPerRequest > config.growthPayloadBytesPerRequest) { score -= config.penaltyGrowth; reasons.push("Recent growth rate is high."); }
+  if (lastResultBytes > config.toolExternalizeTotalBytes) { score -= config.penaltyLargeResult; reasons.push("Last tool result is large and should be summarized or externalized."); }
   score = Math.max(0, Math.min(100, score));
-  const risk = score < 35 ? "critical" : score < 55 ? "high" : score < 75 ? "medium" : "low";
+  const risk = score < config.riskCriticalScore ? "critical" : score < config.riskHighScore ? "high" : score < config.riskMediumScore ? "medium" : "low";
   if (reasons.length === 0) reasons.push("No immediate context pressure detected.");
   return { score, risk, reasons };
 }
@@ -219,7 +220,7 @@ export function toolSurfaceAnalysis(scope: ContextMonitorScope = currentContextS
   };
 }
 
-export function computeAlerts(scope: ContextMonitorScope = currentContextScope()): Alert[] {
+export function computeAlerts(scope: ContextMonitorScope = currentContextScope(), config: MekannContextControlConfig = resolveContextControlConfig()): Alert[] {
   const alerts: Alert[] = [];
   const tokens = numLatest("contextTokens", scope);
   const percent = Number(latestVal("contextPercent", scope));
@@ -229,11 +230,11 @@ export function computeAlerts(scope: ContextMonitorScope = currentContextScope()
   const resultBytes = numLatest("resultBytes", scope);
   const pendingResults = numLatest("pendingResults", scope);
 
-  if (Number.isFinite(percent) && percent > 80) alerts.push({ level: "warn", text: `Tokens at ${percent}% of context window` });
-  if (resultBytes > 50 * 1024) alerts.push({ level: "warn", text: `Last tool result ${fmtBytes(resultBytes)} exceeds 50 KB` });
-  if (prevPayload > 0 && payload > prevPayload * 1.3) alerts.push({ level: "info", text: `Payload grew ${Math.round((payload / prevPayload - 1) * 100)}% this turn` });
-  if (prevTokens > 0 && tokens > prevTokens * 1.2) alerts.push({ level: "info", text: `Token estimate grew ${Math.round((tokens / prevTokens - 1) * 100)}%` });
-  if (pendingResults > 5) alerts.push({ level: "warn", text: `${pendingResults} pending subagent results` });
+  if (Number.isFinite(percent) && percent > config.alertTokenPct) alerts.push({ level: "warn", text: `Tokens at ${percent}% of context window` });
+  if (resultBytes > config.alertLargeResultBytes) alerts.push({ level: "warn", text: `Last tool result ${fmtBytes(resultBytes)} exceeds ${fmtBytes(config.alertLargeResultBytes)}` });
+  if (prevPayload > 0 && payload > prevPayload * config.alertPayloadGrowthRatio) alerts.push({ level: "info", text: `Payload grew ${Math.round((payload / prevPayload - 1) * 100)}% this turn` });
+  if (prevTokens > 0 && tokens > prevTokens * config.alertTokenGrowthRatio) alerts.push({ level: "info", text: `Token estimate grew ${Math.round((tokens / prevTokens - 1) * 100)}%` });
+  if (pendingResults > config.alertPendingResults) alerts.push({ level: "warn", text: `${pendingResults} pending subagent results` });
   const toolSurface = toolSurfaceAnalysis(scope);
   if (toolSurface.toolSetHashChanges > 0) alerts.push({ level: "info", text: `Selected tool set changed ${toolSurface.toolSetHashChanges} times; prompt cache prefix may churn` });
   if (toolSurface.toolOrderHashChanges > toolSurface.toolSetHashChanges) alerts.push({ level: "info", text: "Tool order changed without an equivalent tool-set change; canonical ordering would improve cache reuse" });
@@ -241,7 +242,7 @@ export function computeAlerts(scope: ContextMonitorScope = currentContextScope()
   return alerts;
 }
 
-export function buildContextAnalysis(scope: ContextMonitorScope = currentContextScope(), topMessageLimit = 20): ContextAnalysis {
+export function buildContextAnalysis(scope: ContextMonitorScope = currentContextScope(), topMessageLimit = 20, config: MekannContextControlConfig = resolveContextControlConfig()): ContextAnalysis {
   const samples = scopedContextSamples(scope);
   return {
     scope,
@@ -249,11 +250,11 @@ export function buildContextAnalysis(scope: ContextMonitorScope = currentContext
     latest: samples.at(-1) ?? null,
     contextWindow: contextWindowEstimate(scope),
     growth: growthRate(scope),
-    health: computeHealthScore(scope),
-    alerts: computeAlerts(scope),
+    health: computeHealthScore(scope, config),
+    alerts: computeAlerts(scope, config),
     payloadBreakdown: payloadBreakdown(scope),
     toolOutputBreakdown: toolOutputBreakdown(scope),
-    topMessages: topMessageItems(topMessageLimit, scope),
+    topMessages: topMessageItems(topMessageLimit, scope, config),
     toolSurface: toolSurfaceAnalysis(scope),
   };
 }
