@@ -9,7 +9,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@earendil-works/pi-ai";
+import { parseParams } from "../../tool-params.js";
 import { GoalError, type Goal, type GoalStore, type GoalSource, remainingTokens, DEFAULT_OBJECTIVE_LENGTH } from "./state.js";
 import type { GoalRuntime } from "./runtime.js";
 import type { GoalAction } from "./context-events.js";
@@ -51,6 +51,26 @@ export function registerGoalTools(deps: GoalToolDeps): void {
   const { pi } = deps;
 
   // ─── get_goal ─────────────────────────────────────────────────
+
+  const createGoalParams = Type.Object({
+    objective: Type.String({
+      description: `The goal objective. Keep it focused but complete; up to ~${DEFAULT_OBJECTIVE_LENGTH} characters by default (configurable via goal.maxObjectiveLength). Objectives beyond the limit are rejected.`,
+    }),
+    token_budget: Type.Optional(
+      Type.Integer({
+        minimum: 1,
+        description: "Optional positive integer token budget.",
+      }),
+    ),
+  });
+  const updateGoalParams = Type.Object({
+    status: Type.Union([Type.Literal("complete"), Type.Literal("blocked")], {
+      description: "Set to 'complete' only when fully achieved; set to 'blocked' only after the strict three-consecutive-goal-turn blocked audit is satisfied",
+    }),
+    expected_goal_id: Type.Optional(
+      Type.String({ description: "Optional: expected goal_id for optimistic concurrency" }),
+    ),
+  });
 
   pi.registerTool({
     name: "get_goal",
@@ -106,26 +126,17 @@ export function registerGoalTools(deps: GoalToolDeps): void {
       "Do NOT create goals autonomously for ordinary tasks.",
       "If a goal already exists, report the error to the user.",
     ],
-    parameters: Type.Object({
-      objective: Type.String({
-        description: `The goal objective. Keep it focused but complete; up to ~${DEFAULT_OBJECTIVE_LENGTH} characters by default (configurable via goal.maxObjectiveLength). Objectives beyond the limit are rejected.`,
-      }),
-      token_budget: Type.Optional(
-        Type.Integer({
-          minimum: 1,
-          description: "Optional positive integer token budget.",
-        }),
-      ),
-    }),
+    parameters: createGoalParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const store = deps.getStore();
       const runtime = deps.getRuntime();
       if (!deps.isEnabled(ctx) || !store || !runtime) return DISABLED_RESPONSE;
       try {
+        const p = parseParams(createGoalParams, params);
         const goal = store.createGoal(
           ctx.sessionManager.getSessionId(),
-          params.objective,
-          params.token_budget ?? null,
+          p.objective,
+          p.token_budget ?? null,
           "tool",
         );
         runtime.onExternalSet(goal);
@@ -162,20 +173,14 @@ export function registerGoalTools(deps: GoalToolDeps): void {
       "Do NOT mark goals as complete prematurely or because you are stopping work/budget is nearly exhausted.",
       "You cannot pause, resume, clear, or set budget_limited/usage_limited via this tool.",
     ],
-    parameters: Type.Object({
-      status: StringEnum(["complete", "blocked"] as const, {
-        description: "Set to 'complete' only when fully achieved; set to 'blocked' only after the strict three-consecutive-goal-turn blocked audit is satisfied",
-      }) as any,
-      expected_goal_id: Type.Optional(
-        Type.String({ description: "Optional: expected goal_id for optimistic concurrency" }),
-      ),
-    }),
+    parameters: updateGoalParams,
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const store = deps.getStore();
       const runtime = deps.getRuntime();
       if (!deps.isEnabled(ctx) || !store || !runtime) return DISABLED_RESPONSE;
       try {
-        const status = params.status as "complete" | "blocked";
+        const p = parseParams(updateGoalParams, params);
+        const status = p.status;
         const patch: { status: "complete" | "blocked" } = { status };
 
         // Reject if goal status is already complete
@@ -197,7 +202,7 @@ export function registerGoalTools(deps: GoalToolDeps): void {
         runtime.onExternalMutationStarting();
         const previousGoal = store.getGoal();
 
-        const goal = store.updateGoal(patch, params.expected_goal_id as string | undefined, "tool");
+        const goal = store.updateGoal(patch, p.expected_goal_id, "tool");
 
         // Suppress budget steering since this is a terminal model-declared status.
         runtime.suppressBudgetSteering();

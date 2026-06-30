@@ -47,11 +47,21 @@ function createController(): OutputGateController {
 // Pi response helper
 // ---------------------------------------------------------------------------
 
-function textResponse(text: string): {
+function textResponse(text: string, details: Record<string, unknown> = { source: "output-gate" }): {
 	content: Array<{ type: "text"; text: string }>;
 	details: Record<string, unknown>;
 } {
-	return { content: [{ type: "text" as const, text }], details: {} };
+	return { content: [{ type: "text" as const, text }], details };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+	return value && typeof value === "object" ? value as Record<string, unknown> : undefined;
+}
+
+function isOutputGateStored(details: unknown): boolean {
+	if (!details || typeof details !== "object" || !("outputGate" in details)) return false;
+	const outputGate = details.outputGate;
+	return Boolean(outputGate && typeof outputGate === "object" && "stored" in outputGate && outputGate.stored === true);
 }
 
 // ---------------------------------------------------------------------------
@@ -192,14 +202,14 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 			if (arg === "enable-tools") {
 				searchToolActive = true;
 				setToolsActive(pi, OUTPUT_GATE_TOOL_NAMES, true);
-				ctx?.ui?.notify?.("output-gate search tools enabled", "info");
+				ctx.ui.notify("output-gate search tools enabled", "info");
 				return;
 			}
 
 			if (arg === "disable-tools") {
 				searchToolActive = false;
 				setToolsActive(pi, OUTPUT_GATE_TOOL_NAMES, false);
-				ctx?.ui?.notify?.("output-gate search tools disabled", "info");
+				ctx.ui.notify("output-gate search tools disabled", "info");
 				return;
 			}
 
@@ -226,12 +236,12 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 			}
 
 			if (arg === "stats") {
-				ctx?.ui?.notify?.(await controller.stats(cwd), "info");
+				ctx.ui.notify(await controller.stats(cwd), "info");
 				return;
 			}
 
 			if (arg === "list") {
-				ctx?.ui?.notify?.(await controller.list(cwd), "info");
+				ctx.ui.notify(await controller.list(cwd), "info");
 				return;
 			}
 
@@ -240,13 +250,13 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 					parseKeepArg(arg) ??
 					(Number(featureConfig("output-gate").artifactRetentionMaxFiles) ||
 					MEKANN_OUTPUT_GATE_DEFAULTS.artifactRetentionMaxFiles);
-				ctx?.ui?.notify?.(await controller.purge(cwd, keep), "info");
+				ctx.ui.notify(await controller.purge(cwd, keep), "info");
 				await syncSearchToolSurface(cwd);
 				return;
 			}
 
 			// default: status
-			ctx?.ui?.notify?.(await controller.status(cwd), "info");
+			ctx.ui.notify(await controller.status(cwd), "info");
 		},
 	});
 

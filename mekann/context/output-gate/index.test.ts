@@ -85,7 +85,7 @@ describe("output-gate extension execute handler", () => {
 		const result = await toolDef.execute("id1", { query: "test" }, undefined, undefined, { cwd });
 		expect(result.content[0].type).toBe("text");
 		expect(result.content[0].text).toBe("No stored tool outputs.");
-		expect(result.details).toEqual({});
+		expect(result.details).toEqual({ source: "output-gate" });
 	});
 
 	it("execute uses process.cwd() when ctx is missing", async () => {
@@ -449,13 +449,14 @@ describe("output-gate tool_result hook", () => {
 		expect(result.details.outputGate).toBeDefined();
 	});
 
-	it("uses event.cwd over ctx.cwd", async () => {
+	it("uses ctx.cwd for storage", async () => {
 		const pi = { registerTool: vi.fn(), registerCommand: vi.fn(), on: vi.fn() } as any;
 		outputGateExtension(pi);
 		const hookFn = pi.on.mock.calls[0][1];
 		const cwd = await tmp();
 		const bigText = "x".repeat(64 * 1024);
-		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }], cwd }, { cwd: "/nonexistent" });
+		// tool_result events carry no cwd (per the Pi SDK contract); storage uses ctx.cwd.
+		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }] }, { cwd });
 		expect(result).toBeDefined();
 		expect(result.details.outputGate.stored).toBe(true);
 	});
@@ -469,7 +470,7 @@ describe("output-gate tool_result hook", () => {
 		const cwdFile = path.join(cwdBase, "file");
 		await fsp.writeFile(cwdFile, "x");
 		const bigText = "x".repeat(64 * 1024);
-		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }], cwd: cwdFile }, {});
+		const result = await hookFn({ toolName: "bash", content: [{ type: "text", text: bigText }] }, { cwd: cwdFile });
 		expect(result).toBeDefined();
 		expect(result.details.outputGate.stored).toBe(false);
 		expect(result.details.outputGate.storageError).toBeDefined();
