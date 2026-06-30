@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { truncateToBytesFromStart } from "../../utils/truncate-utils/index.js";
 
 export type CacheableContextConfig = {
   contextMode: "off" | "term-index" | "distilled" | "full";
@@ -10,6 +11,7 @@ export type CacheableContextConfig = {
   includeCodeStructure: boolean;
   maxPrefixChars: number;
   maxContextTerms: number;
+  maxContextTermBytes: number;
   maxAdrEntries: number;
 };
 
@@ -27,6 +29,27 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value);
 }
 function trimLines(text: string): string { return text.split(/\r?\n/).map((l) => l.trimEnd()).join("\n").trim() + "\n"; }
+
+/**
+ * Reads an ADR status from multiple template conventions (issue #162, IC-206).
+ *
+ * Supports `Status:`/`State:`/`Accepted:`/`Decided:` headers (MADR/Nygard/etc.),
+ * including the `* Status:` / `- Status:` bulleted MADR form. The first key that
+ * yields a non-empty value wins, in the order most likely to carry the status.
+ */
+const ADR_STATUS_PATTERNS: readonly RegExp[] = [
+  /^(?:[-*]\s+)?Status\s*:\s*(.+)$/m,
+  /^(?:[-*]\s+)?State\s*:\s*(.+)$/m,
+  /^(?:[-*]\s+)?Accepted\s*:\s*(.+)$/m,
+  /^(?:[-*]\s+)?Decided\s*:\s*(.+)$/m,
+];
+export function readAdrStatus(text: string): string | undefined {
+  for (const re of ADR_STATUS_PATTERNS) {
+    const m = text.match(re);
+    if (m?.[1]?.trim()) return m[1].trim();
+  }
+  return undefined;
+}
 
 function fragment(id: string, source: string, content: string, stability: Fragment["stability"] = "stable"): Fragment {
   const normalized = trimLines(content);
@@ -47,7 +70,16 @@ Do not scan vendor/oss unless the user explicitly asks about vendored external p
 }
 
 function summarizeAgents(text: string): string {
-  const lines = text.split(/\r?\n/).filter((l) => /^###\s+|^[-*]\s+|^Issues and PRDs|^This repo uses|^.*See `/.test(l.trim()));
+  // Keep structural markdown (any heading depth + list items) so a Japanese
+  // AGENTS.md that uses `#`/`##` headings or list markers is not reduced to the
+  // slice(0,1200) fallback. Language-agnostic (issue #162, IC-201).
+  const lines = text.split(/\r?\n/).filter((l) => {
+    const t = l.trim();
+    return (
+      /^(?:#{1,6}\s+|[-*+]\s+|\d+\.\s+)/.test(t) ||
+      /^Issues and PRDs|^This repo uses|^.*See `/.test(t)
+    );
+  });
   const body = lines.length ? lines.join("\n") : text.slice(0, 1200);
   return `## Repository agent rules from AGENTS.md\n\n${body}`;
 }
@@ -90,7 +122,7 @@ Defined terms:
 ${list}`;
 }
 
-function parseContextGlossary(text: string, maxTerms: number): string {
+function parseContextGlossary(text: string, maxTerms: number, maxTermBytes: number): string {
   const lines = text.split(/\r?\n/);
   const terms: string[] = [];
   for (let i = 0; i < lines.length && terms.length < maxTerms; i++) {
@@ -100,15 +132,29 @@ function parseContextGlossary(text: string, maxTerms: number): string {
     const def: string[] = [];
     let avoid = "";
     if (m[2]?.trim()) def.push(m[2].trim());
+    // Scan continuation lines until the next term/header. `_Avoid:` is always
+    // captured, even when the definition exceeds the per-term byte budget, so
+    // forbidden synonyms are never silently dropped from a truncated entry.
     for (let j = i + 1; j < lines.length; j++) {
       const l = lines[j];
       if (/^\*\*([^*]+)\*\*:/.test(l) || /^#{1,3}\s+/.test(l)) break;
       const av = l.match(/^_Avoid_:\s*(.+)$/);
       if (av) { avoid = av[1].trim(); continue; }
-      if (l.trim() && def.join(" ").length < 220) def.push(l.trim());
+      if (l.trim()) def.push(l.trim());
     }
-    const one = def.join(" ").replace(/\s+/g, " ");
-    terms.push(`- ${name}: ${one}${avoid ? ` Avoid: ${avoid}` : ""}`);
+    let one = def.join(" ").replace(/\s+/g, " ").trim();
+    if (!one) continue;
+    // Enforce the per-term byte budget with a byte-safe cut (coordinated with
+    // utils/truncate-utils, #143/#157): the result never splits a multi-byte
+    // char, so long CJK definitions are not garbled, and an explicit `[...]`
+    // marker makes the truncation visible instead of silently dropping the tail.
+    let truncated = false;
+    if (Buffer.byteLength(one, "utf8") > maxTermBytes) {
+      one = truncateToBytesFromStart(one, maxTermBytes);
+      truncated = true;
+    }
+    const marker = truncated ? " [...]" : "";
+    terms.push(`- ${name}: ${one}${marker}${avoid ? ` Avoid: ${avoid}` : ""}`);
   }
   if (!terms.length) return `## Project language from CONTEXT.md\n\n${text.slice(0, 4000)}`;
   return `## Project language from CONTEXT.md\n\n${terms.join("\n")}`;
@@ -124,7 +170,7 @@ async function adrFragment(cwd: string, maxEntries: number): Promise<Fragment | 
     const p = path.join(dir, name);
     const text = await fs.readFile(p, "utf8");
     const title = text.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? name.replace(/\.md$/, "");
-    const status = text.match(/^Status:\s*(.+)$/m)?.[1]?.trim();
+    const status = readAdrStatus(text);
     const id = name.match(/^(\d+)/)?.[1] ? `ADR-${name.match(/^(\d+)/)![1]}` : name.replace(/\.md$/, "");
     entries.push(`- ${id}${status ? ` ${status}` : ""}: ${title}`);
   }
@@ -174,22 +220,39 @@ export async function buildCacheableContext(cwd: string, cfg: CacheableContextCo
   if (domain) fragments.push(fragment("020-domain-docs", "docs/agents/domain.md", summarizeDomain(domain)));
   if (cfg.includeAdrIndex) { const adr = await adrFragment(cwd, cfg.maxAdrEntries); if (adr) fragments.push(adr); }
   const context = cfg.contextMode !== "off" ? await readIfExists(path.join(cwd, "CONTEXT.md")) : undefined;
-  if (context) fragments.push(fragment("030-context", "CONTEXT.md", cfg.contextMode === "full" ? `## Project language from CONTEXT.md\n\n${context}` : cfg.contextMode === "distilled" ? parseContextGlossary(context, cfg.maxContextTerms) : parseContextTermIndex(context, cfg.maxContextTerms)));
+  if (context) fragments.push(fragment("030-context", "CONTEXT.md", cfg.contextMode === "full" ? `## Project language from CONTEXT.md\n\n${context}` : cfg.contextMode === "distilled" ? parseContextGlossary(context, cfg.maxContextTerms, cfg.maxContextTermBytes) : parseContextTermIndex(context, cfg.maxContextTerms)));
   if (cfg.includeCodeStructure) { const cs = await codeStructureFragment(cwd); if (cs) fragments.push(cs); }
 
+  // Prefix assembly policy (documented):
+  //  - Fragments are emitted in their stable cache order. We never reorder by
+  //    size: the "small-fragment-first" / "size-order" alternatives would
+  //    reshuffle the prefix whenever a source changes size, discarding the cache
+  //    stability that the stable prefix order exists to provide.
+  //  - When a fragment overflows the remaining budget we truncate it IN PLACE to
+  //    fill the remaining space (byte-safe, with a marker) instead of abandoning
+  //    that space. This replaces the old fixed "remaining > 200 chars or break"
+  //    gate, which left small remaining budgets unused and stopped the prefix
+  //    short of maxPrefixChars.
+  //  - The cut is byte-safe (utils/truncate-utils, #143/#157): it never splits a
+  //    multi-byte char, and because UTF-8 byte length >= JS string length,
+  //    cutting at `contentBudget` bytes keeps the result within `contentBudget`
+  //    chars, so the char-based maxPrefixChars budget still holds.
+  const TRUNC_MARKER = "[Fragment truncated by maxPrefixChars]";
+  const TRUNC_OVERHEAD = TRUNC_MARKER.length + "\n\n".length + 1; // separator + trailing newline
+  const MIN_TRUNC_CONTENT = 24; // below this a truncated fragment is mostly marker, so stop
   let total = 0;
   const kept: Fragment[] = [];
   for (const f of fragments) {
     const remaining = cfg.maxPrefixChars - total;
     if (remaining <= 0) break;
-    if (f.content.length > remaining) {
-      if (remaining > 200) {
-        const content = trimLines(`${f.content.slice(0, Math.max(0, remaining - 80))}\n\n[Fragment truncated by maxPrefixChars]`);
-        kept.push({ ...f, content, hash: sha256(content), chars: content.length });
-      }
-      break;
-    }
-    kept.push(f); total += f.content.length;
+    if (f.chars <= remaining) { kept.push(f); total += f.chars; continue; }
+    const contentBudget = remaining - TRUNC_OVERHEAD;
+    if (contentBudget < MIN_TRUNC_CONTENT) break; // remaining too small for a useful truncated fragment
+    const body = truncateToBytesFromStart(f.content, contentBudget);
+    const content = trimLines(`${body}\n\n${TRUNC_MARKER}`);
+    kept.push({ ...f, content, hash: sha256(content), chars: content.length });
+    total += content.length;
+    break; // remaining budget consumed by this truncated fragment
   }
   const prefix = kept.map((f) => f.content).join("\n---\n\n").trim() + "\n";
   const out = outputDir(cwd);

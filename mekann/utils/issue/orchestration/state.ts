@@ -21,6 +21,10 @@ export interface ChildState {
 	prMerged: boolean;
 	/** GitHub truth: a PR exists for the child (not necessarily merged). */
 	prExists: boolean;
+	/** GitHub truth: the child's PR is CLOSED without merge (rejected/abandoned). */
+	prClosed: boolean;
+	/** GitHub truth: the child has an OPEN PR that is still a draft. */
+	prDraft: boolean;
 	/** GitHub truth: open issue numbers that block this child (blocked_by). */
 	openBlockers: number[];
 	/** GitHub truth: the child is explicitly ready for coding-agent implementation. */

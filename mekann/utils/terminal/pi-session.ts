@@ -2,6 +2,7 @@ import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
 import { KittyControl, type KittySplitLocation } from "./kitty/control.js";
 import { AUTOPILOT_CHILD_ENV, AUTOPILOT_SUPERVISOR_ENV } from "../issue/orchestration/autopilot/markers.js";
+import { writeExpectedHello } from "../issue/orchestration/hello.js";
 
 const execFile = promisify(execFileCb);
 
@@ -116,11 +117,16 @@ export async function launchPiSessionInKittySplit(request: PiSessionLaunchReques
 	// detect at session_shutdown that it was started as part of an orchestration
 	// and which child it was. Explicit --env is more robust than relying solely
 	// on the launcher process environment.
-	if (typeof request.orchestrationParent === "number") {
+	if (typeof request.orchestrationParent === "number" && typeof request.orchestrationChild === "number") {
 		args.push("--env", `MEKANN_ORCHESTRATION_PARENT=${request.orchestrationParent}`);
-	}
-	if (typeof request.orchestrationChild === "number") {
 		args.push("--env", `MEKANN_ORCHESTRATION_CHILD=${request.orchestrationChild}`);
+		// IC-246 hello verify (ADR-0028): drop an expected-child manifest into the
+		// child worktree before launch. The child reads it at session start and, if
+		// the env markers above did not arrive (broken --env path / dropped export /
+		// `set -e` abort), warns instead of silently mis-detecting as a manual
+		// session. Written to the filesystem (not env) precisely so it survives the
+		// env-propagation failure it exists to catch. Defence-in-depth over --env.
+		await writeExpectedHello(request.cwd, { parent: request.orchestrationParent, child: request.orchestrationChild });
 	}
 	// Issue #112 autopilot markers: mark this Work Pi as supervisor-managed so its
 	// auto-close hook activates once a PR exists. Distinct from the orchestration

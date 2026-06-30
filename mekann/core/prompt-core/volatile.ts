@@ -40,6 +40,18 @@ export const volatileRuntimeLinePatterns: readonly RegExp[] = [
 	/^\s*time\s+used\s*:/i,
 	/^\s*remaining\s+tokens?\s*:/i,
 	/^\s*token\s+budget\s*:/i,
+	// CJK (Japanese) runtime header equivalents — same line-anchored + separator
+	// threshold as the English set, so extraction and inspection stay in sync
+	// for Japanese base-system prompts too (issue #147). Full-width `：` is
+	// accepted because Japanese users frequently type it.
+	/^\s*現在(の日付|日付|の時刻|時刻|日時)\s*[:：]/,
+	/^\s*現在の(ディレクトリ|ファイル)\s*[:：]/,
+	/^\s*作業ディレクトリ\s*[:：]/,
+	/^\s*(?:開いている|オープン中の)ファイル\s*[:：]/,
+	/^\s*(?:直近|最近)の(?:ツール|コマンド|検索|ファイル|コンテキスト)\s*[:：]/,
+	/^\s*(?:トークン使用量|使用トークン)\s*[:：]/,
+	/^\s*残りトークン\s*[:：]/,
+	/^\s*続き\s*[:：]/,
 ];
 
 /** True when a single line looks like a volatile runtime header line. */

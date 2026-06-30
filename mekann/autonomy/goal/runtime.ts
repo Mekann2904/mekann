@@ -23,6 +23,32 @@ import { isPersistedSession } from "./session.js";
 const COMPACT_RESERVE_TOKENS = 16384;
 
 // ---------------------------------------------------------------------------
+// Bounded dedup state (issue #165, IC-212)
+// ---------------------------------------------------------------------------
+
+/**
+ * Maximum number of assistant usage events remembered for token dedup.
+ * Bounds runtime memory in long-running sessions; FIFO eviction drops the
+ * oldest keys. The synthetic usage key is the only correlation handle we
+ * have — the `message_end` event carries no stable message id — so the set
+ * must be capped.
+ */
+export const MAX_ACCOUNTED_USAGE_KEYS = 4096;
+
+/**
+ * Drop the oldest insertion from a FIFO set until it fits `max`.
+ * Set preserves insertion order in JS, so the first iterator value is the
+ * oldest. Exported for unit tests.
+ */
+export function trimSetFifo<T>(set: Set<T>, max: number): void {
+  while (set.size > max) {
+    const oldest = set.values().next().value;
+    if (oldest === undefined) break;
+    set.delete(oldest);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // GoalRuntime
 // ---------------------------------------------------------------------------
 
@@ -112,6 +138,7 @@ export class GoalRuntime {
     const usageKey = [msg.timestamp, inputTotal, usage.output ?? 0, usage.cacheRead ?? 0].join(":");
     if (this.accounted_assistant_usage_keys.has(usageKey)) return;
     this.accounted_assistant_usage_keys.add(usageKey);
+    trimSetFifo(this.accounted_assistant_usage_keys, MAX_ACCOUNTED_USAGE_KEYS);
 
     const goal = this.store.getGoal();
     if (!goal || goal.status !== "active") return;

@@ -5,6 +5,7 @@ import type { GoalAction } from "./context-events.js";
 import { GoalRuntime } from "./runtime.js";
 import { renderGoalSummary, renderNoGoal } from "./prompts.js";
 import { isPersistedSession } from "./session.js";
+import { parseFlags, tokenizeArgs } from "../../utils/cli-args/index.js";
 
 export interface GoalCommandDeps {
   getStore(): GoalStore | null;
@@ -206,17 +207,13 @@ export function registerGoalCommand(pi: ExtensionAPI, deps: GoalCommandDeps): vo
 }
 
 function parseBudgetArg(budgetArg: string, ctx: ExtensionContext): number | null | undefined {
-  if (budgetArg === "none") return null;
-  if (!/^\d+$/.test(budgetArg)) {
-    ctx.ui.notify("Budget must be a positive integer or 'none'", "warning");
-    return undefined;
-  }
-  const newBudget = Number(budgetArg);
-  if (!Number.isSafeInteger(newBudget) || newBudget <= 0) {
-    ctx.ui.notify("Budget must be a positive integer or 'none'", "warning");
-    return undefined;
-  }
-  return newBudget;
+  const result = parseBudgetValue(budgetArg);
+  if (result.ok) return result.value;
+  ctx.ui.notify(
+    "Budget must be a positive integer, scientific notation (e.g. 1e5), grouped digits (e.g. 10,000), or 'none'",
+    "warning",
+  );
+  return undefined;
 }
 
 async function handleSetObjective(
@@ -257,34 +254,60 @@ async function handleSetObjective(
   }
 }
 
-function parseObjectiveInput(input: string, ctx: ExtensionContext): { objective: string; budget: number | null } | null {
-  let objective: string;
-  let budget: number | null = null;
-  const tokens = input.trim().split(/\s+/);
-  const budgetIndex = tokens.indexOf("--budget");
+function parseObjectiveInput(
+  input: string,
+  ctx: ExtensionContext,
+): { objective: string; budget: number | null } | null {
+  const { positionals, flags } = parseFlags(tokenizeArgs(input), {
+    aliases: { b: "budget" },
+    known: ["budget"],
+  });
 
-  if (budgetIndex >= 0) {
-    const raw = tokens[budgetIndex + 1];
-    if (!raw || !/^\d+$/.test(raw)) {
+  let budget: number | null = null;
+  if (flags.has("budget")) {
+    const raw = flags.get("budget")![0] ?? "";
+    const result = parseBudgetValue(raw);
+    if (!result.ok) {
       ctx.ui.notify(
-        "Invalid --budget usage. Expected: /goal --budget <n> <objective> or /goal <objective> --budget <n>",
+        result.reason === "out-of-range"
+          ? "Budget must be a positive integer"
+          : "Invalid --budget usage. Expected: /goal [--budget <n>] <objective> or /goal <objective> [--budget <n>] (forms: --budget <n>, --budget=<n>, -b <n>)",
         "warning",
       );
       return null;
     }
-    budget = Number(raw);
-    if (!Number.isSafeInteger(budget) || budget <= 0) {
-      ctx.ui.notify("Budget must be a positive integer", "warning");
-      return null;
-    }
-    objective = [...tokens.slice(0, budgetIndex), ...tokens.slice(budgetIndex + 2)].join(" ").trim();
-  } else {
-    objective = input.trim();
+    budget = result.value;
   }
 
+  const objective = positionals.join(" ").trim();
   if (!objective) {
     ctx.ui.notify("Usage: /goal <objective> [--budget <n>]", "warning");
     return null;
   }
   return { objective, budget };
+}
+
+type BudgetParseResult =
+  | { ok: true; value: number | null }
+  | { ok: false; reason: "unparseable" | "out-of-range" };
+
+/**
+ * Parse a budget token. Accepts plain integers, scientific notation that
+ * resolves to a positive integer (e.g. `1e5`), and thousands-grouped digits
+ * (e.g. `10,000`). `none` means unlimited (null). Returns a tagged result so
+ * callers can distinguish garbage input (`unparseable`) from an out-of-range
+ * number like `0` or `1.5` (`out-of-range`).
+ */
+function parseBudgetValue(raw: string): BudgetParseResult {
+  if (raw === "none") return { ok: true, value: null };
+  const cleaned = raw.replace(/[\s,]/g, "");
+  if (!/^[+]?\d+(\.\d+)?([eE][+]?\d+)?$/.test(cleaned)) return { ok: false, reason: "unparseable" };
+  const n = Number(cleaned);
+  // isSafeInteger subsumes isFinite + isInteger and also rejects values that
+  // lost integer precision beyond 2^53 (e.g. 1e21). All required forms
+  // (1e5, 10,000, plain ints) resolve to safe integers.
+  if (!Number.isSafeInteger(n) || n <= 0) {
+    return { ok: false, reason: "out-of-range" };
+  }
+  return { ok: true, value: n };
 }

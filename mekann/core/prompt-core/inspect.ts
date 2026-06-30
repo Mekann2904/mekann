@@ -17,6 +17,16 @@ const volatileWarningTerms = [
   /open files?/i,
   /current file/i,
   /recent (tool|command|search|context)/i,
+  // CJK (Japanese) volatile runtime concepts — these were missed by the
+  // English-centric term set, so Japanese prompts slipped through (issue #147).
+  /現在(時刻|日付|日時|時点)/,
+  /検索結果/,  // 「最新の検索結果」も部分一致でカバーされるため個別パターン不要
+  /ツール(の)?結果/,
+  /診断結果?/,
+  /継続/,
+  /現在のファイル/,
+  /オープン中のファイル/,
+  /最近の(ツール|コマンド|検索|コンテキスト|ファイル)/,
 ];
 const volatileValuePatterns = [
   /request[_ -]?id\s*[:=]\s*\S+/i,
@@ -30,8 +40,13 @@ const volatileValuePatterns = [
   /token budget\s*[:=]?\s*\d+/i,
   /cwd\s*[:=]\s*\S+/i,
   /working directory\s*[:=]\s*\S+/i,
+  // Absolute runtime paths. Cover macOS/Linux/WSL/Windows so volatile paths are
+  // detected regardless of host OS (issue #147).
   /\/Users\/[^\s)]+/,
+  /\/home\/[^\s)]+/,
   /\/tmp\/[^\s)]+/,
+  /\/mnt\/[^\s)]+/,
+  /[A-Za-z]:\\[^\s)]+/,
 ];
 export function containsVolatileSignal(text: string): boolean { return volatileValuePatterns.some((r) => r.test(text)) || volatileWarningTerms.some((r) => r.test(text)); }
 function hasVolatileValuePattern(text: string): boolean { return volatileValuePatterns.some((r) => r.test(text)); }
@@ -96,7 +111,7 @@ export function inspectBaseSystemPrompt(baseSystemText: string): PromptInspectio
   // volatile values (paths, token counts, ids) are still flagged here. Avoid an
   // always-on info warning for mere policy references.
   if (hasVolatileValuePattern(baseSystemText)) warnings.push({ severity: "warning", code: "BASE_SYSTEM_VOLATILE_SIGNAL", message: "Base system prompt contains volatile runtime-like state before cache-friendly fragments." });
-  if (/\/Users\/[^\s)<>]+|\/tmp\/[^\s)<>]+/.test(baseSystemText)) warnings.push({ severity: "info", code: "BASE_SYSTEM_ABSOLUTE_PATH", message: "Base system prompt contains absolute paths; consider moving path-heavy runtime context behind cacheable fragments." });
+  if (/\/Users\/[^\s)<>]+|\/home\/[^\s)<>]+|\/tmp\/[^\s)<>]+|\/mnt\/[^\s)<>]+|[A-Za-z]:\\[^\s)<>]+/.test(baseSystemText)) warnings.push({ severity: "info", code: "BASE_SYSTEM_ABSOLUTE_PATH", message: "Base system prompt contains absolute paths; consider moving path-heavy runtime context behind cacheable fragments." });
   if (/<available_skills>[\s\S]*?<\/available_skills>/.test(baseSystemText)) warnings.push({ severity: "info", code: "BASE_SYSTEM_AVAILABLE_SKILLS_BLOCK", message: "Base system prompt contains available skills metadata before cache-friendly fragments." });
   return warnings;
 }
