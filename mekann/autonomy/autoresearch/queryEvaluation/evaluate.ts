@@ -175,10 +175,22 @@ export function evaluateQueryStatically(query: string): QueryEvaluation {
   const isDangerous = riskFlags.length > 0;
 
   // ── Objective ──
+  // `objective` is a short human-readable label for the research contract, so
+  // the limit is character-based (visual length), not a byte/token budget.
+  // Cut by code point via Array.from so a surrogate pair (emoji) or multi-byte
+  // CJK character is never split mid-character (the old `substring` could emit
+  // a lone surrogate / U+FFFD). See issue #157 / IC-265.
+  // The budget is the *total* visible length including the ellipsis, so the
+  // text is sliced to `MAX - ellipsis.length` (deriving the offset from the
+  // ellipsis constant avoids the off-by-the-ellipsis-length cap drift the
+  // naive `MAX - 1` produced with a 3-char "...").
+  const OBJECTIVE_MAX_CODEPOINTS = 120;
+  const OBJECTIVE_ELLIPSIS = "...";
+  const objectiveChars = Array.from(trimmed);
   const objective = isDangerous
     ? ""
-    : trimmed.length > 120
-      ? trimmed.substring(0, 117) + "..."
+    : objectiveChars.length > OBJECTIVE_MAX_CODEPOINTS
+      ? objectiveChars.slice(0, OBJECTIVE_MAX_CODEPOINTS - OBJECTIVE_ELLIPSIS.length).join("") + OBJECTIVE_ELLIPSIS
       : trimmed;
 
   // ── Scope detection ──

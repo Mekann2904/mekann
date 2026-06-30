@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { MEKANN_AUTORESEARCH_RUNS_DEFAULTS } from "../../config.js";
+import { bestEffort, quarantineCorrupt } from "../../utils/best-effort.js";
 
 export interface PlanDefinition {
 	planMarkdown: string;
@@ -86,16 +87,25 @@ export function journalPath(cwd: string): string { return path.join(getAutoresea
 
 export function readState(cwd: string): AutoresearchStateV2 {
 	const fp = statePath(cwd);
-	try { return JSON.parse(fs.readFileSync(fp, "utf8")) as AutoresearchStateV2; }
-	catch (e: any) {
-		if (fs.existsSync(fp)) {
-			const corrupt = `${fp}.corrupt.${new Date().toISOString().replace(/[:.]/g, "-")}`;
-			try { fs.renameSync(fp, corrupt); } catch {}
-		}
-		return { version: 2, updatedAt: new Date().toISOString() };
-	}
+	// silentOnMissing: a fresh repo has no state.json yet; that is the common
+	// case and must not be flagged. A corrupt-but-present file is logged and
+	// quarantined so a human can inspect it rather than silently substituting an
+	// empty state (issue #146).
+	const parsed = bestEffort(
+		"autoresearch-read-state",
+		() => JSON.parse(fs.readFileSync(fp, "utf8")) as AutoresearchStateV2,
+		{ silentOnMissing: true },
+	);
+	if (parsed !== undefined) return parsed;
+	if (fs.existsSync(fp)) quarantineCorrupt(fp, "autoresearch-state-corrupt");
+	return { version: 2, updatedAt: new Date().toISOString() };
 }
 
+/**
+ * Atomic write (temp + rename) so a crash mid-write can never leave a torn or
+ * partially-written file. Used by state/journal/run-artifact persistence
+ * (issue #151). The caller-supplied options are forwarded to writeFileSync.
+ */
 export function writeFileAtomicSync(fp: string, data: string | Buffer, options?: fs.WriteFileOptions): void {
 	fs.mkdirSync(path.dirname(fp), { recursive: true });
 	const tmp = path.join(path.dirname(fp), `.${path.basename(fp)}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`);

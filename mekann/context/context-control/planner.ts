@@ -78,8 +78,12 @@ function pressureBudget(pressure: ContextBudgetPlan["pressure"], config: MekannC
   };
 }
 
-function outputGateArtifactId(text: string): string | undefined {
-  return text.match(/\bog_[a-z0-9]+_[a-z0-9]+\b/)?.[0];
+export function outputGateArtifactId(text: string): string | undefined {
+  // Match output-gate artifact IDs. Since #144 the format is
+  // og_<time>_<counter>_<rand> (3 segments); legacy on-disk data may still use
+  // 2 segments (og_<time>_<counter>). The optional third segment keeps both
+  // readable, in sync with output-gate/store.ts validation (IC-177).
+  return text.match(/\bog_[a-z0-9]+_[a-z0-9]+(?:_[a-z0-9]+)?\b/)?.[0];
 }
 
 function withTokenEstimate(decision: ContextPlannerDecision): ContextPlannerDecision {

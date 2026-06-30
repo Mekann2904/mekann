@@ -14,8 +14,10 @@ import {
 	retainArtifacts,
 	shouldGateOutput,
 } from "./store.js";
+import { isOutputGateBypassTool } from "./bypass.js";
 import { searchToolOutputs, type SearchToolOutputsInput } from "./search.js";
 import type { RecordToolOutputArtifactInput } from "../recording.js";
+import { bestEffortAsync } from "../../utils/best-effort.js";
 
 // ---------------------------------------------------------------------------
 // Config (injected)
@@ -61,12 +63,6 @@ export interface OutputGateRecorder {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const IGNORED_TOOLS = new Set([
-	"search_tool_outputs",
-	"search_context_events",
-	"summarize_session_context",
-]);
-
 export function extractTextContent(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";
@@ -106,7 +102,10 @@ export class OutputGateController {
 		input: ToolResultInput,
 	): Promise<ToolResultOutput | undefined> {
 		const toolName = input.toolName;
-		if (IGNORED_TOOLS.has(toolName)) return undefined;
+		// IC-273: bypass tools (search/summarise) self-declare at their
+		// registration site; never gate their results to avoid save→search→save
+		// cycles.
+		if (isOutputGateBypassTool(toolName)) return undefined;
 		if (hasExistingOutputGateDetails(input.details)) return undefined;
 
 		const text = extractTextContent(input.content);
@@ -171,8 +170,11 @@ export class OutputGateController {
 		input: ToolResultInput,
 		gated: { artifactId: string; originalBytes: number; originalLines: number; stubBytes?: number },
 	): Promise<void> {
-		try {
-			await this.recorder!.recordToolOutputArtifact({
+		// Ledger recording is best-effort (must not break the output-gate), but a
+		// failure here produces "saved artifact but invisible from the ledger"
+		// gaps — surface it through the structured best-effort sink (issue #146).
+		await bestEffortAsync("output-gate-ledger-record", () =>
+			this.recorder!.recordToolOutputArtifact({
 				cwd: input.cwd,
 				toolName: input.toolName,
 				artifactId: gated.artifactId,
@@ -184,10 +186,8 @@ export class OutputGateController {
 				turnId: input.turnId,
 				toolCallId: input.toolCallId,
 				branchId: input.branchId,
-			});
-		} catch {
-			// Best-effort: ledger recording must not break output-gate.
-		}
+			}),
+		);
 	}
 
 	// -----------------------------------------------------------------------

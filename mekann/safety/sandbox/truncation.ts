@@ -1,5 +1,6 @@
 import { MEKANN_SANDBOX_DEFAULTS } from "../../config.js";
 import { featureRawConfig } from "../../settings/enabled.js";
+import { safeUtf8Slice } from "../../utils/truncate-utils/index.js";
 
 export const DEFAULT_LLM_OUTPUT_MAX_BYTES = MEKANN_SANDBOX_DEFAULTS.llmOutputMaxBytes;
 export const DEFAULT_LLM_OUTPUT_MAX_LINES = MEKANN_SANDBOX_DEFAULTS.llmOutputMaxLines;
@@ -22,7 +23,7 @@ export function truncateForLlm(
 
 	if (lines.length > opts.maxLines) { lines = lines.slice(0, opts.maxLines); truncated = true; }
 	let out = lines.join("\n");
-	if (Buffer.byteLength(out, "utf8") > opts.maxBytes) { out = Buffer.from(out, "utf8").subarray(0, opts.maxBytes).toString("utf8").replace(/\uFFFD$/u, ""); truncated = true; }
+	if (Buffer.byteLength(out, "utf8") > opts.maxBytes) { out = safeUtf8Slice(out, opts.maxBytes); truncated = true; }
 
 	if (truncated) out += `\n\n[...出力が切り詰められました: 元の ${originalBytes} バイト、${originalLines} 行; 最大 ${opts.maxBytes} バイト / ${opts.maxLines} 行...]`;
 

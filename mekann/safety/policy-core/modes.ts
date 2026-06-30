@@ -107,6 +107,15 @@ export interface AutoresearchModeEvent {
  */
 
 // ─── Pattern definitions ──────────────────────────────────────────
+//
+// SECURITY BOUNDARY NOTE (IC-167, see ADR-0029):
+// `classifyCommandIntent` is a UX guard, NOT a security boundary. It does not
+// deny reads of workspace secret files (`.env`, `.aws/`, `.pi/mekann.json`);
+// repo-local secrets remain reachable in read-only mode by design. The real
+// protection lives in the sandbox extension's OS-level policy (#137 SBPL).
+// Adding a path-based secret denylist here would change established read-only
+// UX semantics (see modes/property.test.ts invariants) without being a real
+// boundary, so enforcement is intentionally deferred to the sandbox layer.
 
 const DESTRUCTIVE_PATTERNS = [
 	/\b(rm|rmdir|mv|cp|mkdir|touch|chmod|chown|chgrp|ln|tee|truncate|dd|shred)\b/i,

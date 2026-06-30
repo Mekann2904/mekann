@@ -5,7 +5,7 @@
  */
 
 import type { CodexModel, CodexReasoningEffort } from "./types.js";
-import { CodexError, classifyHttpStatus } from "./errors.js";
+import { throwCodexHttpError } from "./errors.js";
 import { buildCodexHeaders, getDefaultClientVersion, resolveCodexEndpoint } from "./client.js";
 
 // ---------------------------------------------------------------------------
@@ -30,12 +30,7 @@ export async function fetchCodexModels(options: {
 	});
 
 	if (!response.ok) {
-		const status = response.status;
-		throw new CodexError(
-			classifyHttpStatus(status),
-			`Codex models request failed: HTTP ${status} ${await response.text()}`,
-			status,
-		);
+		return throwCodexHttpError(response, "Codex models request failed", options.accountId);
 	}
 
 	const data = (await response.json()) as {
