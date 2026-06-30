@@ -19,6 +19,7 @@ import { recordToolOutputArtifact } from "../recording.js";
 import { OutputGateController } from "./controller.js";
 import type { SearchToolOutputsInput } from "./search.js";
 import { parseParams } from "../../utils/typed-params.js";
+import { parseFlags, stripQuotes, tokenizeArgs } from "../../utils/cli-args/index.js";
 
 // ---------------------------------------------------------------------------
 // Re-exports (backward compatibility)
@@ -59,14 +60,44 @@ function textResponse(text: string): {
 // ---------------------------------------------------------------------------
 
 function parseKeepArg(args: string | undefined): number | undefined {
-	const match = args?.match(/--keep\s+(\d+)/);
-	return match ? parseInt(match[1], 10) : undefined;
+	const { flags } = parseFlags(tokenizeArgs(args ?? ""));
+	const raw = flags.get("keep")?.[0];
+	if (raw === undefined || raw === "") return undefined;
+	const n = Number(raw);
+	return Number.isFinite(n) && n >= 0 ? Math.trunc(n) : undefined;
 }
 
-function parseShowArg(args: string | undefined): string | undefined {
-	const trimmed = args?.trim() ?? "";
-	if (trimmed.startsWith("show ")) return trimmed.slice(5).trim();
-	return undefined;
+interface ShowParse {
+	/** True when the user invoked the `show` subcommand (with or without an id). */
+	readonly isShow: boolean;
+	/** Resolved artifact id, if any. */
+	readonly id?: string;
+}
+
+/**
+ * Parse the `show` subcommand. Accepts `show <id>`, `show '<id>'` (quoted),
+ * `show --id <id>`, `show --id=<id>`, and the `show=<id>` shorthand.
+ * Returns `isShow: true` (with no id) for a bare `show` so the caller can show
+ * usage instead of falling through to the default status view.
+ */
+function parseShowArg(args: string | undefined): ShowParse {
+	const tokens = tokenizeArgs(args ?? "");
+	if (tokens.length === 0) return { isShow: false };
+	const head = tokens[0];
+
+	if (head === "show") {
+		const { positionals, flags } = parseFlags(tokens.slice(1));
+		const id = flags.get("id")?.[0] ?? positionals[0];
+		return { isShow: true, id };
+	}
+
+	// `show=<id>` shorthand (single token, optional surrounding quotes).
+	const shorthand = head.match(/^show=(.*)$/);
+	if (shorthand) {
+		return { isShow: true, id: stripQuotes(shorthand[1]) || undefined };
+	}
+
+	return { isShow: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -177,10 +208,17 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 				return;
 			}
 
-			// show <artifactId>
-			const showId = parseShowArg(arg);
-			if (showId) {
-				ctx?.ui?.notify?.(await controller.show(cwd, showId), "info");
+			// show <artifactId> | show '<id>' | show --id <id> | show --id=<id> | show=<id>
+			const show = parseShowArg(arg);
+			if (show.isShow) {
+				if (show.id) {
+					ctx?.ui?.notify?.(await controller.show(cwd, show.id), "info");
+				} else {
+					ctx?.ui?.notify?.(
+						"Usage: output-gate show <artifactId> | show --id <id> | show --id=<id> | show=<id>",
+						"info",
+					);
+				}
 				return;
 			}
 

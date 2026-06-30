@@ -411,6 +411,59 @@ describe("output-gate retainArtifacts", () => {
 		expect(fs.existsSync(outside)).toBe(true);
 		expect(fs.readFileSync(outside, "utf8")).toBe("top-secret");
 	});
+
+	it("replaces the manifest atomically (no torn/partial write, no leftover temp)", async () => {
+		const cwd = await tmp();
+		for (let i = 0; i < 3; i++) {
+			await saveArtifact({ cwd, toolName: "bash", text: `t${i}`, idGenerator: () => `og_at_${i}`, now: () => 1000 + i });
+		}
+		await retainArtifacts(cwd, 1);
+		// No partial temp file is left behind by the tmp+rename replace.
+		expect((await fsp.readdir(outputGateDir(cwd))).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+		// The manifest on disk is fully valid JSONL (never a truncated overwrite).
+		const raw = await fsp.readFile(manifestPath(cwd), "utf8");
+		expect(raw.trim().split("\n")).toHaveLength(1);
+		expect((JSON.parse(raw.trim()) as { id: string }).id).toBe("og_at_2");
+	});
+
+	it("compaction then unlink ordering leaves no dangling manifest reference", async () => {
+		const cwd = await tmp();
+		for (let i = 0; i < 4; i++) {
+			await saveArtifact({ cwd, toolName: "bash", text: `t${i}`, idGenerator: () => `og_ord_${i}`, now: () => 1000 + i });
+		}
+		await retainArtifacts(cwd, 2);
+		// The compacted manifest only references artifacts that still exist on disk:
+		// the manifest is replaced BEFORE any artifact is unlinked, so a crash can
+		// never leave a row pointing at a deleted file.
+		const entries = await readManifest(cwd);
+		for (const e of entries) expect(resolveArtifactPath(cwd, e)).toBeDefined();
+		expect(entries.map((e) => e.id).sort()).toEqual(["og_ord_2", "og_ord_3"]);
+	});
+
+	it("concurrent saveArtifact during retention keeps manifest/artifacts consistent (no lost entry)", async () => {
+		const cwd = await tmp();
+		for (let i = 0; i < 6; i++) {
+			await saveArtifact({ cwd, toolName: "bash", text: `s${i}`, idGenerator: () => `og_cr_${i}`, now: () => 1000 + i });
+		}
+		const ops: Promise<unknown>[] = [];
+		// Two retentions to a small keep interleaved with several appends. The
+		// append lock serialises every save's append with retention's read+replace,
+		// so no newly-appended entry can be overwritten away (which would leave an
+		// orphan artifact file with no manifest row).
+		for (let i = 6; i < 14; i++) {
+			ops.push(saveArtifact({ cwd, toolName: "bash", text: `s${i}`, idGenerator: () => `og_cr_${i}`, now: () => 1000 + i }));
+		}
+		ops.push(retainArtifacts(cwd, 5));
+		ops.push(retainArtifacts(cwd, 5));
+		await Promise.all(ops);
+		const entries = await readManifest(cwd);
+		const manifestIds = new Set(entries.map((e) => e.id));
+		// No dangling reference: every manifest row resolves to an existing file.
+		for (const e of entries) expect(resolveArtifactPath(cwd, e)).toBeDefined();
+		// No orphan: every artifact file on disk has a manifest row.
+		const files = (await fsp.readdir(artifactsDir(cwd))).map((f) => f.replace(/\.txt$/, ""));
+		for (const f of files) expect(manifestIds.has(f)).toBe(true);
+	});
 });
 
 describe("output-gate gateTextForLlm auto-retention", () => {

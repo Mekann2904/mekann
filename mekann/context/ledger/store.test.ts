@@ -261,6 +261,36 @@ describe("context ledger store", () => {
 		expect(results).toEqual([]);
 	});
 
+	// IC-191 (issue #162): tokenized + normalized + order-independent search.
+	it("searchEvents matches multi-word queries regardless of token order", async () => {
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "Fix login bug", summary: "User reports 500", evidenceLevel: "observed", idGenerator: () => "ctx_tok_1" });
+		// "bug login" and "login bug" are both AND matches over the same fields.
+		expect((await searchEvents({ cwd, query: "bug login" })).map((e) => e.id)).toEqual(["ctx_tok_1"]);
+		expect((await searchEvents({ cwd, query: "login bug" })).map((e) => e.id)).toEqual(["ctx_tok_1"]);
+	});
+
+	it("searchEvents requires all tokens (AND semantics)", async () => {
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "Fix login bug", summary: "s", evidenceLevel: "observed", idGenerator: () => "ctx_and_1" });
+		expect(await searchEvents({ cwd, query: "login missingword" })).toHaveLength(0);
+	});
+
+	it("searchEvents is case- and diacritic-insensitive", async () => {
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "Ristretto café incident", summary: "s", evidenceLevel: "observed", idGenerator: () => "ctx_dia_1" });
+		expect((await searchEvents({ cwd, query: "CAFÉ" })).map((e) => e.id)).toEqual(["ctx_dia_1"]);
+		expect((await searchEvents({ cwd, query: "cafe" })).map((e) => e.id)).toEqual(["ctx_dia_1"]);
+		expect((await searchEvents({ cwd, query: "RISTRETTO" })).map((e) => e.id)).toEqual(["ctx_dia_1"]);
+	});
+
+	it("searchEvents folds full-width latin to ascii (NFKC)", async () => {
+		const cwd = await tmp();
+		await appendContextEvent({ cwd, kind: "task", priority: 2, title: "login flow", summary: "s", evidenceLevel: "observed", idGenerator: () => "ctx_fw_1" });
+		// full-width "ｌｏｇｉｎ"
+		expect((await searchEvents({ cwd, query: "\uFF4C\uFF4F\uFF47\uFF49\uFF4E" })).map((e) => e.id)).toEqual(["ctx_fw_1"]);
+	});
+
 	it("formatSearchResult formats events as text", async () => {
 		const cwd = await tmp();
 		await appendContextEvent({ cwd, kind: "error", priority: 0, title: "Build failed", summary: "TypeError in foo.ts", evidenceLevel: "observed", refs: [{ type: "file", value: "foo.ts" }], idGenerator: () => "ctx_fmt_1" });
