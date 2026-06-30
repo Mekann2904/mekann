@@ -16,6 +16,7 @@ export function spreadSessionMeta(input: { sessionId?: string; turnId?: string; 
 	return out;
 }
 import { redactSecrets } from "../tool-output/redact.js";
+import { isOutputGateBypassTool } from "./bypass.js";
 import { buildStructuredPreview, type OutputContentType } from "./preview.js";
 import { appendJsonlLine, atomicReplaceFile, withAppendLock } from "../../utils/atomic-append.js";
 import { safeUtf8Slice } from "../../utils/truncate-utils/index.js";
@@ -206,8 +207,14 @@ export function buildStoredOutputStub(entry: OutputGateManifestEntry, preview: s
 
 export function shouldGateOutput(text: string, opts: { toolName?: string; maxInlineBytes?: number } = {}): boolean {
 	if (!text) return false;
-	if (opts.toolName === "search_tool_outputs" || opts.toolName === "search_context_events" || opts.toolName === "summarize_session_context") return false;
-	if (text.startsWith("[output-gate]")) return false;
+	// IC-273: tools that aggregate/retrieve already-stored context opt out via
+	// the bypass registry (declared at their own registration site) instead of a
+	// hard-coded name list here. See ./bypass.js.
+	if (isOutputGateBypassTool(opts.toolName)) return false;
+	// IC-274: self-generated stubs are detected via the tool-result metadata
+	// (details.outputGate.stored, see OutputGateController) rather than a fragile
+	// "[output-gate]" text prefix, so legitimately large output that happens to
+	// start with that prefix is still gated.
 	return Buffer.byteLength(text, "utf8") > (opts.maxInlineBytes ?? (Number(featureConfig("output-gate").maxInlineBytes) || MEKANN_OUTPUT_GATE_DEFAULTS.maxInlineBytes));
 }
 
@@ -315,8 +322,25 @@ export async function retainArtifacts(cwd: string, keepCount: number): Promise<R
 export function resolveArtifactPath(cwd: string, entry: OutputGateManifestEntry): string | undefined {
 	const abs = path.resolve(cwd, entry.path);
 	const root = path.resolve(artifactsDir(cwd));
+	// Lexical containment: rejects obvious "../" traversal and any path that
+	// does not live under the artifacts directory, without touching the fs.
 	if (abs !== root && !abs.startsWith(root + path.sep)) return undefined;
 	if (!fs.existsSync(abs)) return undefined;
+	// IC-275: a corrupted/tampered manifest could store a `path` that is
+	// lexically under artifacts/ but resolves through a symlinked file or
+	// directory to somewhere outside the workspace (unlink/read would then touch
+	// a file we do not own). Resolve both the target and the artifacts root to
+	// their real paths and re-assert containment before handing the path back.
+	// The manifest `path` field is never trusted on its own.
+	let realAbs: string;
+	let realRoot: string;
+	try {
+		realAbs = fs.realpathSync(abs);
+		realRoot = fs.realpathSync(root);
+	} catch {
+		return undefined; // broken symlink or inaccessible — refuse to touch.
+	}
+	if (realAbs !== realRoot && !realAbs.startsWith(realRoot + path.sep)) return undefined;
 	return abs;
 }
 
