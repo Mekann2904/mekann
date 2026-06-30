@@ -9,6 +9,7 @@ import { admitPatchProposal } from "../subagent/patchProposalIntake.js";
 import { getChangedFiles } from "./runner.js";
 import { getPlanDir, readState } from "./layout.js";
 import { safeRepoRelativePath } from "../../safety/sandbox/permissions.js";
+import { createSequentialId, randomIdSuffix } from "../../utils/id.js";
 
 export type CandidateStatus = "pending" | "leased" | "trial_applied" | "evaluating" | "kept" | "discarded" | "stale_base" | "rejected_policy" | "paused_dirty";
 
@@ -34,7 +35,7 @@ export interface AutoresearchCandidateV1 {
 export interface CandidateImportResult { imported: AutoresearchCandidateV1[]; skipped: Array<{ result_id?: string; reason: string; details?: unknown }>; }
 
 let counter = 0;
-function nextCandidateId(): string { return `arc_${Date.now().toString(36)}_${++counter}`; }
+function nextCandidateId(): string { counter += 1; return createSequentialId("arc", Date.now(), counter, randomIdSuffix()); }
 export function sha256Text(s: string): string { return "sha256:" + crypto.createHash("sha256").update(s, "utf8").digest("hex"); }
 function sha256Buffer(b: Buffer): string { return "sha256:" + crypto.createHash("sha256").update(b).digest("hex"); }
 export function fullHead(cwd: string): string { return execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim(); }
@@ -48,7 +49,7 @@ export function candidatesDir(cwd: string): string { return path.join(currentPla
 export function candidateDir(cwd: string, id: string): string { assertCandidateId(id); return path.join(candidatesDir(cwd), id); }
 export function candidatePath(cwd: string, id: string): string { return path.join(candidateDir(cwd, id), "candidate.json"); }
 export function candidatePatchPath(cwd: string, id: string): string { return path.join(candidateDir(cwd, id), "patch.diff"); }
-export function assertCandidateId(id: string): void { if (!/^arc_[a-z0-9]+_[0-9]+$/i.test(id)) throw new Error(`Invalid candidate_id: ${id}`); }
+export function assertCandidateId(id: string): void { if (!/^arc_[a-z0-9]+_[a-z0-9]+(_[a-z0-9]+)?$/i.test(id)) throw new Error(`Invalid candidate_id: ${id}`); }
 
 export function readCandidate(cwd: string, id: string): AutoresearchCandidateV1 { return JSON.parse(fs.readFileSync(candidatePath(cwd, id), "utf8")); }
 export function writeCandidate(cwd: string, c: AutoresearchCandidateV1): void { fs.mkdirSync(candidateDir(cwd, c.candidate_id), { recursive: true }); fs.writeFileSync(candidatePath(cwd, c.candidate_id), JSON.stringify({ ...c, updated_at: Date.now() }, null, 2) + "\n", "utf8"); }

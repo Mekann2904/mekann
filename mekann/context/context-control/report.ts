@@ -3,6 +3,7 @@ import { fmtBytes } from "./format.js";
 import { currentContextScope, scopedContextSamples } from "./query.js";
 import { state } from "./state.js";
 import { buildContextBudgetPlan } from "./planner.js";
+import { resolveContextControlConfig, type MekannContextControlConfig } from "./config.js";
 import {
   buildContextAnalysis,
   computeAlerts,
@@ -26,40 +27,42 @@ interface OptimizationRecommendation {
   reason: string;
 }
 
-function recommendations(scope: ContextMonitorScope = currentContextScope()): OptimizationRecommendation[] {
+export function recommendations(scope: ContextMonitorScope = currentContextScope(), config: MekannContextControlConfig = resolveContextControlConfig()): OptimizationRecommendation[] {
   const recs: OptimizationRecommendation[] = [];
   const breakdown = payloadBreakdown(scope);
   const msg = breakdown.find((item) => item.label === "Messages");
   const sys = breakdown.find((item) => item.label === "System prompt");
-  const largestMessage = topMessageItems(1, scope)[0];
+  const largestMessage = topMessageItems(1, scope, config)[0];
   const toolTotal = toolOutputBreakdown(scope).reduce((sum, item) => sum + item.bytes, 0);
-  const health = buildContextAnalysis(scope, 1).health;
+  const health = buildContextAnalysis(scope, 1, config).health;
 
-  if (largestMessage && largestMessage.bytes > 24 * 1024) recs.push({ priority: "high", action: "summarize_largest_message_item", expectedSavingsBytes: Math.round(largestMessage.bytes * 0.75), qualityRisk: "low", reason: `Largest message item is ${fmtBytes(largestMessage.bytes)}.` });
-  if (msg && msg.pct > 65) recs.push({ priority: "medium", action: "classify_message_retention", expectedSavingsBytes: Math.round(msg.bytes * 0.25), qualityRisk: "medium", reason: `Messages are ${msg.pct}% of payload.` });
-  if (toolTotal > 64 * 1024) recs.push({ priority: "medium", action: "externalize_tool_outputs", expectedSavingsBytes: Math.round(toolTotal * 0.5), qualityRisk: "low", reason: `Cumulative tool output is ${fmtBytes(toolTotal)}.` });
-  if (sys && sys.pct > 25) recs.push({ priority: "low", action: "audit_system_prompt", expectedSavingsBytes: Math.round(sys.bytes * 0.15), qualityRisk: "medium", reason: `System prompt is ${sys.pct}% of payload.` });
-  if (health.risk === "high" || health.risk === "critical") recs.push({ priority: "high", action: "trigger_targeted_compaction", expectedSavingsBytes: Math.round(numLatest("messageBytes", scope) * 0.45), qualityRisk: "medium", reason: `Health risk is ${health.risk}.` });
+  // IC-175: summarize/classify thresholds share the same knobs as the planner
+  // budgets and analysis policy so a single override moves both in tandem.
+  if (largestMessage && largestMessage.bytes > config.messageSummarizeBytes) recs.push({ priority: "high", action: "summarize_largest_message_item", expectedSavingsBytes: Math.round(largestMessage.bytes * config.savingsSummarizeHigh), qualityRisk: "low", reason: `Largest message item is ${fmtBytes(largestMessage.bytes)}.` });
+  if (msg && msg.pct > config.messagePctHigh) recs.push({ priority: "medium", action: "classify_message_retention", expectedSavingsBytes: Math.round(msg.bytes * config.savingsMessagesClassify), qualityRisk: "medium", reason: `Messages are ${msg.pct}% of payload.` });
+  if (toolTotal > config.toolExternalizeTotalBytes) recs.push({ priority: "medium", action: "externalize_tool_outputs", expectedSavingsBytes: Math.round(toolTotal * config.savingsToolExternalize), qualityRisk: "low", reason: `Cumulative tool output is ${fmtBytes(toolTotal)}.` });
+  if (sys && sys.pct > config.systemPromptPctAudit) recs.push({ priority: "low", action: "audit_system_prompt", expectedSavingsBytes: Math.round(sys.bytes * config.savingsSystemPromptAudit), qualityRisk: "medium", reason: `System prompt is ${sys.pct}% of payload.` });
+  if (health.risk === "high" || health.risk === "critical") recs.push({ priority: "high", action: "trigger_targeted_compaction", expectedSavingsBytes: Math.round(numLatest("messageBytes", scope) * config.savingsCompactTrigger), qualityRisk: "medium", reason: `Health risk is ${health.risk}.` });
   if (recs.length === 0) recs.push({ priority: "low", action: "no_action_monitor_only", expectedSavingsBytes: 0, qualityRisk: "low", reason: "Context pressure is low; keep monitoring." });
   return recs;
 }
 
-function topContributors(limit = 12, scope: ContextMonitorScope = currentContextScope()) {
+export function topContributors(limit = 12, scope: ContextMonitorScope = currentContextScope(), config: MekannContextControlConfig = resolveContextControlConfig()) {
   const payloadItems = payloadBreakdown(scope).map((item) => ({
     type: "payload_component",
     source: item.label,
     bytes: item.bytes,
     percent: item.pct,
-    action: item.label === "Messages" && item.pct > 60 ? "classify_recent_messages_and_summarize_low_value_items" : item.label === "System prompt" && item.pct > 25 ? "audit_system_prompt_and_lazy_load_optional_guidance" : "watch",
+    action: item.label === "Messages" && item.pct > config.messagePctHigh ? "classify_recent_messages_and_summarize_low_value_items" : item.label === "System prompt" && item.pct > config.systemPromptPctAudit ? "audit_system_prompt_and_lazy_load_optional_guidance" : "watch",
   }));
   const toolItems = toolOutputBreakdown(scope).map((item) => ({
     type: "tool_output_cumulative",
     source: item.label,
     bytes: item.bytes,
     percent: item.pct,
-    action: item.bytes > 48 * 1024 ? "store_raw_output_externally_and_retrieve_snippets" : "watch",
+    action: item.bytes > config.toolWarnBytes ? "store_raw_output_externally_and_retrieve_snippets" : "watch",
   }));
-  const messageItems = topMessageItems(limit, scope).map((item) => ({
+  const messageItems = topMessageItems(limit, scope, config).map((item) => ({
     type: "message_item",
     source: item.source,
     bytes: item.bytes,
@@ -73,8 +76,9 @@ function topContributors(limit = 12, scope: ContextMonitorScope = currentContext
 }
 
 export function getContextIntelligenceReport(action = "report", limit = 20, scope: ContextMonitorScope = currentContextScope()) {
-  const analysis = buildContextAnalysis(scope, limit);
-  const planner = buildContextBudgetPlan(analysis.samples, scope);
+  const config = resolveContextControlConfig();
+  const analysis = buildContextAnalysis(scope, limit, config);
+  const planner = buildContextBudgetPlan(analysis.samples, scope, undefined, config);
   const base = {
     generatedAt: Date.now(),
     action,
@@ -95,11 +99,11 @@ export function getContextIntelligenceReport(action = "report", limit = 20, scop
     planner,
   };
   if (action === "health") return base;
-  if (action === "top_contributors") return { ...base, topContributors: topContributors(limit, scope), topMessages: analysis.topMessages };
+  if (action === "top_contributors") return { ...base, topContributors: topContributors(limit, scope, config), topMessages: analysis.topMessages };
   if (action === "timeline") return { ...base, timeline: scopedContextSamples(scope).slice(-limit) };
-  if (action === "recommendations") return { ...base, recommendations: recommendations(scope) };
+  if (action === "recommendations") return { ...base, recommendations: recommendations(scope, config) };
   if (action === "budget") return { ...base, budget: { systemPromptPctTarget: 15, recentMessagesPctTarget: 35, summariesPctTarget: 15, toolResultsPctTarget: 20, retrievedContextPctTarget: 10, reservePctTarget: 5, planner: planner.budget }, actualBreakdown: analysis.payloadBreakdown, decisions: planner.decisions };
-  return { ...base, topContributors: topContributors(limit, scope), recommendations: recommendations(scope), payloadBreakdown: analysis.payloadBreakdown, toolOutputBreakdown: analysis.toolOutputBreakdown, topMessages: analysis.topMessages };
+  return { ...base, topContributors: topContributors(limit, scope, config), recommendations: recommendations(scope, config), payloadBreakdown: analysis.payloadBreakdown, toolOutputBreakdown: analysis.toolOutputBreakdown, topMessages: analysis.topMessages };
 }
 
 export function recordContextDecision(decision: unknown): void {
