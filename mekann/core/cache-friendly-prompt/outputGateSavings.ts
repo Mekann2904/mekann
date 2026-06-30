@@ -107,7 +107,7 @@ export const OUTPUT_GATE_DEFAULT_PREVIEW_BYTES = 8 * 1024;
  * tracking landed.
  */
 const OUTPUT_GATE_SUMMARY_RE =
-	/^Large (?<tool>\S+) output stored as (?<artifact>og_[a-z0-9]+_[a-z0-9]+) \((?<bytes>\d+) bytes, (?<lines>\d+) lines(?:, stub (?<stubBytes>\d+) bytes)?\)$/;
+	/^Large (?<tool>\S+) output stored as (?<artifact>og_[a-z0-9]+_[a-z0-9]+(?:_[a-z0-9]+)?) \((?<bytes>\d+) bytes, (?<lines>\d+) lines(?:, stub (?<stubBytes>\d+) bytes)?\)$/;
 
 export function parseOutputGateEvent(event: OutputGateLedgerEvent): ParsedOutputGateEvent | null {
 	if (event.kind !== "tool_result") return null;
