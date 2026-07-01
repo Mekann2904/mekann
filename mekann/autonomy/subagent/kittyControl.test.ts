@@ -75,6 +75,16 @@ describe("KittyController", () => {
       expect(result.windowId).not.toContain("tee");
     });
 
+    it("prepends the parent Pi's node directory to the child PATH so the child uses the same Node runtime", async () => {
+      const result = await controller.launchPiWindow(baseParams);
+      const nodePath = await import("node:path");
+      const nodeDir = nodePath.dirname(process.execPath);
+      // Guards against the review_fixer crash where a stale pane-PATH Node
+      // (lacking worker_threads.markAsUncloneable, added in Node v22.10.0)
+      // made undici throw on child startup, leaving the split open but pi dead.
+      expect(result.windowId).toContain(`--env PATH=${nodeDir}`);
+    });
+
     it("passes the initial prompt as a pi CLI @file argument instead of delayed child injection", async () => {
       const { mkdtempSync, readFileSync, rmSync } = await import("node:fs");
       const { tmpdir } = await import("node:os");

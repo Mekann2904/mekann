@@ -89,6 +89,17 @@ export class KittyController {
       // child extension must NOT also inject it via sendUserMessage.
       PI_SUBAGENT_INITIAL_MESSAGE: "",
     };
+    // Pin the child `pi` (shebang `#!/usr/bin/env node`) to the SAME Node
+    // runtime as the parent Pi. undici bundled by pi-coding-agent calls Node
+    // APIs added only in Node v22.10.0 (worker_threads.markAsUncloneable); a
+    // stale/older Node earlier in the pane's default PATH crashes the child on
+    // startup with "webidl.util.markAsUncloneable is not a function", so the
+    // split opens but pi never starts (review_fixer / subagent children).
+    // Prepend process.execPath's dir — this restores what the legacy
+    // buildChildScript did via `export PATH=<nodeDir>:$PATH`, which was dropped
+    // when the launcher moved to content-free argv tokens.
+    const nodeDir = path.dirname(process.execPath);
+    env.PATH = `${nodeDir}${path.delimiter}${process.env.PATH ?? ""}`;
     if (params.nonce) env.PI_SUBAGENT_NONCE = params.nonce;
     if (params.logPath) env.PI_SUBAGENT_LOG = params.logPath;
 
