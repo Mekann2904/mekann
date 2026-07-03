@@ -10,7 +10,7 @@ Skill はすべてを常時 system prompt に出すと context を圧迫する�
 
 - Pi 本体の skill 自動表示は全 skill で無効化し、Mekann の `skill-surface` が表示対象を制御します。
 - `mekann-settings` の `Mekann Skills` で skill ごとに表示 on/off を切り替えられます。
-- デフォルト on: Matt Pocock 由来の engineering skill と cursor 由来の `thermo-nuclear-code-quality-review`
+- デフォルト on: Matt Pocock 由来の engineering skill と cursor 由来の `thermo-nuclear-code-quality-review`, `cli-for-agents`
 - デフォルト off: `mekann-pi-skill-dev`, `autoresearch-create`, GSAP 系 skill
 - off でも `/skill:<name>` で明示起動できます。
 
@@ -27,6 +27,7 @@ Skill はすべてを常時 system prompt に出すと context を圧迫する�
 | TDD で実装したい | [`tdd`](../mekann/skills/tdd/SKILL.md) | `diagnose`, `improve-codebase-architecture` |
 | コードベースの構造を改善したい | [`improve-codebase-architecture`](../mekann/skills/improve-codebase-architecture/SKILL.md) | `grill-with-docs`, `to-issues`, `tdd` |
 | 変更差分を厳しく maintainability review したい | [`thermo-nuclear-code-quality-review`](../mekann/skills/thermo-nuclear-code-quality-review/SKILL.md) | `improve-codebase-architecture`, `tdd` |
+| agent が安全に実行できる CLI を設計・レビューしたい | [`cli-for-agents`](../mekann/skills/cli-for-agents/SKILL.md) | `thermo-nuclear-code-quality-review`, `tdd` |
 | GSAP animation を実装・レビューしたい | [`gsap-core`](../mekann/skills/gsap-core/SKILL.md) | `gsap-react`, `gsap-scrolltrigger`, `gsap-timeline`, `gsap-performance` |
 | 知らないコード領域の全体像が欲しい | [`zoom-out`](../mekann/skills/zoom-out/SKILL.md) | 目的に応じて任意の skill |
 | engineering skills の初期設定をしたい | [`setup-matt-pocock-skills`](../mekann/skills/setup-matt-pocock-skills/SKILL.md) | `triage`, `to-prd`, `to-issues` |
@@ -217,6 +218,20 @@ Sub mode は main mode と同じ挙動になりました。implementation-delega
   - 「この PR を thermo-nuclear-code-quality-review して」
   - 「差分を厳しく maintainability review して」
   - 「spaghetti growth がないか thermonuclear review して」
+
+#### cli-for-agents
+
+- 詳細: [`mekann/skills/cli-for-agents/SKILL.md`](../mekann/skills/cli-for-agents/SKILL.md)
+- できること: coding agent が headless で安全に実行できる CLI の設計・レビューを行う。非対話フラグ、例付きの段階的 `--help`、stdin/pipeline、即時で実行可能なエラー、冪等性、`--dry-run`、予測可能な command 構造を担保する。
+- 使うタイミング: CLI を新規作成するとき。subcommand や `--help` を追加するとき。既存 CLI が agent をブロックしていないか（対話プロンプト、例なしのヘルプ、曖昧なエラー）確認するとき。
+- 入力: 対象の CLI コード、既存の flag/subcommand 体系、`--help` やエラー出力の実例。
+- 出力: agent-friendly な flag 設計、例付き `--help`、actionable なエラーメッセージ、`--dry-run` / `--yes` などの安全傍路の提案。
+- 次に使う skill: `thermo-nuclear-code-quality-review`, `tdd`。
+- 重要な注意: agent は再試行や pipeline 合成をするため、対話プロンプト前提の設計を避ける。冪等性と非対話フラグを最優先する。
+- 呼び出し例:
+  - 「この CLI を agent が実行しやすいか cli-for-agents でレビューして」
+  - 「subcommand の `--help` に例を足したい、cli-for-agents で設計して」
+  - 「対話プロンプトを非対話フラグに置き換えて」
 
 #### zoom-out
 
