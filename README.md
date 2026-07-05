@@ -163,7 +163,7 @@ Mekann は実験的な Pi extension suite です。API や設定は `0.x` の間
 
 ## Acknowledgements
 
-Mekann は複数の公開 workflow と skill から学んでいます。Engineering skills の多くは [mattpocock/skills](https://github.com/mattpocock/skills) に由来します。`thermo-nuclear-code-quality-review` は [cursor/plugins](https://github.com/cursor/plugins) の `cursor-team-kit` に由来します。GSAP skills は [greensock/gsap-skills](https://github.com/greensock/gsap-skills) に由来します。これらを Pi 向けに翻案・調整して利用しています。
+Mekann は複数の公開 workflow と skill から学んでいます。Engineering skills の多くは [mattpocock/skills](https://github.com/mattpocock/skills) に由来します。`thermo-nuclear-code-quality-review` と `cli-for-agents` は [cursor/plugins](https://github.com/cursor/plugins)（それぞれ `cursor-team-kit`, `cli-for-agent`）に由来します。GSAP skills は [greensock/gsap-skills](https://github.com/greensock/gsap-skills) に由来します。これらを Pi 向けに翻案・調整して利用しています。
 
 ## References
 
