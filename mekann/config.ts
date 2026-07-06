@@ -360,3 +360,19 @@ export const MEKANN_CODEX_WEB_SEARCH_DEFAULTS = {
 	nonCodexDefaultModel: string;
 	nonCodexDefaultEffort: CodexReasoningEffort;
 };
+
+export const MEKANN_COMMIT_REWRITE_DEFAULTS = {
+	enabled: true,
+	createBackup: true,
+	maxCommits: 30,
+	minMessageWords: 3,
+	weakPatterns: "",
+	model: undefined,
+} as const satisfies {
+	enabled: boolean;
+	createBackup: boolean;
+	maxCommits: number;
+	minMessageWords: number;
+	weakPatterns: string;
+	model: string | undefined;
+};

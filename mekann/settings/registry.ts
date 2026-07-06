@@ -21,9 +21,10 @@ import { dashboardSettingsSchema } from "../utils/dashboard/settingsSchema.js";
 import { zipRepoSettingsSchema } from "../utils/zip-repo/settingsSchema.js";
 import { terminalShortcutsSettingsSchema } from "../utils/terminal-shortcuts/settingsSchema.js";
 import { settingsEditorSettingsSchema } from "../utils/settings-editor/settingsSchema.js";
+import { commitRewriteSettingsSchema } from "../utils/commit-rewrite/settingsSchema.js";
 import { skillSurfaceSettingsSchema } from "../skill-surface/settingsSchema.js";
 
-export const mekannSettingsSchemas: FeatureSettingsSchema[] = [modesSettingsSchema, sandboxSettingsSchema, goalSettingsSchema, subagentSettingsSchema, autoresearchSettingsSchema, reviewFixerSettingsSchema, commandNormalizationSettingsSchema, outputGateSettingsSchema, contextLedgerSettingsSchema, contextTrackerSettingsSchema, cacheableContextSettingsSchema, contextControlSettingsSchema, codexSharedSettingsSchema, codexWebSearchSettingsSchema, codexLimitsSettingsSchema, dashboardSettingsSchema, zipRepoSettingsSchema, terminalShortcutsSettingsSchema, settingsEditorSettingsSchema, skillSurfaceSettingsSchema, modelOptimizerSettingsSchema, terminalSettingsSchema, issueSettingsSchema];
+export const mekannSettingsSchemas: FeatureSettingsSchema[] = [modesSettingsSchema, sandboxSettingsSchema, goalSettingsSchema, subagentSettingsSchema, autoresearchSettingsSchema, reviewFixerSettingsSchema, commandNormalizationSettingsSchema, outputGateSettingsSchema, contextLedgerSettingsSchema, contextTrackerSettingsSchema, cacheableContextSettingsSchema, contextControlSettingsSchema, codexSharedSettingsSchema, codexWebSearchSettingsSchema, codexLimitsSettingsSchema, dashboardSettingsSchema, zipRepoSettingsSchema, terminalShortcutsSettingsSchema, settingsEditorSettingsSchema, commitRewriteSettingsSchema, skillSurfaceSettingsSchema, modelOptimizerSettingsSchema, terminalSettingsSchema, issueSettingsSchema];
 export function findSettingSchema(feature: string, key: string) {
   return mekannSettingsSchemas.find((s) => s.feature === feature)?.settings.find((s) => s.key === key);
 }
