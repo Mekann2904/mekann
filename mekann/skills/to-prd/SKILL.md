@@ -1,31 +1,22 @@
 ---
 name: to-prd
-description: Turn the current conversation context into a PRD and publish it to the project issue tracker. Use when user wants to create a PRD from the current context.
+description: Turn the current conversation into a PRD and publish it to the project issue tracker — no interview, just synthesis of what you've already discussed.
 disable-model-invocation: true
 ---
 
-> 謝辞: この skill は [mattpocock/skills](https://github.com/mattpocock/skills) をもとに Pi / Mekann 向けに翻案したものです。元の発想・構成・ワークフローは Matt Pocock 氏によるものです。
-
-## Language policy
-
-Use Japanese explicitly for all interaction with the user: questions, recommendations, explanations, summaries, issue/PRD/report text, and documentation updates created during the session. Keep existing project terms, code identifiers, file names, labels, and quoted text in their original language when needed, but explain them in Japanese.
-
-
 This skill takes the current conversation context and codebase understanding and produces a PRD. Do NOT interview the user — just synthesize what you already know.
 
-The issue tracker and triage label vocabulary should have been provided to you — run the `setup-matt-pocock-skills` skill if not. When publishing, apply the `enhancement` category role plus the `ready-for-agent` state role unless the current context clearly says this PRD is for a bug.
+The issue tracker and triage label vocabulary should have been provided to you — run `setup-matt-pocock-skills` if not.
 
 ## Process
 
 1. Explore the repo to understand the current state of the codebase, if you haven't already. Use the project's domain glossary vocabulary throughout the PRD, and respect any ADRs in the area you're touching.
 
-2. Sketch out the major modules you will need to build or modify to complete the implementation. Actively look for opportunities to extract deep modules that can be tested in isolation.
+2. Sketch out the seams at which you're going to test the feature. Existing seams should be preferred to new ones. Use the highest seam possible. If new seams are needed, propose them at the highest point you can. The fewer seams across the codebase, the better - the ideal number is one.
 
-A deep module (as opposed to a shallow module) is one which encapsulates a lot of functionality in a simple, testable interface which rarely changes.
+Check with the user that these seams match their expectations.
 
-Do not stop for a module-selection interview. Infer module and testing decisions from the existing context. If an important decision is genuinely unresolved, record it in the PRD as an assumption or open question instead of asking a new question.
-
-3. Write the PRD using the template below, then publish it to the project issue tracker. Apply the appropriate category role plus the `ready-for-agent` state role - no need for additional triage.
+3. Write the PRD using the template below, then publish it to the project issue tracker. Apply the `ready-for-agent` triage label - no need for additional triage.
 
 <prd-template>
 

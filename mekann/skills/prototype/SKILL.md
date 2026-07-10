@@ -1,17 +1,9 @@
 ---
 name: prototype
-description: Build a throwaway prototype to flesh out a design before committing to it. Routes between two branches — a runnable terminal app for state/business-logic questions, or several radically different UI variations toggleable from one route. Use when the user wants to prototype, sanity-check a data model or state machine, mock up a UI, explore design options, or says "prototype this", "let me play with it", "try a few designs".
-disable-model-invocation: true
+description: Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like.
 ---
 
-> 謝辞: この skill は [mattpocock/skills](https://github.com/mattpocock/skills) をもとに Pi / Mekann 向けに翻案したものです。元の発想・構成・ワークフローは Matt Pocock 氏によるものです。
-
 # Prototype
-
-## Language policy
-
-Use Japanese explicitly for all interaction with the user: questions, recommendations, explanations, summaries, issue/PRD/report text, and documentation updates created during the session. Keep existing project terms, code identifiers, file names, labels, and quoted text in their original language when needed, but explain them in Japanese.
-
 
 A prototype is **throwaway code that answers a question**. The question decides the shape.
 

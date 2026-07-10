@@ -29,9 +29,9 @@ Skill はすべてを常時 system prompt に出すと context を圧迫する�
 | 変更差分を厳しく maintainability review したい | [`thermo-nuclear-code-quality-review`](../mekann/skills/thermo-nuclear-code-quality-review/SKILL.md) | `improve-codebase-architecture`, `tdd` |
 | agent が安全に実行できる CLI を設計・レビューしたい | [`cli-for-agents`](../mekann/skills/cli-for-agents/SKILL.md) | `thermo-nuclear-code-quality-review`, `tdd` |
 | GSAP animation を実装・レビューしたい | [`gsap-core`](../mekann/skills/gsap-core/SKILL.md) | `gsap-react`, `gsap-scrolltrigger`, `gsap-timeline`, `gsap-performance` |
-| 知らないコード領域の全体像が欲しい | [`zoom-out`](../mekann/skills/zoom-out/SKILL.md) | 目的に応じて任意の skill |
 | engineering skills の初期設定をしたい | [`setup-matt-pocock-skills`](../mekann/skills/setup-matt-pocock-skills/SKILL.md) | `triage`, `to-prd`, `to-issues` |
 | 反復実験で最適化したい | [`autoresearch-create`](../mekann/skills/autoresearch-create/SKILL.md) | 通常は目的整理後に使う |
+| 複数セッションで体系的に学びたい | [`teach`](../mekann/skills/teach/SKILL.md) | `research` |
 | Mekann の skill 自体を保守したい | [`mekann-pi-skill-dev`](../mekann/skills/mekann-pi-skill-dev/SKILL.md) | README / docs 更新 |
 
 ## 代表的な workflow
@@ -233,20 +233,6 @@ Sub mode は main mode と同じ挙動になりました。implementation-delega
   - 「subcommand の `--help` に例を足したい、cli-for-agents で設計して」
   - 「対話プロンプトを非対話フラグに置き換えて」
 
-#### zoom-out
-
-- 詳細: [`mekann/skills/zoom-out/SKILL.md`](../mekann/skills/zoom-out/SKILL.md)
-- できること: 知らないコード領域について、関係 module、caller、全体像を一段上の抽象度で説明する。
-- 使うタイミング: ファイル単位の理解ではなく、周辺構造や役割が知りたいとき。
-- 入力: 対象ファイル、module、機能名、issue。
-- 出力: 関連 module と caller の地図、domain vocabulary に沿った説明。
-- 次に使う skill: 目的に応じて `diagnose`, `tdd`, `grill-with-docs`, `improve-codebase-architecture`。
-- 重要な注意: 実装や編集ではなく、理解のための zoom out に使う。
-- 呼び出し例:
-  - 「この領域を zoom out して説明して」
-  - 「この module が全体のどこに位置するか教えて」
-  - 「関連 caller と責任を地図にして」
-
 ### issue management skill
 
 #### triage
@@ -262,6 +248,15 @@ Sub mode は main mode と同じ挙動になりました。implementation-delega
   - 「triage が必要な issue を見せて」
   - 「#42 を triage して」
   - 「ready-for-agent の issue を確認して」
+
+### 学習 skill
+
+#### teach
+
+- 詳細: [`mekann/skills/teach/SKILL.md`](../mekann/skills/teach/SKILL.md)
+- できること: `MISSION.md`、教材、学習記録、参照資料を使い、複数セッションにわたる学習 workspace を構築する。
+- 使うタイミング: 概念や技能を体系的に学び、練習と復習の履歴を残したいとき。
+- 重要な注意: 現行情報や API は一次資料と Context7 / web search で確認し、Mekann ユーザーとの対話は原則日本語で行う。
 
 ### 高自律・実験系 skill
 
@@ -300,7 +295,7 @@ Sub mode は main mode と同じ挙動になりました。implementation-delega
 
 - 詳細: [`mekann/skills/setup-matt-pocock-skills/SKILL.md`](../mekann/skills/setup-matt-pocock-skills/SKILL.md)
 - できること: repo ごとに engineering skills が必要とする `AGENTS.md` と `docs/agents/` を整える。
-- 使うタイミング: `to-issues`, `to-prd`, `triage`, `diagnose`, `tdd`, `improve-codebase-architecture`, `zoom-out` を初めて使う repo。issue tracker や domain docs の場所が未設定の repo。
+- 使うタイミング: `to-issues`, `to-prd`, `triage`, `diagnose`, `tdd`, `improve-codebase-architecture` を初めて使う repo。issue tracker や domain docs の場所が未設定の repo。
 - 入力: issue tracker の種類、triage label mapping、domain docs layout。
 - 出力: `AGENTS.md` の `## Agent skills` block、`docs/agents/issue-tracker.md`, `docs/agents/triage-labels.md`, `docs/agents/domain.md`。
 - 次に使う skill: `triage`, `to-prd`, `to-issues`, `tdd`。

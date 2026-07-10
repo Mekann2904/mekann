@@ -349,7 +349,7 @@ export const MEKANN_CODEX_WEB_SEARCH_DEFAULTS = {
 	defaultSearchContextSize: "medium",
 	model: undefined,
 	effort: undefined,
-	nonCodexDefaultModel: "gpt-5.5",
+	nonCodexDefaultModel: "gpt-5.6-terra",
 	nonCodexDefaultEffort: "low",
 } as const satisfies {
 	enabled: boolean;
@@ -359,4 +359,20 @@ export const MEKANN_CODEX_WEB_SEARCH_DEFAULTS = {
 	effort: CodexReasoningEffort | undefined;
 	nonCodexDefaultModel: string;
 	nonCodexDefaultEffort: CodexReasoningEffort;
+};
+
+export const MEKANN_COMMIT_REWRITE_DEFAULTS = {
+	enabled: true,
+	createBackup: true,
+	maxCommits: 30,
+	minMessageWords: 3,
+	weakPatterns: "",
+	model: undefined,
+} as const satisfies {
+	enabled: boolean;
+	createBackup: boolean;
+	maxCommits: number;
+	minMessageWords: number;
+	weakPatterns: string;
+	model: string | undefined;
 };

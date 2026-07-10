@@ -25,6 +25,7 @@ const UTILS_FEATURES: UtilsFeatureLoader[] = [
 	{ feature: "pr-workflow", importLabel: "import:utils/pr-workflow", load: () => import("./pr-workflow/index.js") },
 	{ feature: "verify", importLabel: "import:utils/verify", load: () => import("./verify/index.js") },
 	{ feature: "review-quality", importLabel: "import:utils/review-quality", load: () => import("./review-quality/index.js") },
+	{ feature: "commit-rewrite", importLabel: "import:utils/commit-rewrite", load: () => import("./commit-rewrite/index.js") },
 ];
 
 export default async function utilsSuite(pi: ExtensionAPI): Promise<void> {

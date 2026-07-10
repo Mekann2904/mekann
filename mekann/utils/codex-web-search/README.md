@@ -45,7 +45,7 @@ codex-shared         → codex-limits / codex-web-search に依存しない
 |---|---|---|
 | `config.model` が明示指定 | 指定値 | `config.effort`（未指定なら送信なし） |
 | 現在の provider が `openai-codex` | `ctx.model`（一覧に存在すれば） | config.effort |
-| 現在の provider がその他（GLM 等） | `gpt-5.5`（一覧に存在すれば） | `low` |
+| 現在の provider がその他（GLM 等） | `gpt-5.6-terra`（一覧に存在すれば） | `low` |
 | 上記でモデルが見つからない | Codex デフォルト | 直前と同じ effort |
 
 送信前に各モデルの `supportedReasoningEfforts` で effort を検証します。未対応の effort 値は `low` にフォールバックし、さらに `low` も未対応なら effort を送信しません。
@@ -87,7 +87,7 @@ Sources:
 ```ts
 {
   responseId: "resp_xxx",
-  model: "gpt-5.5",
+  model: "gpt-5.6-terra",
   modelSource: "non_codex_default",  // "explicit" | "current_codex" | "non_codex_default" | "codex_default"
   effort: "low",
   searchCalls: [{ id: "ws_xxx", query: "...", status: "completed" }],
@@ -114,7 +114,7 @@ MEKANN_CODEX_WEB_SEARCH_DEFAULTS = {
   defaultSearchContextSize: "medium",
   model: undefined,                    // 明示指定時のみ
   effort: undefined,                   // 明示指定時のみ
-  nonCodexDefaultModel: "gpt-5.5",     // 非 Codex プロバイダー時の検索モデル
+  nonCodexDefaultModel: "gpt-5.6-terra", // 非 Codex プロバイダー時の検索モデル
   nonCodexDefaultEffort: "low",        // 非 Codex プロバイダー時の effort
 }
 ```

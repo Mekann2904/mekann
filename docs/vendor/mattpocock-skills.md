@@ -1,10 +1,10 @@
 # mattpocock-skills import policy
 
-This repository imports the engineering skills from [mattpocock/skills](https://github.com/mattpocock/skills) and maintains Pi-oriented adaptations of them.
+This repository imports selected skills from [mattpocock/skills](https://github.com/mattpocock/skills) and maintains Pi-oriented adaptations of them.
 
 ## Acknowledgement
 
-The original ideas, structure, and workflows for these engineering skills were created by Matt Pocock. Mekann adapts them for Pi coding agent, including Pi tool names, Pi subagent workflow, Japanese-language use, and local package layout.
+The original ideas, structure, and workflows for these skills were created by Matt Pocock. Mekann adapts them for Pi coding agent, including Pi tool names, Pi subagent workflow, Japanese-language use, and local package layout.
 
 ## Directories
 
@@ -15,7 +15,7 @@ The original ideas, structure, and workflows for these engineering skills were c
 
 - Do not edit files under `vendor/mattpocock-skills` directly.
 - Treat `vendor/mattpocock-skills` as an upstream mirror only.
-- `scripts/mattpocock-skills.manifest.json` is the import manifest and declares which upstream engineering skills are copied.
+- `scripts/mattpocock-skills.manifest.json` is the import manifest and declares which upstream skills are copied, including an optional per-item `sourceRoot` for non-engineering categories.
 - The update command copies only manifest-declared upstream skill directories into `mekann/skills`.
 - Pi developers edit the copied files under `mekann/skills` to make them suitable for Pi.
 - Pi coding agents read only the `mekann/skills` copies exposed by `package.json`.
@@ -32,7 +32,7 @@ The command:
 
 1. Updates `vendor/mattpocock-skills` from upstream with git subtree.
 2. Reads `scripts/mattpocock-skills.manifest.json`.
-3. Copies each manifest-declared upstream engineering skill from `vendor/mattpocock-skills/skills/engineering/*` into `mekann/skills`.
+3. Copies each manifest-declared upstream skill from its declared source root into `mekann/skills`.
 4. Fails if an import would overwrite a protected local skill.
 5. Runs `npm run check:mattpocock-skills` as a post-import validation gate. This gate may fail immediately after a fresh upstream copy because Pi adaptations need to be reapplied; treat that as the signal to review and adapt the copied files, then rerun the check.
 
@@ -64,7 +64,7 @@ After running the update, review the diff under `mekann/skills`, edit those file
 - Attribution / acknowledgement text.
 - References to `AGENTS.md`, `docs/agents/`, issue tracker labels, `CONTEXT.md`, and ADRs.
 
-## Exposed engineering skills
+## Exposed skills
 
 The Pi package exposes `./mekann/skills` via `package.json`, and the manifest currently imports all upstream engineering skills:
 
@@ -77,6 +77,6 @@ The Pi package exposes `./mekann/skills` via `package.json`, and the manifest cu
 - `to-issues`
 - `to-prd`
 - `triage`
-- `zoom-out`
+- `teach` (from `skills/productivity/teach`)
 
 Mekann-specific skills may also live in `mekann/skills`, but they are not copied from `vendor/mattpocock-skills`. Add local-only skills to `protectedLocalSkills` so future upstream imports cannot overwrite them.
