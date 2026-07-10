@@ -3,19 +3,36 @@
   "sourceRoot": "vendor/mattpocock-skills/skills/engineering",
   "destinationRoot": "mekann/skills",
   "imports": [
-    { "name": "diagnose", "source": "diagnose", "destination": "diagnose", "adapter": "pi-engineering-skill" },
+    { "name": "ask-matt", "source": "ask-matt", "destination": "ask-matt", "adapter": "pi-engineering-skill" },
+    { "name": "code-review", "source": "code-review", "destination": "code-review", "adapter": "pi-engineering-skill" },
+    { "name": "codebase-design", "source": "codebase-design", "destination": "codebase-design", "adapter": "pi-engineering-skill" },
+    { "name": "diagnose", "source": "diagnosing-bugs", "destination": "diagnose", "adapter": "pi-engineering-skill", "compatibilityAlias": "diagnosing-bugs" },
+    { "name": "domain-modeling", "source": "domain-modeling", "destination": "domain-modeling", "adapter": "pi-engineering-skill" },
     { "name": "grill-with-docs", "source": "grill-with-docs", "destination": "grill-with-docs", "adapter": "pi-engineering-skill" },
+    { "name": "implement", "source": "implement", "destination": "implement", "adapter": "pi-engineering-skill" },
     { "name": "improve-codebase-architecture", "source": "improve-codebase-architecture", "destination": "improve-codebase-architecture", "adapter": "pi-engineering-skill" },
     { "name": "prototype", "source": "prototype", "destination": "prototype", "adapter": "pi-engineering-skill" },
+    { "name": "research", "source": "research", "destination": "research", "adapter": "pi-engineering-skill" },
+    { "name": "resolving-merge-conflicts", "source": "resolving-merge-conflicts", "destination": "resolving-merge-conflicts", "adapter": "pi-engineering-skill" },
     { "name": "setup-matt-pocock-skills", "source": "setup-matt-pocock-skills", "destination": "setup-matt-pocock-skills", "adapter": "pi-engineering-skill" },
     { "name": "tdd", "source": "tdd", "destination": "tdd", "adapter": "pi-engineering-skill" },
     { "name": "to-issues", "source": "to-issues", "destination": "to-issues", "adapter": "pi-engineering-skill" },
     { "name": "to-prd", "source": "to-prd", "destination": "to-prd", "adapter": "pi-engineering-skill" },
     { "name": "triage", "source": "triage", "destination": "triage", "adapter": "pi-engineering-skill" },
-    { "name": "zoom-out", "source": "zoom-out", "destination": "zoom-out", "adapter": "pi-engineering-skill" }
+    { "name": "teach", "sourceRoot": "vendor/mattpocock-skills/skills/productivity", "source": "teach", "destination": "teach", "adapter": "pi-productivity-skill" }
   ],
   "protectedLocalSkills": [
     "autoresearch-create",
-    "mekann-pi-skill-dev"
+    "cli-for-agents",
+    "gsap-core",
+    "gsap-frameworks",
+    "gsap-performance",
+    "gsap-plugins",
+    "gsap-react",
+    "gsap-scrolltrigger",
+    "gsap-timeline",
+    "gsap-utils",
+    "mekann-pi-skill-dev",
+    "thermo-nuclear-code-quality-review"
   ]
 }

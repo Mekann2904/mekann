@@ -17,7 +17,7 @@ import { ISSUE_PI_ENV } from "../utils/terminal/pi-session.js";
  * review_fixer fallback skill defined by REVIEW_FIXER_FALLBACK_SKILL in
  * autonomy/review-fixer/constants.ts).
  */
-const ISSUE_PI_SKILL_ALLOWLIST = new Set(["diagnose", "tdd", "zoom-out"]);
+const ISSUE_PI_SKILL_ALLOWLIST = new Set(["diagnose", "tdd"]);
 
 type SkillMeta = { name: string; description: string; filePath: string };
 
@@ -49,7 +49,7 @@ function discoverSkills(): SkillMeta[] {
 
 function visibleSkills(cwd: string, skills: SkillMeta[]): SkillMeta[] {
 	// Issue Work Pi: narrow the surface to the skills actually used during
-	// implementation (tdd, diagnose, zoom-out). Everything else (issue creation,
+	// implementation (tdd, diagnose). Everything else (issue creation,
 	// planning, exploratory review, meta/setup) is hidden to cut context noise.
 	// Hidden skills remain force-loadable via /skill:<name>; they are not deleted,
 	// just not advertised in this surface. See ADR-0023.

@@ -7,17 +7,11 @@ cd "$ROOT_DIR"
 git remote add mattpocock-skills https://github.com/mattpocock/skills.git 2>/dev/null || true
 git fetch mattpocock-skills main
 
-if [ ! -d "vendor/mattpocock-skills" ]; then
-  git subtree add \
-    --prefix=vendor/mattpocock-skills \
-    mattpocock-skills main \
-    --squash
-else
-  git subtree pull \
-    --prefix=vendor/mattpocock-skills \
-    mattpocock-skills main \
-    --squash
-fi
+# vendor/ is intentionally ignored in this repo. Refresh the local upstream
+# mirror from the fetched remote instead of relying on a tracked git subtree.
+rm -rf vendor/mattpocock-skills
+mkdir -p vendor/mattpocock-skills
+git archive mattpocock-skills/main | tar -x -C vendor/mattpocock-skills
 
 MANIFEST="scripts/mattpocock-skills.manifest.json"
 
@@ -33,7 +27,7 @@ for (const item of manifest.imports) {
     console.error(`protected local skill collision: ${item.destination}`);
     process.exit(1);
   }
-  console.log(`${manifest.sourceRoot}/${item.source}\t${manifest.destinationRoot}/${item.destination}`);
+  console.log(`${item.sourceRoot || manifest.sourceRoot}/${item.source}\t${manifest.destinationRoot}/${item.destination}`);
 }
 NODE
   if [ ! -d "$source" ]; then

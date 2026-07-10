@@ -437,7 +437,6 @@ terminal shortcut handling を有効にします。`false` の場合、shortcut 
     "skills": {
       "diagnose": true,
       "tdd": true,
-      "zoom-out": true
     }
   }
 }

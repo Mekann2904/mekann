@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 describe("skill-surface Issue Work Pi allowlist", () => {
-	it("exposes only the implementation-core skills (diagnose, tdd, zoom-out) in an Issue Work Pi", async () => {
+	it("exposes only the implementation-core skills (diagnose, tdd) in an Issue Work Pi", async () => {
 		process.env.MEKANN_ISSUE_PI = "1";
 		const { default: skillSurface } = await import("./index.js");
 		skillSurface();
@@ -44,7 +44,7 @@ describe("skill-surface Issue Work Pi allowlist", () => {
 		expect(fragments).toHaveLength(1);
 		const content = fragments[0].content;
 
-		for (const name of ["diagnose", "tdd", "zoom-out"]) {
+		for (const name of ["diagnose", "tdd"]) {
 			expect(content).toContain(`- ${name}:`);
 		}
 		// Issue-creation / planning / exploratory-review / meta skills are hidden.

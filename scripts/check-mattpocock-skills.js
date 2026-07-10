@@ -76,7 +76,7 @@ function hasDescriptionFrontmatter(contents) {
 }
 
 function checkImportedSkill(manifest, item) {
-  const source = path.join(root, manifest.sourceRoot, item.source);
+  const source = path.join(root, item.sourceRoot || manifest.sourceRoot, item.source);
   const destination = path.join(root, manifest.destinationRoot, item.destination);
   const skillFile = path.join(destination, "SKILL.md");
 

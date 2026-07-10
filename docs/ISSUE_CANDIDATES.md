@@ -1505,7 +1505,7 @@ rm`)を「シンプルコマンド」と誤認し、normalize 対象にしてし
 ### IC-155 `docs/skills.md`(353行) と skill-surface 実装の同期検証不足
 - **カテゴリ**: ドキュメント / 一貫性
 - **対象**: `docs/skills.md` vs `mekann/skill-surface/` および `mekann/skills/`
-- **概要**: 353 行ある `skills.md` が skill の一覧・使い方を記載するが、`mekann/skills/`(diagnose/grill-with-docs/improve-codebase-architecture/prototype/setup-matt-pocock-skills/tdd/thermo-nuclear-code-quality-review/to-issues/to-prd/triage/zoom-out)と OSS skill mirror(mattpocock/gsap/cursor-plugins)の追加・変更に対し、手動で同期する必要がある。スキル追加時に `skills.md` の更新忘れが起きると、ユーザが存在しないスキルを探す。
+- **概要**: 353 行ある `skills.md` が skill の一覧・使い方を記載するが、`mekann/skills/`(diagnose/grill-with-docs/improve-codebase-architecture/prototype/setup-matt-pocock-skills/tdd/thermo-nuclear-code-quality-review/to-issues/to-prd/triage)と OSS skill mirror(mattpocock/gsap/cursor-plugins)の追加・変更に対し、手動で同期する必要がある。スキル追加時に `skills.md` の更新忘れが起きると、ユーザが存在しないスキルを探す。
 - **提案**: `scripts/` で `mekann/skills/*/SKILL.md` と OSS manifest から `skills.md` の一覧表を生成。差分を CI 検知。
 
 ---
