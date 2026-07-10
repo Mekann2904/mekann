@@ -349,7 +349,7 @@ export const MEKANN_CODEX_WEB_SEARCH_DEFAULTS = {
 	defaultSearchContextSize: "medium",
 	model: undefined,
 	effort: undefined,
-	nonCodexDefaultModel: "gpt-5.5",
+	nonCodexDefaultModel: "gpt-5.6-terra",
 	nonCodexDefaultEffort: "low",
 } as const satisfies {
 	enabled: boolean;

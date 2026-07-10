@@ -163,7 +163,7 @@ Pi 上では `/mekann-settings` を使って設定を確認・編集できます
       "enabled": true,
       "externalWebAccess": true,
       "defaultSearchContextSize": "medium",
-      "nonCodexDefaultModel": "gpt-5.5",
+      "nonCodexDefaultModel": "gpt-5.6-terra",
       "nonCodexDefaultEffort": "low"
     }
   }

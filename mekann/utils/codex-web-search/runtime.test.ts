@@ -44,7 +44,7 @@ function defaultConfig(): CodexWebSearchConfig {
 		defaultSearchContextSize: "medium",
 		model: undefined,
 		effort: undefined,
-		nonCodexDefaultModel: "gpt-5.5",
+		nonCodexDefaultModel: "gpt-5.6-terra",
 		nonCodexDefaultEffort: "low",
 	};
 }
