@@ -114,6 +114,14 @@ _Avoid_: feature-local terminal control, inline kitty command, per-feature emula
 The choice of which TUI framework renders a Mekann UI after its placement is known. Pi TUI overlay selects Pi TUI; External split UI may select OpenTUI when the terminal emulator can provide an isolated surface. Shared TUI placement and framework-selection rules live under `utils/tui/`, separate from terminal-emulator adapters.
 _Avoid_: terminal emulator detection, renderer preference, styling choice
 
+**Mekann tool surface**:
+The set of Mekann-owned tools visible to the model for a request. It is projected from explicit Feature state so inactive capabilities do not repeatedly consume the context window through tool schemas. It excludes Pi-owned and third-party tools, remains fully visible when the host cannot safely control active tools, and is distinct from whether a Feature itself is loaded.
+_Avoid_: all tools, tool registry, feature enablement, Planner-selected tools
+
+**Tool surface shadow mode**:
+A non-enforcing evaluation mode that compares the current Mekann tool surface with the surface that explicit Feature state would project, recording prospective schema savings and missed-tool evidence without hiding tools. Shadow mode is the required calibration step before Tool surface enforcement.
+_Avoid_: dry run, disabled tool surface, Planner simulation
+
 **Skill**:
 A task-specific instruction package that a Pi coding agent reads to perform a particular kind of work. A skill is not an extension feature because it does not provide runtime tools or commands; it connects project context, ADRs, supporting docs, and action patterns into an executable workflow for the agent.
 _Avoid_: feature, command, runtime extension

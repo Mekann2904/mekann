@@ -8,7 +8,7 @@ import { readLatestSnapshot } from "./snapshot-store.js";
 import { handleClear } from "../clear.js";
 import { registerOutputGateBypassTools } from "../output-gate/bypass.js";
 import { featureBooleanValue, featureStringValue } from "../../settings/enabled.js";
-import { setToolsActive } from "../../settings/toolSurface.js";
+import { recordToolSurfaceProjection, setToolsActive } from "../../settings/toolSurface.js";
 import { parseParams } from "../../utils/typed-params.js";
 import { shouldExposeManualOrAlwaysSurface, shouldRestoreSessionContextSurface } from "../surface-policy.js";
 import { registerPromptProvider } from "../../core/prompt-core/index.js";
@@ -66,7 +66,9 @@ export default function contextLedgerExtension(pi: ExtensionAPI): void {
 	}
 
 	function syncContextLedgerToolSurface(): void {
-		setToolsActive(pi, CONTEXT_LEDGER_TOOL_NAMES, shouldExposeContextLedgerTools());
+		const active = shouldExposeContextLedgerTools();
+		recordToolSurfaceProjection(pi, "context-ledger", CONTEXT_LEDGER_TOOL_NAMES, active);
+		setToolsActive(pi, CONTEXT_LEDGER_TOOL_NAMES, active);
 	}
 
 	function setManualToolsActive(active: boolean): void {

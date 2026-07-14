@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { setToolsActive } from "./toolSurface.js";
+import {
+	getToolSurfaceShadowSnapshot,
+	observeToolSurfaceShadow,
+	recordToolSurfaceProjection,
+	recordToolSurfaceSchemaBytes,
+	setToolsActive,
+} from "./toolSurface.js";
 
 /**
  * Minimal in-memory tool-surface double. `setToolsActive` only needs
@@ -89,5 +95,94 @@ describe("setToolsActive", () => {
 		const pi = { getActiveTools: s.pi.getActiveTools } as unknown as Parameters<typeof setToolsActive>[0];
 		expect(() => setToolsActive(pi, ["a", "b"], true)).not.toThrow();
 		expect(s.current()).toEqual(["a"]);
+	});
+
+	it("fails open and records a diagnostic when the host throws", () => {
+		const pi = {
+			getActiveTools: () => ["a"],
+			setActiveTools: () => { throw new Error("host changed"); },
+		};
+		expect(() => setToolsActive(pi, ["a"], false)).not.toThrow();
+		expect(getToolSurfaceShadowSnapshot(pi).diagnostics).toContain(
+			"Tool surface optimization failed open: host changed",
+		);
+	});
+});
+
+describe("tool surface shadow mode", () => {
+	it("records Mekann ownership, projected inactivity, and schema savings without changing tools", () => {
+		const s = makeSurface(["pi_tool", "goal_tool"]);
+		recordToolSurfaceSchemaBytes("goal_tool", 640);
+		recordToolSurfaceProjection(s.pi, "goal", ["goal_tool"], false);
+
+		expect(s.current()).toEqual(["pi_tool", "goal_tool"]);
+		expect(getToolSurfaceShadowSnapshot(s.pi)).toMatchObject({
+			mode: "shadow",
+			ownedTools: ["goal_tool"],
+			projectedInactiveTools: ["goal_tool"],
+			prospectiveSchemaBytes: 640,
+		});
+	});
+
+	it("counts calls that the projection would have missed", () => {
+		let handler: ((event: { toolName?: string }) => void) | undefined;
+		const pi = {
+			getActiveTools: () => ["goal_tool"],
+			setActiveTools: () => {},
+			on: (event: string, next: typeof handler) => { if (event === "tool_call") handler = next; },
+		};
+		observeToolSurfaceShadow(pi);
+		recordToolSurfaceProjection(pi, "goal", ["goal_tool"], false);
+		handler?.({ toolName: "goal_tool" });
+		handler?.({ toolName: "unowned_tool" });
+
+		expect(getToolSurfaceShadowSnapshot(pi).missedToolCalls).toEqual({ goal_tool: 1 });
+	});
+
+	it("exposes concise shadow telemetry through /tool-surface", () => {
+		let command: { handler: (args: string | undefined, ctx: any) => void } | undefined;
+		const pi = {
+			getActiveTools: () => ["goal_tool"],
+			setActiveTools: () => {},
+			registerCommand: (_name: string, value: typeof command) => { command = value; },
+		};
+		recordToolSurfaceProjection(pi, "goal", ["goal_tool"], false);
+		observeToolSurfaceShadow(pi);
+		let notification = "";
+		command?.handler(undefined, { ui: { notify: (message: string) => { notification = message; } } });
+		expect(notification).toContain("Mekann tool surface: shadow");
+		expect(notification).toContain("Projected inactive: 1");
+	});
+
+	it("does not replace the host tool surface when restore-all hooks are incomplete", async () => {
+		let command: { handler: (args: string | undefined, ctx: any) => void | Promise<void> } | undefined;
+		let setCalls = 0;
+		const pi = {
+			setActiveTools: () => { setCalls++; },
+			registerCommand: (_name: string, value: typeof command) => { command = value; },
+		};
+		observeToolSurfaceShadow(pi as any);
+		await command?.handler("all", { ui: { notify: () => {} } });
+		expect(setCalls).toBe(0);
+		expect(getToolSurfaceShadowSnapshot(pi).diagnostics).toContain(
+			"Restore-all unavailable: host tool-surface hooks are incomplete",
+		);
+	});
+
+	it("restores the pre-override surface when leaving the all override", async () => {
+		let command: { handler: (args: string | undefined, ctx: any) => void | Promise<void> } | undefined;
+		const s = makeSurface(["pi_tool", "get_goal"]);
+		const pi = {
+			...s.pi,
+			registerCommand: (_name: string, value: typeof command) => { command = value; },
+		};
+		observeToolSurfaceShadow(pi as any);
+		recordToolSurfaceProjection(pi, "goal", ["get_goal"], false);
+		setToolsActive(pi, ["get_goal"], false);
+		expect(s.current()).toEqual(["pi_tool"]);
+		await command?.handler("all", { ui: { notify: () => {} } });
+		expect(s.current()).toContain("get_goal");
+		await command?.handler("shadow", { ui: { notify: () => {} } });
+		expect(s.current()).toEqual(["pi_tool"]);
 	});
 });

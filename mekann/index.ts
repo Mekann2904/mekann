@@ -2,8 +2,10 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { profileStartupStep } from "./startupProfile.js";
 import { isFeatureEnabled } from "./settings/enabled.js";
 import { observeToolRegistrations } from "./context/tool-registration-observer.js";
+import { observeToolSurfaceShadow } from "./settings/toolSurface.js";
 
 export default async function mekannExtension(pi: ExtensionAPI): Promise<void> {
+	observeToolSurfaceShadow(pi);
 	if (isFeatureEnabled("context-tracker")) observeToolRegistrations(pi);
 
 	const [{ default: core }, { default: safety }, { default: autonomy }, { default: utils }, { default: context }, { default: skillSurface }] = await profileStartupStep("suite-imports", () => Promise.all([

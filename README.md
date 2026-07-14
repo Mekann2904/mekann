@@ -43,10 +43,10 @@ Mekann は、Pi を人間の代替として扱いません。Pi は調査や実�
 | Suite | 役割 | 主な feature |
 | --- | --- | --- |
 | [`core`](./mekann/core/) | prompt の土台、常時ガイドライン、cache-friendly prompt | `prompt-core`, `cache-friendly-prompt`, `agent-guidelines`, `model-optimizer` |
-| [`safety`](./mekann/safety/) | 自律作業を許容するための安全境界 | `sandbox`, `modes`, `policy-core` |
-| [`autonomy`](./mekann/autonomy/) | 長い作業、issue 実装、独立 context、研究的探索 | `goal`, `subagent`, `autoresearch` |
-| [`context`](./mekann/context/) | runtime context management | `command-normalization`, `output-gate`, `context-ledger` |
-| [`utils`](./mekann/utils/) | 人間向けの terminal 補助と周辺機能 | `issue`, `dashboard`, `codex-limits`, `codex-web-search`, `terminal-shortcuts`, `settings-editor`, `zip-repo` |
+| [`safety`](./mekann/safety/) | 自律作業を許容するための安全境界 | `sandbox`, `modes`, `policy-core`, `git-safety` |
+| [`autonomy`](./mekann/autonomy/) | 長い作業、issue 実装、独立 context、研究的探索 | `goal`, `subagent`, `review-fixer`, `autoresearch` |
+| [`context`](./mekann/context/) | runtime context management | `context-tracker`, `command-normalization`, `output-gate`, `context-ledger`, `cacheable-context` |
+| [`utils`](./mekann/utils/) | 人間向けの terminal 補助と周辺機能 | `issue`, `dashboard`, `codex-limits`, `codex-web-search`, `terminal-shortcuts`, `settings-editor`, `pr-workflow`, `verify`, `review-quality`, `zip-repo` |
 
 ## 主要機能
 

@@ -11,7 +11,7 @@ import * as fsp from "node:fs/promises";
 import { MEKANN_OUTPUT_GATE_DEFAULTS } from "../../config.js";
 import { featureConfig, featureValue } from "../../settings/featureConfig.js";
 import { featureStringValue } from "../../settings/enabled.js";
-import { setToolsActive } from "../../settings/toolSurface.js";
+import { recordToolSurfaceProjection, setToolsActive } from "../../settings/toolSurface.js";
 import { outputGateDir, readManifest } from "./store.js";
 import { registerOutputGateBypassTools } from "./bypass.js";
 import { handleClear } from "../clear.js";
@@ -126,6 +126,7 @@ export default function outputGateExtension(pi: ExtensionAPI): void {
 		const surface = featureStringValue("output-gate", "toolSurface", "artifact");
 		const active = surface === "always" || (surface === "artifact" && (await readManifest(cwd)).length > 0);
 		searchToolActive = active;
+		recordToolSurfaceProjection(pi, "output-gate", OUTPUT_GATE_TOOL_NAMES, active);
 		setToolsActive(pi, OUTPUT_GATE_TOOL_NAMES, active);
 	}
 

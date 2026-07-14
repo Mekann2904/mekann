@@ -9,7 +9,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import { featureStringValue } from "../../settings/enabled.js";
-import { setToolsActive } from "../../settings/toolSurface.js";
+import { recordToolSurfaceProjection, setToolsActive } from "../../settings/toolSurface.js";
 import { renderWidget } from "./prompts.js";
 import type { GoalStore } from "./state.js";
 
@@ -61,7 +61,9 @@ export function createGoalWidgetController(
   }
 
   function syncToolSurface(): void {
-    setToolsActive(pi, GOAL_TOOL_NAMES, shouldExposeGoalTools());
+    const active = shouldExposeGoalTools();
+    recordToolSurfaceProjection(pi, "goal", GOAL_TOOL_NAMES, active);
+    setToolsActive(pi, GOAL_TOOL_NAMES, active);
   }
 
   function updateWidget(ctx: ExtensionContext): void {

@@ -5,6 +5,13 @@ import type { CodexReasoningEffort } from "../codex-shared/types.js";
 describe("codex-web-search settings schema", () => {
   const effortValues: CodexReasoningEffort[] = ["none", "minimal", "low", "medium", "high", "xhigh"];
 
+  it("leaves model and effort unset so runtime model resolution remains active", () => {
+    const model = codexWebSearchSettingsSchema.settings.find((s) => s.key === "model")!;
+    const effort = codexWebSearchSettingsSchema.settings.find((s) => s.key === "effort")!;
+    expect(model.defaultValue).toBeUndefined();
+    expect(effort.defaultValue).toBeUndefined();
+  });
+
   it("effort accepts all enum values including none and xhigh", () => {
     const effort = codexWebSearchSettingsSchema.settings.find((s) => s.key === "effort")!;
     expect(effort.validate(undefined)).toEqual([]);

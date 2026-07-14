@@ -1,5 +1,5 @@
 import { featureStringValue } from "./enabled.js";
-import { setToolsActive } from "./toolSurface.js";
+import { recordToolSurfaceProjection, setToolsActive } from "./toolSurface.js";
 
 export type ToolSurfaceMode = "always" | "active" | "on-demand" | "artifact";
 
@@ -18,5 +18,7 @@ export function projectFeatureToolSurface(
 	// Validate the configured value; fall back to the declared default on a typo
 	// instead of letting an unknown mode silently behave as "not always".
 	const surface = isToolSurfaceMode(configured) ? configured : defaultSurface;
-	setToolsActive(pi, toolNames, surface === "always" || isActive());
+	const active = surface === "always" || isActive();
+	recordToolSurfaceProjection(pi, feature, toolNames, active);
+	setToolsActive(pi, toolNames, active);
 }

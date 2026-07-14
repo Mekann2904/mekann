@@ -1,6 +1,6 @@
 # Architecture
 
-Mekann は `mekann/index.ts` の wrapper extension が複数の Pi extension suite を固定順序で読み込む構成です。
+Mekann は `mekann/index.ts` の wrapper extension が複数の Pi extension suite を固定順序で読み込む構成です。suite の初期化後、Pi-maintained skill の公開範囲を管理する `skill-surface` を初期化します。
 
 ```text
 mekann
@@ -9,6 +9,7 @@ mekann
   autonomy
   utils
   context
+  skill-surface（suite 外の配布・公開レイヤー）
 ```
 
 ## Load order
@@ -20,8 +21,9 @@ mekann
 3. `autonomy`
 4. `utils`
 5. `context`
+6. `skill-surface`（suite 初期化後）
 
-`safety` は自律性や tool 実行に影響するため、`autonomy` より前に初期化します。`sandbox` は hard boundary、`modes` は collaboration UX を扱います。
+`safety` は自律性や tool 実行に影響するため、`autonomy` より前に初期化します。`sandbox` は hard boundary、`modes` は collaboration UX を扱います。`skill-surface` は extension suite ではなく、配布に含まれる Pi-maintained skill の公開範囲を適用するレイヤーです。
 
 ## Suites
 
@@ -29,9 +31,9 @@ mekann
 |---|---|---|
 | `core` | prompt の土台、常時ガイドライン、provider-aware 最適化 | `prompt-core`, `cache-friendly-prompt`, `agent-guidelines`, `model-optimizer` |
 | `safety` | tool 実行や collaboration mode の安全境界 | `sandbox`, `modes`, `policy-core`, `git-safety` |
-| `autonomy` | 長い作業、並列作業、継続目標、反復研究 | `goal`, `subagent`, `autoresearch` |
-| `context` | runtime context management と大出力制御 | `output-gate`, `context-ledger` |
-| `utils` | human-facing helper と terminal integration | `zip-repo`, `codex-limits`, `dashboard`, `codex-web-search`, `terminal-shortcuts`, `settings-editor`, `pr-workflow`, `verify`, `review-quality` |
+| `autonomy` | 長い作業、並列作業、継続目標、反復研究 | `goal`, `subagent`, `review-fixer`, `autoresearch` |
+| `context` | runtime context management と大出力制御 | `context-tracker`, `command-normalization`, `output-gate`, `context-ledger`, `cacheable-context` |
+| `utils` | human-facing helper と terminal integration | `issue`, `dashboard`, `codex-limits`, `codex-web-search`, `terminal-shortcuts`, `settings-editor`, `pr-workflow`, `verify`, `review-quality`, `zip-repo` |
 
 ## Design sources
 
