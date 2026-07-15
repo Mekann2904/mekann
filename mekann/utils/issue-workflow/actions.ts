@@ -11,6 +11,8 @@
 import { parseIssueNumberFromBranch, issueBaseConfigKey } from "../issue/worktree.js";
 import { classifyStatus, type PrStatus, type Verdict } from "../pr-workflow/index.js";
 import { ISSUE_WORKFLOW_ACTIONS, type IssueWorkflowAction, type IssueWorkflowParams } from "./schemas.js";
+import { MUTATING_ACTIONS } from "./mutation-policy.js";
+export { MUTATING_ACTIONS } from "./mutation-policy.js";
 
 /** Output of a git/gh command. */
 export interface ExecOut {
@@ -34,19 +36,6 @@ export interface ActionResult {
 	details: Record<string, unknown>;
 	isError: boolean;
 }
-
-/** Mutating actions — only permitted inside an issue worktree (branch issue-<n>). */
-export const MUTATING_ACTIONS: ReadonlySet<IssueWorkflowAction> = new Set<IssueWorkflowAction>([
-	"commit",
-	"push",
-	"create_pr",
-	"update_pr",
-	"ready",
-	"comment",
-	"issue_comment",
-	"promote_to_ready_for_agent",
-	"demote_to_ready_for_human",
-]);
 
 /** Triage state-role labels these actions toggle. See docs/agents/triage-labels.md. */
 const READY_FOR_AGENT_LABEL = "ready-for-agent";

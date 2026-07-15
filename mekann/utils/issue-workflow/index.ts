@@ -4,7 +4,8 @@
  * Phase 3 of issue work (status → diff → commit → push → create_pr) goes through
  * this tool instead of the bash tool. Messages/bodies are passed via temp files
  * (`git commit -F` / `gh pr create --body-file`), so they survive shell-special
- * characters verbatim and never trigger git-safety's bash confirmation gate.
+ * characters verbatim. Mutating actions enforce confirmation at this structured
+ * tool boundary unless the workspace explicitly opts into automatic approval.
  *
  * Tool: issue_workflow
  */
@@ -17,16 +18,18 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { rm, writeFile } from "node:fs/promises";
 import { isFeatureEnabled } from "../../settings/enabled.js";
+import { featureValue } from "../../settings/featureConfig.js";
 import { ISSUE_PI_ENV } from "../terminal/pi-session.js";
 import { IssueWorkflowParamsSchema, type IssueWorkflowParams } from "./schemas.js";
 import { executeAction, validateActionArgs, type CommandRunner, type ExecOut } from "./actions.js";
+import { bindApprovedMutation, formatMutationIntent, MUTATING_ACTIONS, resolveMutationIntent } from "./mutation-policy.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_BUFFER = 20 * 1024 * 1024;
 
 /**
- * Real CommandRunner: invokes git/gh via execFile (not the bash tool, so
- * git-safety does not intercept), and writes messages to temp files that are
+ * Real CommandRunner: invokes git/gh via execFile after the structured tool's
+ * permission gate, and writes messages to temp files that are
  * removed after use.
  */
 function createRunner(): CommandRunner {
@@ -77,14 +80,14 @@ export default function issueWorkflowExtension(pi: ExtensionAPI): void {
 		label: "Issue workflow (git/gh actions)",
 		description:
 			"Run git/gh workflow actions for issue worktrees: current_branch, status, diff, view_pr, commit, push, create_pr, update_pr, ready, comment, issue_comment, promote_to_ready_for_agent, demote_to_ready_for_human. " +
-			"Messages and bodies are passed via temp files (-F / --body-file) so $, backticks, newlines, and code blocks survive verbatim and bypass git-safety's bash confirmation. " +
+			"Messages and bodies are passed via temp files (-F / --body-file) so $, backticks, newlines, and code blocks survive verbatim. Mutations are confirmed at the structured action boundary. " +
 			"Mutating actions only run inside an issue worktree (branch issue-<number>).",
 		promptSnippet:
-			"Run git/gh workflow actions (status, diff, commit, push, create_pr) for the issue worktree without shell-quoting issues or git-safety confirmation",
+			"Run structured git/gh workflow actions for the issue worktree; mutating actions require confirmation unless this workspace explicitly enables automatic approval",
 		promptGuidelines: [
 			"Use issue_workflow for Phase 3 of issue work: status → diff → commit → push → create_pr. Do NOT run git/gh through the bash tool — git-safety intercepts bash mutating git/gh and commit/PR messages get mangled by shell expansion of $, backticks, newlines, and code blocks.",
 			"issue_workflow writes message/body to a temp file and passes it via -F / --body-file, so commit messages and PR bodies survive shell-special characters verbatim.",
-			"Mutating actions (commit, push, create_pr, update_pr, ready, comment, issue_comment, promote_to_ready_for_agent, demote_to_ready_for_human) only run inside an issue worktree (branch issue-<number>) and are auto-approved there. Read-only actions (current_branch, status, diff, view_pr) work anywhere.",
+			"Mutating actions (commit, push, create_pr, update_pr, ready, comment, issue_comment, promote_to_ready_for_agent, demote_to_ready_for_human) only run inside an issue worktree (branch issue-<number>) and require user confirmation by default. A workspace may explicitly opt into automatic approval in .pi/mekann.json. Read-only actions (current_branch, status, diff, view_pr) work anywhere.",
 			"create_pr should produce a ready (non-draft) PR — review_fixer has already gated implementation quality.",
 			"create_pr targets the branch the issue worktree was forked from (the branch /issue was invoked on); you usually do NOT pass `base`. Pass `base` only to override. Use current_branch to see the recorded prBase.",
 		],
@@ -96,8 +99,27 @@ export default function issueWorkflowExtension(pi: ExtensionAPI): void {
 			return params as IssueWorkflowParams;
 		},
 		async execute(_id, params, _signal, _onUpdate, ctx: ExtensionContext) {
-			const runner = createRunner();
-			const result = await executeAction(params, ctx.cwd, runner);
+			let runner = createRunner();
+			let executionParams = params;
+			if (MUTATING_ACTIONS.has(params.action)) {
+				const autoApprove = featureValue("issue-workflow", "autoApproveMutations", ctx.cwd) === true;
+				if (!autoApprove) {
+					const intent = await resolveMutationIntent(params, ctx.cwd, runner);
+					const approved = await ctx.ui.confirm(
+						"Issue workflow confirmation",
+						`Allow this operation?\n\n${formatMutationIntent(intent)}\n\nWorking directory: ${ctx.cwd}`,
+					);
+					if (!approved) {
+						return {
+							content: [{ type: "text" as const, text: `${params.action} was not approved` }],
+							details: { action: params.action, approved: false },
+							isError: true,
+						};
+					}
+					({ params: executionParams, runner } = bindApprovedMutation(runner, intent));
+				}
+			}
+			const result = await executeAction(executionParams, ctx.cwd, runner);
 			return {
 				content: [{ type: "text" as const, text: result.text }],
 				details: result.details,

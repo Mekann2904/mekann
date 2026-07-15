@@ -3,9 +3,31 @@
  * action dispatch (via a mock CommandRunner — no node-module mocking).
  */
 
+import { execFile } from "node:child_process";
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { featureValue } from "../../settings/featureConfig.js";
 import { ISSUE_WORKFLOW_ACTIONS } from "./schemas.js";
 import { validateActionArgs, executeAction, MUTATING_ACTIONS, type CommandRunner, type ExecOut } from "./actions.js";
+
+vi.mock("../../settings/featureConfig.js", () => ({
+	featureValue: vi.fn(() => false),
+}));
+
+vi.mock("node:child_process", () => ({
+	execFile: vi.fn((command: string, args: string[], _options: unknown, callback: Function) => {
+		if (command === "git" && args.join(" ") === "branch --show-current") return callback(null, { stdout: "issue-1\n", stderr: "" });
+		if (command === "git" && args.join(" ") === "remote get-url upstream") return callback(null, { stdout: "git@github.com:other/repo.git\n", stderr: "" });
+		if (command === "git" && args.join(" ") === "push git@github.com:other/repo.git issue-1") return callback(null, { stdout: "pushed\n", stderr: "" });
+		if (command === "git" && args.join(" ") === "push upstream issue-1") return callback(null, { stdout: "pushed\n", stderr: "" });
+		if (command === "git" && args.join(" ") === "status --porcelain") return callback(null, { stdout: "", stderr: "" });
+		return callback(new Error(`unexpected command: ${command} ${args.join(" ")}`));
+	}),
+}));
+
+beforeEach(() => {
+	vi.mocked(featureValue).mockReturnValue(false);
+	vi.mocked(execFile).mockClear();
+});
 
 // ── Mock CommandRunner ───────────────────────────────────────────────
 
@@ -675,6 +697,27 @@ describe("executeAction view_pr and errors", () => {
 
 // ── Tool registration (prepareArguments + execute wiring) ───────────
 
+async function registerIssueWorkflowToolForTest(): Promise<{ execute: Function }> {
+	const tools: Record<string, { execute: Function }> = {};
+	const previousIssuePi = process.env.MEKANN_ISSUE_PI;
+	const previousRole = process.env.PI_SUBAGENT_ROLE;
+	process.env.MEKANN_ISSUE_PI = "1";
+	delete process.env.PI_SUBAGENT_ROLE;
+	try {
+		const { default: issueWorkflowExtension } = await import("./index.js");
+		issueWorkflowExtension({ registerTool: (tool: unknown) => {
+			const definition = tool as { name: string; execute: Function };
+			tools[definition.name] = definition;
+		} } as never);
+		return tools.issue_workflow;
+	} finally {
+		if (previousIssuePi === undefined) delete process.env.MEKANN_ISSUE_PI;
+		else process.env.MEKANN_ISSUE_PI = previousIssuePi;
+		if (previousRole === undefined) delete process.env.PI_SUBAGENT_ROLE;
+		else process.env.PI_SUBAGENT_ROLE = previousRole;
+	}
+}
+
 describe("issue_workflow tool registration", () => {
 	it("does not register the tool outside an issue-work Pi session", async () => {
 		const pi: { tools: Record<string, unknown>; registerTool: (t: unknown) => void } = {
@@ -752,5 +795,32 @@ describe("issue_workflow tool registration", () => {
 		expect(() => pi.tools["issue_workflow"].prepareArguments({ action: "commit" })).toThrow(/message/);
 		expect(() => pi.tools["issue_workflow"].prepareArguments({})).toThrow(/action/);
 		expect(pi.tools["issue_workflow"].prepareArguments({ action: "status" })).toEqual({ action: "status" });
+	});
+
+	it("does not execute a mutating action when confirmation is denied", async () => {
+		const tool = await registerIssueWorkflowToolForTest();
+		const confirm = vi.fn(async () => false);
+		const result = await tool.execute("id", { action: "push", remote: "upstream" }, undefined, undefined, { cwd: "/repo", ui: { confirm } });
+		expect(confirm).toHaveBeenCalledWith("Issue workflow confirmation", expect.stringContaining("Repository: other/repo"));
+		expect(confirm).toHaveBeenCalledWith("Issue workflow confirmation", expect.stringContaining("Remote URL: git@github.com:other/repo.git"));
+		expect(result).toMatchObject({ isError: true, details: { action: "push", approved: false } });
+		expect(vi.mocked(execFile)).toHaveBeenCalledTimes(2);
+	});
+
+	it("skips confirmation only when workspace automation is enabled", async () => {
+		vi.mocked(featureValue).mockReturnValue(true);
+		const tool = await registerIssueWorkflowToolForTest();
+		const confirm = vi.fn(async () => false);
+		const result = await tool.execute("id", { action: "push", remote: "upstream" }, undefined, undefined, { cwd: "/repo", ui: { confirm } });
+		expect(confirm).not.toHaveBeenCalled();
+		expect(result).toMatchObject({ isError: false, details: { action: "push", remote: "upstream", branch: "issue-1" } });
+	});
+
+	it("does not confirm read-only actions", async () => {
+		const tool = await registerIssueWorkflowToolForTest();
+		const confirm = vi.fn(async () => false);
+		const result = await tool.execute("id", { action: "status" }, undefined, undefined, { cwd: "/repo", ui: { confirm } });
+		expect(confirm).not.toHaveBeenCalled();
+		expect(result).toMatchObject({ isError: false, details: { action: "status" } });
 	});
 });

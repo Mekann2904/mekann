@@ -4,13 +4,37 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { emptySettings, getGlobalMekannSettingsPath, getWorkspaceMekannSettingsPath, invalidateSettingsCache, loadSettings, loadSettingsReadonly, saveSettingsChecked, setFeatureValue, withSettingsLock } from "./store.js";
-import { featureConfig, featureValue } from "./featureConfig.js";
+import { featureConfig, featureValue, resolveEffectiveFeatureConfig } from "./featureConfig.js";
 import { featureRawConfig } from "./enabled.js";
 
 describe("settings store", () => {
   it("sets nested feature values", () => {
     const next = setFeatureValue(emptySettings(), "modes", "models.main", { provider: "p", modelId: "m" });
     expect(next.features["modes"].models).toEqual({ main: { provider: "p", modelId: "m" } });
+  });
+
+  it("enforces workspace-only schema scope during feature resolution", () => {
+    const home = mkdtempSync(join(tmpdir(), "mekann-home-test-"));
+    const cwd = mkdtempSync(join(tmpdir(), "mekann-workspace-test-"));
+    try {
+      const globalPath = getGlobalMekannSettingsPath(home);
+      mkdirSync(join(home, ".pi", "agent"), { recursive: true });
+      writeFileSync(globalPath, JSON.stringify({ version: 1, features: { "pr-workflow": { autoCheckDetectedPrs: true }, "issue-workflow": { autoApproveMutations: true } } }));
+
+      expect(featureValue("pr-workflow", "autoCheckDetectedPrs", cwd, home)).toBe(false);
+      expect(featureValue("issue-workflow", "autoApproveMutations", cwd, home)).toBe(false);
+      expect(resolveEffectiveFeatureConfig("pr-workflow", cwd, home).diagnostics).toContain("global scope では設定できません");
+
+      mkdirSync(join(cwd, ".pi"), { recursive: true });
+      writeFileSync(getWorkspaceMekannSettingsPath(cwd), JSON.stringify({ version: 1, features: { "pr-workflow": { autoCheckDetectedPrs: true }, "issue-workflow": { autoApproveMutations: true } } }));
+      invalidateSettingsCache();
+      expect(featureValue("pr-workflow", "autoCheckDetectedPrs", cwd, home)).toBe(true);
+      expect(featureValue("issue-workflow", "autoApproveMutations", cwd, home)).toBe(true);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(cwd, { recursive: true, force: true });
+      invalidateSettingsCache();
+    }
   });
 
   it("rejects concurrent writes by hash", () => {

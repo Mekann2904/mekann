@@ -8,16 +8,34 @@ create_pr) does **not** go through the bash tool.
 
 Two problems block the agent from self-driving to a PR via bash:
 
-1. **git-safety gate** — `mekann/safety/git-safety` intercepts bash mutating
-   git/gh commands (`git push`, `gh pr create`, …) and prompts with
-   `ctx.ui.confirm()` every time, stopping the agent.
+1. **structured confirmation** — `mekann/safety/git-safety` intercepts bash
+   mutating git/gh commands. This tool keeps confirmation at its structured
+   action boundary instead of relying on shell-command classification.
 2. **message mangling** — heredoc + `git commit -m` / `gh pr create --body`
    mangles commit/PR messages containing `$`, backticks, newlines, or code
    blocks via shell expansion.
 
-`issue_workflow` fixes both: it calls git/gh via `execFile` (not the bash tool,
-so git-safety never sees it) and passes messages/bodies via temp files
-(`git commit -F` / `gh pr create --body-file`), so no shell quoting is used.
+`issue_workflow` calls git/gh via `execFile` and passes messages/bodies via temp
+files (`git commit -F` / `gh pr create --body-file`), so no shell quoting is
+used. Mutating actions require an explicit confirmation by default. Before the
+prompt, read-only git queries resolve the current branch and remote URL so the
+confirmation names the concrete GitHub repository being changed. Approved operations
+are then bound to that resolved remote URL, PR URL, or `--repo` target; implicit
+GitHub targets fail closed when they cannot be resolved.
+
+A project may opt into automatic approval through workspace `.pi/mekann.json`:
+
+```json
+{
+  "version": 1,
+  "features": {
+    "issue-workflow": { "autoApproveMutations": true }
+  }
+}
+```
+
+This applies to fork and external-repository operations too, so it is deliberately
+workspace-only and defaults to `false`.
 
 ## Actions
 
@@ -87,6 +105,8 @@ base is recorded at all, create_pr falls back to gh's default base.
 - `schemas.ts` — TypeBox parameter schema (flat Optional fields) + action tuple.
 - `actions.ts` — `validateActionArgs` + `executeAction` over a `CommandRunner`
   abstraction (pure-ish, unit-testable without mocking node modules).
+- `mutation-policy.ts` — mutation classification, fail-closed target resolution,
+  confirmation formatting, and binding execution to the approved target.
 - `index.ts` — tool registration, `prepareArguments` validation, real
   `CommandRunner` (execFile + temp files).
 - `index.test.ts` — validation, dispatch, worktree gate, message safety.

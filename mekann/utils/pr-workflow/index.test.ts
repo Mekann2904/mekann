@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const execResults = new Map<string, { stdout: string; stderr?: string } | Error>();
 
+vi.mock("../../settings/featureConfig.js", () => ({
+	featureValue: vi.fn(() => true),
+}));
+
 vi.mock("node:child_process", () => ({
 	execFile: vi.fn((cmd: string, args: string[], opts: unknown, cb: Function) => {
 		if (typeof opts === "function") cb = opts as Function;
@@ -13,6 +17,7 @@ vi.mock("node:child_process", () => ({
 	}),
 }));
 
+const { featureValue } = await import("../../settings/featureConfig.js");
 const { default: prWorkflowExtension, classifyStatus, isCheckRunning, nextInterval } = await import("./index.js");
 
 const PR_VIEW_FIELDS = "mergeStateStatus,mergeable,url,baseRefName,headRefName,statusCheckRollup";
@@ -137,6 +142,7 @@ describe("pr-workflow", () => {
 	beforeEach(() => {
 		execResults.clear();
 		vi.mocked(execFile).mockClear();
+		vi.mocked(featureValue).mockReturnValue(true);
 		vi.useRealTimers();
 	});
 
@@ -177,6 +183,17 @@ describe("pr-workflow", () => {
 		await pi.commands["pr-check"].handler("", ctx);
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("checks still running"), "info");
+	});
+
+	it("does not auto-check detected PRs when workspace automation is disabled", async () => {
+		const pi = createMockPi();
+		vi.mocked(featureValue).mockReturnValue(false);
+		prWorkflowExtension(pi as any);
+
+		await pi.handlers["agent_end"]({ messages: [{ content: `Created ${URL}` }] }, createMockCtx());
+
+		expect(execFile).not.toHaveBeenCalled();
+		expect(pi.sendUserMessage).not.toHaveBeenCalled();
 	});
 
 	it("does not warn or queue a follow-up when UNSTABLE but mergeable after checks complete", async () => {

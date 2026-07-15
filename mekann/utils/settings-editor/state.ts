@@ -48,11 +48,17 @@ export function selectFeature(state: SettingsEditorState, feature: string, title
 	};
 }
 
+export function draftScopeError(item: EffectiveSetting, scope: SettingsScope): string | null {
+	return item.schema.scopes.includes(scope) ? null : `${item.feature}.${item.key}: ${scope} scope では設定できません`;
+}
+
 export function stageDraft(state: SettingsEditorState, item: EffectiveSetting, raw: string): SettingsEditorState {
+	const scope = item.schema.scopes.includes(state.scope) ? state.scope : (item.schema.scopes[0] ?? state.scope);
 	return {
 		...state,
-		drafts: { ...state.drafts, [itemId(item)]: { feature: item.feature, key: item.key, scope: state.scope, raw } },
-		message: `staged ${itemId(item)} → ${state.scope}`,
+		scope,
+		drafts: { ...state.drafts, [itemId(item)]: { feature: item.feature, key: item.key, scope, raw } },
+		message: `staged ${itemId(item)} → ${scope}`,
 	};
 }
 

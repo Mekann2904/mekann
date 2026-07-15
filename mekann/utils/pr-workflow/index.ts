@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { featureValue } from "../../settings/featureConfig.js";
 
 function execFileText(command: string, args: string[], options: { cwd: string }): Promise<string> {
 	return new Promise((resolve, reject) => {
@@ -241,6 +242,8 @@ export default function prWorkflowExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("agent_end", async (event, ctx) => {
+		const autoCheckDetectedPrs = featureValue("pr-workflow", "autoCheckDetectedPrs", ctx.cwd) === true;
+		if (!autoCheckDetectedPrs) return;
 		const urls = extractPrUrlsFromMessages((event as { messages?: unknown }).messages);
 		for (const url of urls) {
 			if (settledUrls.has(url) || pollingUrls.has(url)) continue;

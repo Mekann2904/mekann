@@ -20,6 +20,8 @@ describe("agent-guidelines", () => {
 		const fragment = fragments.find((f) => f.source === "agent-guidelines");
 		expect(fragment).toMatchObject({ source: "agent-guidelines", kind: "coding_guidelines", stability: "stable", scope: "global" });
 		expect(fragment?.content).toContain("Additional coding-agent guidelines");
+		const gitSafetyFragment = fragments.find((f) => f.source === "git-safety");
+		expect(gitSafetyFragment?.content).toContain("Mekann settings explicitly authorize");
 		const prWorkflowFragment = fragments.find((f) => f.source === "pr-workflow");
 		expect(prWorkflowFragment?.content).toContain("PR workflow routing policy");
 		expect(prWorkflowFragment?.content).toContain("/pr-check");

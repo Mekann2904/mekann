@@ -5,6 +5,7 @@ import { mekannSettingsSchemas } from "../../settings/registry.js";
 import { diagnosticsForUnknownKeys, flattenEffective } from "../../settings/effective.js";
 import { fetchModelCatalog } from "./model-ipc.js";
 import { SettingsEditorApp, type ApplyResult, type DraftChange } from "./app.js";
+import { draftScopeError } from "./state.js";
 
 export async function runSettingsEditorCli(argv = process.argv.slice(2)): Promise<void> {
   const diagnose = argv.includes("--diagnose");
@@ -35,6 +36,8 @@ export async function runSettingsEditorCli(argv = process.argv.slice(2)): Promis
       for (const change of scopedChanges) {
         const item = effective.find((e) => e.feature === change.feature && e.key === change.key);
         if (!item) return { error: `unknown setting: ${change.feature}.${change.key}` };
+        const scopeError = draftScopeError(item, scope);
+        if (scopeError) return { error: scopeError };
         let value: unknown = change.raw === "" ? undefined : change.raw;
         if (item.schema.type === "number" && change.raw !== "") value = Number(change.raw);
         if (item.schema.type === "boolean" && change.raw !== "") {

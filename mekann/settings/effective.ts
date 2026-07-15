@@ -24,12 +24,16 @@ export function flattenEffective(schemas: FeatureSettingsSchema[], global: Loade
     const g = global.settings.features[feature.feature] ?? {};
     const w = workspace.settings.features[feature.feature] ?? {};
     for (const schema of feature.settings) {
-      const hasW = hasPath(w, schema.key);
-      const hasG = hasPath(g, schema.key);
+      const rawHasW = hasPath(w, schema.key);
+      const rawHasG = hasPath(g, schema.key);
+      const hasW = rawHasW && schema.scopes.includes("workspace");
+      const hasG = rawHasG && schema.scopes.includes("global");
       const workspaceValue = getPath(w, schema.key);
       const globalValue = getPath(g, schema.key);
       const effectiveValue = hasW ? workspaceValue : hasG ? globalValue : schema.defaultValue;
       const diagnostics = [...schema.validate(effectiveValue)];
+      if (rawHasW && !schema.scopes.includes("workspace")) diagnostics.push("workspace scope では設定できません");
+      if (rawHasG && !schema.scopes.includes("global")) diagnostics.push("global scope では設定できません");
       if (hasW && workspaceValue === schema.defaultValue) diagnostics.push("workspace override が default と同じです");
       out.push({ feature: feature.feature, key: schema.key, schema, defaultValue: schema.defaultValue, globalValue, workspaceValue, effectiveValue, source: hasW ? "workspace" : hasG ? "global" : "default", diagnostics });
     }

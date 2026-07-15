@@ -21,8 +21,8 @@ const GIT_SAFETY_EXTRA = `
 
 Git safety routing policy:
 - Git read-only operations may run without confirmation.
-- Before every non-read-only Git operation, ask for the user's explicit permission, regardless of whether it is local, remote, destructive, or otherwise covered by a Mekann runtime confirmation flow.
-- Permission applies only to the specific operation requested; do not infer permission for later Git operations from an earlier approval.
+- Before every non-read-only Git operation, ask for the user's explicit permission unless the current workspace's Mekann settings explicitly authorize that operation's automation.
+- Permission applies only to the specific operation requested; do not infer permission for later Git operations from an earlier approval. A workspace automation setting is an explicit project-scoped policy, not inferred conversational permission.
 `;
 
 const GITHUB_LINKS_EXTRA = `

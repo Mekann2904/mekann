@@ -15,9 +15,18 @@ gh pr view <target> --json mergeStateStatus,mergeable,url,baseRefName,headRefNam
 
 ## Hooks
 
-On `agent_end`, the feature scans the turn's messages for GitHub PR URLs. When it finds a PR URL, it checks mergeability and **waits for the CI checks to settle** before notifying.
+Automatic `agent_end` checks are disabled by default. They can be enabled for one project through workspace `.pi/mekann.json`:
 
-The hook is fire-and-forget: it returns immediately so it never blocks the agent, and a background poll runs until the PR reaches a settled state (or the poll budget is exhausted). This avoids false "blocked" notifications caused by GitHub's transient `UNKNOWN` (still computing) and `UNSTABLE` (non-required checks pending) states, which are common immediately after a push.
+```json
+{
+  "version": 1,
+  "features": {
+    "pr-workflow": { "autoCheckDetectedPrs": true }
+  }
+}
+```
+
+When enabled, the feature scans the turn's messages for GitHub PR URLs, checks mergeability, and **waits for the CI checks to settle** before notifying. The hook is fire-and-forget: it returns immediately so it never blocks the agent. The explicit `/pr-check` command remains available regardless of this setting.
 
 ### Classification
 
