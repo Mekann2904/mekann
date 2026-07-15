@@ -13,6 +13,7 @@ export const SKILL_SURFACE_DEFINITIONS: SkillSurfaceDefinition[] = [
 	{ name: "codebase-design", defaultSurface: "on" },
 	{ name: "diagnose", defaultSurface: "on" },
 	{ name: "domain-modeling", defaultSurface: "on" },
+	{ name: "edit-article", defaultSurface: "off" },
 	{ name: "grill-with-docs", defaultSurface: "on" },
 	{ name: "gsap-core", defaultSurface: "off" },
 	{ name: "gsap-frameworks", defaultSurface: "off" },

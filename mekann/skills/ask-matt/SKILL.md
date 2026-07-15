@@ -24,6 +24,7 @@ Route the user's request to the smallest suitable Mekann workflow. Do not invent
 - Domain terminology or ADR work: `domain-modeling`
 - Deep-module/interface design: `codebase-design`
 - Primary-source investigation: `research`
+- Article or technical-document editing: `edit-article`
 - In-progress merge/rebase conflict: `resolving-merge-conflicts`
 - Agent-friendly CLI design: `cli-for-agents`
 

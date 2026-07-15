@@ -32,6 +32,7 @@ Skill はすべてを常時 system prompt に出すと context を圧迫する�
 | engineering skills の初期設定をしたい | [`setup-matt-pocock-skills`](../mekann/skills/setup-matt-pocock-skills/SKILL.md) | `triage`, `to-prd`, `to-issues` |
 | 反復実験で最適化したい | [`autoresearch-create`](../mekann/skills/autoresearch-create/SKILL.md) | 通常は目的整理後に使う |
 | 複数セッションで体系的に学びたい | [`teach`](../mekann/skills/teach/SKILL.md) | `research` |
+| 記事や技術文書を推敲・再構成したい | [`edit-article`](../mekann/skills/edit-article/SKILL.md) | `research`, `domain-modeling` |
 | Mekann の skill 自体を保守したい | [`mekann-pi-skill-dev`](../mekann/skills/mekann-pi-skill-dev/SKILL.md) | README / docs 更新 |
 
 ## 代表的な workflow
@@ -257,6 +258,17 @@ Sub mode は main mode と同じ挙動になりました。implementation-delega
 - できること: `MISSION.md`、教材、学習記録、参照資料を使い、複数セッションにわたる学習 workspace を構築する。
 - 使うタイミング: 概念や技能を体系的に学び、練習と復習の履歴を残したいとき。
 - 重要な注意: 現行情報や API は一次資料と Context7 / web search で確認し、Mekann ユーザーとの対話は原則日本語で行う。
+
+### 文書編集 skill
+
+#### edit-article
+
+- 詳細: [`mekann/skills/edit-article/SKILL.md`](../mekann/skills/edit-article/SKILL.md)
+- できること: 記事、チュートリアル、リファレンス、runbook、ADR、設計書、提案書などを、情報の依存順序と技術的正確性を保ちながら再構成・推敲する。
+- 使うタイミング: 既存の原稿を読みやすくしたいとき。見出し構成、説明順序、用語の一貫性、文章の簡潔さを改善したいとき。
+- 入力: 編集対象ファイル、想定読者、目的、編集範囲、適用する style guide。
+- 出力: 編集済み文書、主な変更点、未解決の事実確認事項、実行した文書チェック。
+- 重要な注意: 事実、コード、コマンド、API 名、規範表現を黙って変更しない。大幅な再構成は先に構成案を示して確認する。
 
 ### 高自律・実験系 skill
 
