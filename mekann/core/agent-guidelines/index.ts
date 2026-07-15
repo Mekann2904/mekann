@@ -20,7 +20,9 @@ Proactive review routing policy:
 const GIT_SAFETY_EXTRA = `
 
 Git safety routing policy:
-- Use Mekann runtime confirmation flows for remote GitHub mutations, push/force-push, and destructive local git operations; if a needed action is blocked or not covered by runtime policy, ask for explicit user permission first.
+- Git read-only operations may run without confirmation.
+- Before every non-read-only Git operation, ask for the user's explicit permission, regardless of whether it is local, remote, destructive, or otherwise covered by a Mekann runtime confirmation flow.
+- Permission applies only to the specific operation requested; do not infer permission for later Git operations from an earlier approval.
 `;
 
 const GITHUB_LINKS_EXTRA = `
