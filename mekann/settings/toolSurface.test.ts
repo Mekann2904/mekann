@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
 	getToolSurfaceShadowSnapshot,
-	observeToolSurfaceShadow,
 	recordToolSurfaceProjection,
 	recordToolSurfaceSchemaBytes,
 	setToolsActive,
 } from "./toolSurface.js";
+import { observeToolSurfaceShadow } from "./toolSurfaceObserver.js";
 
 /**
  * Minimal in-memory tool-surface double. `setToolsActive` only needs
