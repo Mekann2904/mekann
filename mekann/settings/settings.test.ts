@@ -49,14 +49,18 @@ describe("settings registry", () => {
     for (const name of featureNames) expect(registered).toContain(name);
   });
 
-  it("every setting has a valid key, type, and validate function", () => {
+  it("every setting has a valid key, type, validate function, and scopes", () => {
     for (const schema of mekannSettingsSchemas) {
       for (const setting of schema.settings) {
         expect(setting.key).toBeTruthy();
         expect(["number", "string", "boolean", "enum", "modelRef"]).toContain(setting.type);
         expect(typeof setting.validate).toBe("function");
-        expect(setting.scopes).toContain("global");
-        expect(setting.scopes).toContain("workspace");
+        // scopes must be non-empty and contain only valid values; workspace-only
+        // (or global-only) settings are intentional, e.g. project-opt-in automation.
+        expect(setting.scopes.length).toBeGreaterThan(0);
+        for (const scope of setting.scopes) {
+          expect(["global", "workspace"]).toContain(scope);
+        }
       }
     }
   });
