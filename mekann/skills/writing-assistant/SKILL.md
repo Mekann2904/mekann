@@ -1,16 +1,16 @@
 ---
-name: edit-article
-description: Edit and improve articles and technical documents by restructuring sections, clarifying dependencies, preserving technical accuracy, and tightening prose. Use when the user wants to edit, revise, or improve an article, guide, reference, design document, proposal, or other technical draft.
+name: writing-assistant
+description: Create, edit, and improve articles and technical documents by planning structure, clarifying dependencies, preserving technical accuracy, and tightening prose. Use when the user wants to draft, revise, or improve an article, guide, reference, design document, proposal, or other technical writing.
 ---
 
-# Edit Article or Technical Document
+# Writing Assistant for Articles and Technical Documents
 
 Adapted for Pi from Matt Pocock's `skills/personal/edit-article` workflow. Its Japanese writing reference units incorporate skills by k16shikano:
 
 - https://gist.github.com/k16shikano/fd287c3133457c4fd8f5601d34aa817d
 - https://gist.github.com/k16shikano/eb2929f13ed19c97188393d297be8432
 
-Use this workflow to improve prose and structure without silently changing the document's meaning or technical claims. Communicate with the Mekann user in Japanese unless they request another language; preserve the document's requested language.
+Use this workflow to create or improve prose and structure without inventing claims or silently changing an existing document's meaning or technical content. Communicate with the Mekann user in Japanese unless they request another language; preserve the document's requested language.
 
 ## 1. Inspect the draft
 

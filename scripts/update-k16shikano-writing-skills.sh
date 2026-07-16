@@ -8,7 +8,7 @@ JAPANESE_TECH_GIST="fd287c3133457c4fd8f5601d34aa817d"
 COGNITIVE_RHYTHM_GIST="eb2929f13ed19c97188393d297be8432"
 JAPANESE_TECH_VENDOR="vendor/k16shikano-japanese-tech-writing"
 COGNITIVE_RHYTHM_VENDOR="vendor/k16shikano-cognitive-rhythm-writing"
-REFERENCES_DIR="mekann/skills/edit-article/references"
+REFERENCES_DIR="mekann/skills/writing-assistant/references"
 
 update_gist() {
   local gist_id="$1"
@@ -44,10 +44,10 @@ cp "$JAPANESE_TECH_VENDOR/SKILL.md" "$REFERENCES_DIR/japanese-tech-writing.md"
 cp "$COGNITIVE_RHYTHM_VENDOR/SKILL.md" "$REFERENCES_DIR/cognitive-rhythm-writing.md"
 
 # The upstream cognitive-rhythm skill expects a sibling standalone skill. In
-# Mekann both upstream skills are reference units of edit-article.
+# Mekann both upstream skills are reference units of writing-assistant.
 node <<'NODE'
 const fs = require("node:fs");
-const path = "mekann/skills/edit-article/references/cognitive-rhythm-writing.md";
+const path = "mekann/skills/writing-assistant/references/cognitive-rhythm-writing.md";
 const source = fs.readFileSync(path, "utf8");
 const adapted = source.replace(
   "`../japanese-tech-writing/SKILL.md`",
@@ -59,4 +59,4 @@ if (adapted === source) {
 fs.writeFileSync(path, adapted);
 NODE
 
-echo "Updated k16shikano writing-skill mirrors and edit-article references."
+echo "Updated k16shikano writing-skill mirrors and writing-assistant references."

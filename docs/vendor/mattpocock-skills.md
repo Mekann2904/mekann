@@ -78,6 +78,6 @@ The Pi package exposes `./mekann/skills` via `package.json`, and the manifest cu
 - `to-prd`
 - `triage`
 - `teach` (from `skills/productivity/teach`)
-- `edit-article` (from `skills/personal/edit-article`, adapted for articles and technical documents)
+- `writing-assistant` (from `skills/personal/edit-article`, adapted for article creation and technical-document editing)
 
 Mekann-specific skills may also live in `mekann/skills`, but they are not copied from `vendor/mattpocock-skills`. Add local-only skills to `protectedLocalSkills` so future upstream imports cannot overwrite them.

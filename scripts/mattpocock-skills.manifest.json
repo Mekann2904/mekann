@@ -20,7 +20,7 @@
     { "name": "to-prd", "source": "to-prd", "destination": "to-prd", "adapter": "pi-engineering-skill" },
     { "name": "triage", "source": "triage", "destination": "triage", "adapter": "pi-engineering-skill" },
     { "name": "teach", "sourceRoot": "vendor/mattpocock-skills/skills/productivity", "source": "teach", "destination": "teach", "adapter": "pi-productivity-skill" },
-    { "name": "edit-article", "sourceRoot": "vendor/mattpocock-skills/skills/personal", "source": "edit-article", "destination": "edit-article", "adapter": "pi-personal-skill" }
+    { "name": "writing-assistant", "sourceRoot": "vendor/mattpocock-skills/skills/personal", "source": "edit-article", "destination": "writing-assistant", "adapter": "pi-personal-skill" }
   ],
   "protectedLocalSkills": [
     "autoresearch-create",
