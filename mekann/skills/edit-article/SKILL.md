@@ -5,7 +5,10 @@ description: Edit and improve articles and technical documents by restructuring 
 
 # Edit Article or Technical Document
 
-Adapted for Pi from Matt Pocock's `skills/personal/edit-article` workflow.
+Adapted for Pi from Matt Pocock's `skills/personal/edit-article` workflow. Its Japanese writing reference units incorporate skills by k16shikano:
+
+- https://gist.github.com/k16shikano/fd287c3133457c4fd8f5601d34aa817d
+- https://gist.github.com/k16shikano/eb2929f13ed19c97188393d297be8432
 
 Use this workflow to improve prose and structure without silently changing the document's meaning or technical claims. Communicate with the Mekann user in Japanese unless they request another language; preserve the document's requested language.
 
@@ -22,6 +25,10 @@ Identify:
 - any explicit style guide or repository instructions.
 
 Do not invent facts to fill gaps. Mark unsupported, ambiguous, or potentially outdated claims for the user instead.
+
+For Japanese technical articles, explanatory documents, and book chapters, load `references/japanese-tech-writing.md` before proposing substantial edits. It is the primary rule set for paragraph structure, argument rigor, reader load, headings, restrained presentation, and removal of empty LLM-like prose.
+
+When the user asks for stronger rhythm or momentum, or describes accurate prose as flat, also load `references/cognitive-rhythm-writing.md`. Apply it only after factual and logical structure is sound. Never manufacture facts, scenes, uncertainty, or tension to create rhythm.
 
 ## 2. Propose the structure
 

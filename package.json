@@ -53,6 +53,7 @@
     "update:mattpocock-skills": "bash scripts/update-mattpocock-skills.sh",
     "update:cursor-plugins-skills": "bash scripts/update-cursor-plugins-skills.sh",
     "update:gsap-skills": "bash scripts/update-gsap-skills.sh",
+    "update:k16shikano-writing-skills": "bash scripts/update-k16shikano-writing-skills.sh",
     "clone:oss": "bash scripts/clone-oss.sh",
     "update:oss": "bash scripts/update-oss.sh",
     "bench:startup": "npx tsx scripts/benchmark-startup.ts",

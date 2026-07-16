@@ -32,7 +32,7 @@ Skill はすべてを常時 system prompt に出すと context を圧迫する�
 | engineering skills の初期設定をしたい | [`setup-matt-pocock-skills`](../mekann/skills/setup-matt-pocock-skills/SKILL.md) | `triage`, `to-prd`, `to-issues` |
 | 反復実験で最適化したい | [`autoresearch-create`](../mekann/skills/autoresearch-create/SKILL.md) | 通常は目的整理後に使う |
 | 複数セッションで体系的に学びたい | [`teach`](../mekann/skills/teach/SKILL.md) | `research` |
-| 記事や技術文書を推敲・再構成したい | [`edit-article`](../mekann/skills/edit-article/SKILL.md) | `research`, `domain-modeling` |
+| 日本語の記事や技術文書を執筆・推敲・再構成したい | [`edit-article`](../mekann/skills/edit-article/SKILL.md) | 日本語技術文書・認知リズムの reference unit、`research` |
 | Mekann の skill 自体を保守したい | [`mekann-pi-skill-dev`](../mekann/skills/mekann-pi-skill-dev/SKILL.md) | README / docs 更新 |
 
 ## 代表的な workflow
