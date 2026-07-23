@@ -140,7 +140,7 @@ export function protectedDirsSbplAlternation(): string {
  * (.git/.pi/.codex/.agents のトップレベル) を拒否し、正規化された POSIX 相対パスを返す。
  * 不安全な場合は undefined を返す。
  *
- * SECURITY: autoresearch (candidate.ts) と subagent (fingerprint.ts) がこの単一ヘルパーを共有。
+ * SECURITY: subagent fingerprint validation uses this single helper.
  * 保護対象は PROTECTED_DIRS から派生するため、sandbox SBPL regex / isProtectedPath と一致する。
  * 参考: GitHub issue #80 (C-004 — safeRepoRelativePath の複数実装と保護度の不一致)。
  */

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { FileFingerprint, PublicSurfaceDelta } from "./types.js";
 // safeRepoRelativePath は security primitive として permissions.ts (PROTECTED_DIRS 単一ソース) に集約。
-// candidate.ts (autoresearch) とここ (subagent) が同一ヘルパーを共有 (GitHub issue #80 C-004)。
+// Repository path protection is centralized in the sandbox permissions helper.
 import { safeRepoRelativePath } from "../../safety/sandbox/permissions.js";
 export { safeRepoRelativePath };
 

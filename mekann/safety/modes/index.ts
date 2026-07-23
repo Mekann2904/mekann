@@ -1,6 +1,6 @@
 /**
  * Modes Extension — コラボレーションモードのトグル。
- * main / read_only / auto / sub を管理。各モードでモデルを設定・永続化可能。
+ * main / read_only / sub を管理。各モードでモデルを設定・永続化可能。
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -9,9 +9,7 @@ import { createInitialState, isReadOnlyMode, isReadOnlyCommandIntent, classifyCo
 import { createModelManager, registerModeModelPersistence } from "../../core/model-manager.js";
 import {
 	SANDBOX_PUSH_PROFILE_EVENT, SANDBOX_POP_PROFILE_EVENT, MODE_STATUS_EVENT,
-	MEKANN_AUTORESEARCH_MODE_EVENT,
 	type SandboxPushProfileEvent, type SandboxPopProfileEvent, type ModeStatusEvent,
-	type AutoresearchModeEvent,
 } from "../policy-core/modes.js";
 import { registerPromptProvider, type PromptFragment } from "../../core/prompt-core/index.js";
 import { randomToken } from "../../utils/id.js";
@@ -26,7 +24,7 @@ export default function modesExtension(pi: ExtensionAPI): void {
 	let readOnlySandboxOverrideToken: string | undefined;
 
 	function safeEmit(event: string, data: unknown): void {
-		try { pi.events.emit(event, data); } catch { /* sandbox / autoresearch extension not loaded */ }
+		try { pi.events.emit(event, data); } catch { /* sandbox extension not loaded */ }
 	}
 
 	/** Pop sandbox profile override (best-effort; no-op if not active). */
@@ -96,23 +94,17 @@ export default function modesExtension(pi: ExtensionAPI): void {
 	// ─── Mode transitions ───────────────────────────────────────────
 
 	/** Transition to a target mode from any current mode. */
-	async function transitionToMode(target: MekannMode, ctx: ExtensionContext, _opts?: { persistCurrentMain?: boolean; purpose?: string }): Promise<void> {
+	async function transitionToMode(target: MekannMode, ctx: ExtensionContext): Promise<void> {
 		const previous = state.mode;
 		if (previous === target) return;
 
 		// ── Leave the current mode ──
 		if (previous === "read_only") {
-			if (target === "auto") state.modeBeforeAuto = previous;
 			state.mode = target;
 			updateModeStatus(ctx);
 			popSandboxOverride();
 			if (state.savedActiveTools) { pi.setActiveTools(state.savedActiveTools); state.savedActiveTools = undefined; }
-		} else if (previous === "auto") {
-			if (state.mode !== target) state.mode = target;
-			state.modeBeforeAuto = undefined;
 		} else {
-			// main/sub → other
-			if (target === "auto" && (previous === "main" || previous === "sub")) state.modeBeforeAuto = previous;
 			if (state.mode !== target) state.mode = target;
 		}
 
@@ -130,10 +122,6 @@ export default function modesExtension(pi: ExtensionAPI): void {
 			const readOnlyRef = state.modelConfig.models.read_only;
 			if (readOnlyRef) await trySetModel(readOnlyRef, ctx, "Read-only model");
 			applyThinking(state.modelConfig.thinking.read_only);
-		} else if (target === "auto") {
-			const autoRef = state.modelConfig.models.auto;
-			if (autoRef) await trySetModel(autoRef, ctx, "Auto model");
-			applyThinking(state.modelConfig.thinking.auto);
 		} else if (target === "sub") {
 			const subRef = state.modelConfig.models.sub;
 			if (subRef) await trySetModel(subRef, ctx, "Sub model");
@@ -258,43 +246,9 @@ export default function modesExtension(pi: ExtensionAPI): void {
 		},
 		persistThinking: (mode, level) => persistIfChanged("thinking", mode, level, (a, b) => a === b),
 	});
-	// ─── Autoresearch mode event listener ─────────────────────────
-
-	/** Last known ctx for event-driven transitions (set on session_start / command hooks). */
+	/** Last known context for command-driven transitions. */
 	let lastCtx: ExtensionContext | undefined;
 
-	try {
-		pi.events.on(MEKANN_AUTORESEARCH_MODE_EVENT, (data: unknown) => {
-			const evt = data as AutoresearchModeEvent;
-			if (!evt) return;
-			if (evt.active) {
-				// autoresearch activated → switch to auto mode
-				if (state.mode === "auto") return; // already there
-				if (state.mode === "main" || state.mode === "sub" || state.mode === "read_only") state.modeBeforeAuto = state.mode;
-				const ctx = lastCtx;
-				if (ctx) {
-					return transitionToMode("auto", ctx, { purpose: evt.purpose });
-				} else {
-					state.mode = "auto";
-				}
-			} else {
-				// autoresearch deactivated → return to main
-				if (state.mode !== "auto") return;
-				const ctx = lastCtx;
-				const target = state.modeBeforeAuto ?? "main";
-				if (ctx) {
-					return transitionToMode(target, ctx);
-				} else {
-					state.mode = target;
-					state.modeBeforeAuto = undefined;
-				}
-			}
-		});
-	} catch {
-		// events not available
-	}
-
-	pi.registerFlag("auto", { description: "auto(autoresearch)モードで起動", type: "boolean", default: false });
 	pi.registerFlag("read-only", { description: "read-only mode で起動", type: "boolean", default: false });
 	pi.registerFlag("sub", { description: "sub mode で起動（subagent 並列活用）", type: "boolean", default: false });
 
@@ -304,12 +258,10 @@ export default function modesExtension(pi: ExtensionAPI): void {
 		const loaded = loadModelConfig();
 		state.modelConfig = loaded;
 
-		if (pi.getFlag("auto") === true) {
-			await transitionToMode("auto", ctx, { persistCurrentMain: false });
-		} else if (pi.getFlag("read-only") === true) {
-			await transitionToMode("read_only", ctx, { persistCurrentMain: false });
+		if (pi.getFlag("read-only") === true) {
+			await transitionToMode("read_only", ctx);
 		} else if (pi.getFlag("sub") === true) {
-			await transitionToMode("sub", ctx, { persistCurrentMain: false });
+			await transitionToMode("sub", ctx);
 		} else {
 			if (state.modelConfig.models.main) {
 				await trySetModel(state.modelConfig.models.main, ctx, "Main model");

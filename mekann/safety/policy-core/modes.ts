@@ -82,20 +82,8 @@ export interface SandboxPopProfileEvent { owner: string; token: string; }
 export const MODE_STATUS_EVENT = "mekann:modes:status";
 
 /** Payload for mode status broadcast. */
-export interface ModeStatusEvent { mode: "main" | "read_only" | "auto" | "sub"; }
+export interface ModeStatusEvent { mode: "main" | "read_only" | "sub"; }
 
-// ─── Autoresearch mode notification ─────────────────────────────
-
-/** Event name for autoresearch → modes mode notification. */
-export const MEKANN_AUTORESEARCH_MODE_EVENT = "mekann:autoresearch:mode";
-
-/** Payload for autoresearch mode notification. */
-export interface AutoresearchModeEvent {
-	/** true = autoresearch activated (mode should become "auto"), false = deactivated (mode should return to "main"). */
-	active: boolean;
-	/** Optional purpose text passed through from /autoresearch <purpose>. */
-	purpose?: string;
-}
 /**
  * Policy Core — Command Intent Classification.
  *

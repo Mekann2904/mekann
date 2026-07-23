@@ -7,7 +7,6 @@ export type SkillSurfaceDefinition = {
 
 export const SKILL_SURFACE_DEFINITIONS: SkillSurfaceDefinition[] = [
 	{ name: "ask-matt", defaultSurface: "off" },
-	{ name: "autoresearch-create", defaultSurface: "off" },
 	{ name: "cli-for-agents", defaultSurface: "on" },
 	{ name: "code-review", defaultSurface: "off" },
 	{ name: "codebase-design", defaultSurface: "on" },

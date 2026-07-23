@@ -11,7 +11,7 @@ A grouped set of pi extensions loaded together by the `mekann` wrapper. A suite 
 _Avoid_: plugin bundle, package group, feature boundary
 
 **Feature**:
-A responsibility-bearing capability inside a Pi extension suite, such as `sandbox`, `modes`, `subagent`, `autoresearch`, `output-gate`, or `context-ledger`. Features are the preferred unit for design discussion when behavior or ownership is being clarified.
+A responsibility-bearing capability inside a Pi extension suite, such as `sandbox`, `modes`, `subagent`, `goal`, `output-gate`, or `context-ledger`. Features are the preferred unit for design discussion when behavior or ownership is being clarified.
 _Avoid_: module, package, suite
 
 **Implementation delegation**:
@@ -153,7 +153,7 @@ The central value Mekann aims to improve: enabling a Pi coding agent to continue
 _Avoid_: automation, unattended execution, unchecked autonomy
 
 **Pair-programming mode**:
-The default collaboration style when features such as `goal` or `autoresearch` are not active. In pair-programming mode, the agent behaves like a normal coding agent that works interactively with the user rather than continuing autonomous loops on its own.
+The default collaboration style when features such as `goal` are not active. In pair-programming mode, the agent behaves like a normal coding agent that works interactively with the user rather than continuing autonomous loops on its own.
 _Avoid_: autonomous work, background continuation
 
 **Goal**:
@@ -166,7 +166,7 @@ _Avoid_: model priority, generic model routing, cheap-model fallback
 
 **Delegated implementation brief**:
 The structured Markdown handoff from the planning/review model to the implementation model in a delegated implementation loop. It names the goal, fixed tests, allowed implementation scope, forbidden changes, cheap checks, acceptance checks, blocked-state response, and expected patch-proposal output.
-_Avoid_: freeform implementation prompt, model routing contract, autoresearch contract
+_Avoid_: freeform implementation prompt, model routing contract
 
 **Failure handoff**:
 The check-failure evidence passed from the parent loop back to the implementation model during a delegated implementation loop. It normally includes the full failure output, but long output should flow through context-control features such as output gate so the implementation model receives a preview plus artifact reference instead of oversized inline logs.
@@ -179,14 +179,6 @@ _Avoid_: test tweak, implementation patch, merged fix patch
 **Implementation patch**:
 The production-code change proposed by the implementation model in a delegated implementation loop. An implementation patch is evaluated against the fixed spec patch and should not weaken or rewrite the tests that define the task.
 _Avoid_: spec patch, all-in-one patch, test-changing fix
-
-**Autoresearch**:
-A higher-autonomy research mode for persistent investigation, candidate generation, and evaluation when ordinary pair programming or goal continuation would be too slow or shallow. Autoresearch is currently metric-driven by default, but the intended concept also includes future non-metric or hard-to-measure research tasks that still need disciplined autonomous evaluation.
-_Avoid_: goal, benchmark script, simple automation
-
-**Calibrated evaluation**:
-A composite evaluation approach for hard-to-measure autoresearch tasks that combines mechanical checks, structured acceptance criteria, LLM critics or judges, and human review where needed. LLM judgment is useful but should be calibrated against human or expert review before it becomes a trusted decision source.
-_Avoid_: LLM-only judgment, subjective vibes
 
 ### Runtime context
 
@@ -287,12 +279,8 @@ The module that decides whether a patch proposal can move to the next stage by c
 _Avoid_: PatchProposalValidator, SubagentResultTrust
 
 **Patch proposal intake**:
-The deepened module that receives a patch proposal from a subagent result and turns it into an admission outcome for a specific downstream adapter, such as candidate escrow or subagent apply. Patch proposal intake owns profile-specific decision semantics, reason mapping, and audit payload shaping so callers do not reinterpret PatchProposalPolicy findings themselves.
+The deepened module that receives a patch proposal from a subagent result and turns it into an admission outcome for subagent apply. Patch proposal intake owns decision semantics, reason mapping, and audit payload shaping so callers do not reinterpret PatchProposalPolicy findings themselves.
 _Avoid_: patch import, proposal gate, patch validation wrapper
-
-**Candidate escrow**:
-The autoresearch step that stores a trusted patch proposal as an experiment candidate without applying it to the main worktree. Candidate escrow preserves the patch for later evaluation under the autoresearch contract.
-_Avoid_: candidate import, patch staging
 
 **Subagent apply**:
 The step that applies a trusted patch proposal to the workspace after policy checks, semantic conflict checks, git apply checks, and requested validation commands.
@@ -367,11 +355,11 @@ _Avoid_: codex-core, codex-base
 
 **Issue worktree**:
 A git worktree created for working on a specific GitHub issue, placed in a sibling directory of the main repository. The naming convention is `issue-<number>` for both the branch and the worktree directory. Issue worktrees are managed by the `/issue` command and the `mekann-issue` CLI.
-_Avoid_: feature worktree, autoresearch worktree, candidate worktree
+_Avoid_: feature worktree, candidate worktree
 
 **Issue worktree directory**:
 A sibling directory of the main repository that holds all issue worktrees for a project. The naming convention is `<project>-worktrees/`. Each worktree inside is named `issue-<number>/` matching its branch name.
-_Avoid_: worktree pool, worktree stash, autoresearch-worktrees
+_Avoid_: worktree pool, worktree stash
 
 **`mekann-issue` CLI**:
 A standalone CLI tool that provides two modes: an interactive OpenTUI issue list (no arguments) and a direct worktree-open mode (`--issue <number>`). It creates issue worktrees, launches pi in a Kitty split, and handles cleanup. Registered as a bin in the root `package.json`.
@@ -383,7 +371,7 @@ _Avoid_: issue tool, issue prompt template
 
 **Issue worktree cleanup**:
 The batch removal of issue worktrees whose corresponding GitHub issues are closed. Triggered by `/clean-issue-worktrees`, removes both the worktree and the local branch.
-_Avoid_: worktree garbage collection, autoresearch candidate removal
+_Avoid_: worktree garbage collection
 
 **Main Pi**:
 The Pi session running on the user's primary working branch from which `/issue` is invoked. It is the stable launch context for issue work and must keep a stable terminal region; it is used as the Kitty split source only for the first issue Pi and never thereafter.
@@ -417,17 +405,8 @@ _Avoid_: upstream skill mirror, vendored dependency, build-time reference
 
 ## Example dialogue
 
-Developer: "Should this be a goal or autoresearch?"
-Domain expert: "Use a goal when the agent should keep pursuing a general objective. Use autoresearch when the task needs higher-autonomy research, repeated candidate generation, and disciplined evaluation."
-
 Developer: "Why not just keep all investigation details in the parent agent?"
 Domain expert: "That pollutes the context window. Use subagent delegation with minimal sufficient context for isolated exploration or fresh review, then bring back a structured subagent result."
-
-Developer: "Can this subagent result become an autoresearch candidate?"
-Domain expert: "Only after a trust transition. A patch proposal must pass PatchProposalPolicy, and candidate escrow should preserve it for evaluation without applying it to the main worktree."
-
-Developer: "I want to work on issue #42. Should I use an autoresearch worktree?"
-Domain expert: "No. Autoresearch worktrees are temporary candidate isolation inside `.pi/autoresearch-worktrees/`. For issue work, use `/issue` — it creates an issue worktree in `<project>-worktrees/issue-42/` and opens an issue Pi in a Kitty split."
 
 Developer: "I already have issue #42 open. If I run `/issue` again for #43, does my Main Pi shrink again?"
 Domain expert: "No. The Main Pi is split only for the first issue Pi. On the second and later `/issue`, the existing issue Pi region is split instead, so the Main Pi keeps its stable region. Among multiple issue Pi panes, the widest one is used as the split source so no single pane shrinks to nothing."

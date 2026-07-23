@@ -23,7 +23,6 @@
     { "name": "writing-assistant", "sourceRoot": "vendor/mattpocock-skills/skills/personal", "source": "edit-article", "destination": "writing-assistant", "adapter": "pi-personal-skill" }
   ],
   "protectedLocalSkills": [
-    "autoresearch-create",
     "cli-for-agents",
     "gsap-core",
     "gsap-frameworks",

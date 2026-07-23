@@ -160,7 +160,7 @@ describe("SA-07-T2: recoverStaleApplying respects maxAgeMs", () => {
 // ---------------------------------------------------------------------------
 
 describe("ResultStore: status transition clears previous state", () => {
-	it("markApplied clears reject/escrow/review fields", () => {
+	it("markApplied clears rejection and review state", () => {
 		const dir = mkdtempSync(path.join(tmpdir(), "sar-"));
 		const store = createStore(dir);
 		const stored = store.save(agent, observation);

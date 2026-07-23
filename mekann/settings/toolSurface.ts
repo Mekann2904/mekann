@@ -36,7 +36,6 @@ type ShadowState = {
 export const MEKANN_TOOL_INVENTORY = {
 	goal: ["get_goal", "create_goal", "update_goal"],
 	subagent: ["delegate_agent", "spawn_agent", "message_agent", "wait_agent", "list_agents", "agent_results", "close_agent"],
-	autoresearch: ["autoresearch_evaluate_query", "autoresearch_init", "autoresearch_run", "autoresearch_log", "autoresearch_plan", "autoresearch_approve", "autoresearch_candidate_escrow", "autoresearch_list_candidates", "autoresearch_show_candidate", "autoresearch_reject_candidate", "autoresearch_apply_candidate", "autoresearch_suggest_subagents", "autoresearch_apply_candidate_isolated", "autoresearch_run_contract"],
 	"output-gate": ["search_tool_outputs"],
 	"context-ledger": ["search_context_events", "summarize_session_context"],
 	sandbox: ["request_elevation"],

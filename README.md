@@ -44,7 +44,7 @@ Mekann は、Pi を人間の代替として扱いません。Pi は調査や実�
 | --- | --- | --- |
 | [`core`](./mekann/core/) | prompt の土台、常時ガイドライン、cache-friendly prompt | `prompt-core`, `cache-friendly-prompt`, `agent-guidelines`, `model-optimizer` |
 | [`safety`](./mekann/safety/) | 自律作業を許容するための安全境界 | `sandbox`, `modes`, `policy-core`, `git-safety` |
-| [`autonomy`](./mekann/autonomy/) | 長い作業、issue 実装、独立 context、研究的探索 | `goal`, `subagent`, `review-fixer`, `autoresearch` |
+| [`autonomy`](./mekann/autonomy/) | 長い作業、issue 実装、独立 context、研究的探索 | `goal`, `subagent`, `review-fixer` |
 | [`context`](./mekann/context/) | runtime context management | `context-tracker`, `command-normalization`, `output-gate`, `context-ledger`, `cacheable-context` |
 | [`utils`](./mekann/utils/) | 人間向けの terminal 補助と周辺機能 | `issue`, `dashboard`, `codex-limits`, `codex-web-search`, `terminal-shortcuts`, `settings-editor`, `pr-workflow`, `verify`, `review-quality`, `zip-repo` |
 
@@ -61,7 +61,6 @@ Mekann は、開発を大きく前半と後半に分けて扱います。前半�
 - 初回のセッティングスキル: プロジェクトに agent 向けの前提知識と作業手順を整える。
 - issue 系のスキルと workflow: 前半で PRD 化、issue 化、triage を行い、後半で issue 単位の実装に移る。
 - `goal`: session をまたいで追跡したい長い目的を登録する。
-- `autoresearch`: 候補生成と評価を繰り返す、不確実性の高い調査を任せる。
 
 全体の流れは次の図のようになります。
 
@@ -83,11 +82,9 @@ issue workflow は、前半の計画と後半の実装を分離するための�
 
 `/issue-autopilot` は、`ready-for-agent` ラベルが付いた issue を順に処理する上位フローです。依存関係が残っている issue や、人間の判断が必要な issue は開始しません。PR の merge は人間が実施します。
 
-### Goal and autoresearch
+### Goal
 
-`goal` は、ユーザが定義した目的を session をまたいで追跡するための軽量な仕組みです。通常の pair-programming では完了しにくい長い目的を扱います。
-
-`autoresearch` は、候補生成と評価を繰り返す高自律な調査 mode です。機械的チェックと構造化された受け入れ基準を使います。LLM judge や人間 review も組み合わせます。単純な実装作業より不確実性の高い探索を扱います。
+`goal` は、ユーザが定義した一般目的を session をまたいで追跡し、調査・反復作業を main mode 上で継続する中心機能です。評価が必要な作業では通常の checks、Subagent による fresh review、human review を組み合わせます。専用の metric contract や candidate escrow は提供しません。
 
 ### 自動的に働く補助機能
 

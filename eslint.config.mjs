@@ -24,7 +24,6 @@ const ERROR_TIER = [
 	"mekann/utils/typed-params.ts",
 	"mekann/context/output-gate/index.ts",
 	"mekann/context/ledger/index.ts",
-	"mekann/autonomy/autoresearch/toolsRegistration.ts",
 	"mekann/autonomy/goal/state.ts",
 ];
 

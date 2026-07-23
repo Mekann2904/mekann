@@ -2,8 +2,6 @@ import { boolSetting } from "../../settings/simpleSchema.js";
 import type { FeatureSettingsSchema, SettingSchema } from "../../settings/types.js";
 import { MODE_PROFILE_NAMES, type ModeProfileName, type ModelRef, type ThinkingLevel } from "./utils.js";
 
-/** Collaboration modes the user toggles between at runtime. */
-const RUNTIME_MODES: ModeProfileName[] = ["main", "read_only", "auto", "sub"];
 /** Profiles whose model is applied once when a separate Pi session launches. */
 const WORK_PI_PROFILES: ModeProfileName[] = ["review_fix", "issue"];
 const thinkingValues = ["off", "minimal", "low", "medium", "high", "xhigh"];

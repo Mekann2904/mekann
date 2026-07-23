@@ -152,9 +152,9 @@ describe("output-gate schema", () => {
 });
 
 describe("modes schema", () => {
-  it("has model and thinking settings for 4 modes", () => {
+  it("has model and thinking settings for runtime modes", () => {
     const schema = mekannSettingsSchemas.find((s) => s.feature === "modes")!;
-    const modes = ["main", "read_only", "auto", "sub"];
+    const modes = ["main", "read_only", "sub"];
     for (const mode of modes) {
       expect(schema.settings.find((s) => s.key === `models.${mode}`)).toBeDefined();
       expect(schema.settings.find((s) => s.key === `thinking.${mode}`)).toBeDefined();

@@ -15,12 +15,19 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
-/doc/pi-autoresearch
 /doc/ralph
+/doc/pi-autoresearch
 
-# Pi autoresearch artifacts
-.pi/
+# Retain ignores for artifacts created by retired autoresearch versions.
 .autoresearch/
+autoresearch.contract.json
+autoresearch.jsonl
+autoresearch.md
+autoresearch.plan.md
+autoresearch.sh
+autoresearch.checks.sh
+
+.pi/
 .pi-cache-friendly/
 .reasonix/truncated-results/
 
@@ -28,12 +35,6 @@ Thumbs.db
 .mekann/cacheable-context/
 .mekann/output-budget/
 /memo.md
-autoresearch.contract.json
-autoresearch.jsonl
-autoresearch.md
-autoresearch.plan.md
-autoresearch.sh
-autoresearch.checks.sh
 
 # Local evaluation artifacts
 /evaluate_maintenance.sh

@@ -10,11 +10,11 @@
 |---|---|
 | [`core`](./core/) | `cache-friendly-prompt`, `agent-guidelines`, `model-optimizer` |
 | [`safety`](./safety/) | `sandbox`, `modes`, `git-safety` |
-| [`autonomy`](./autonomy/) | `goal`, `subagent`, `review-fixer`, `autoresearch` |
+| [`autonomy`](./autonomy/) | `goal`, `subagent`, `review-fixer` |
 | [`context`](./context/) | `context-tracker`, `command-normalization`, `output-gate`, `context-ledger`, `cacheable-context` |
 | [`utils`](./utils/) | `zip-repo`, `codex-limits`, `codex-web-search`, `dashboard`, `terminal-shortcuts`, `settings-editor`, `startup-clear`, `issue-worktree`, `issue-orchestration`, `issue-workflow`, `voice-notify`, `pr-workflow`, `verify`, `review-quality` |
 
-ほとんどの feature は `mekann.json` で個別に `enabled: false` で無効化でき、未設定は enabled 扱いで読み込まれます。例外として、`core` suite（`cache-friendly-prompt`, `agent-guidelines`, `model-optimizer`）と `startup-clear` はフラグによらず常に読み込まれ、`autoresearch` は明示的な `enabled: true` が必要です。
+ほとんどの feature は `mekann.json` で個別に `enabled: false` で無効化でき、未設定は enabled 扱いで読み込まれます。例外として、`core` suite（`cache-friendly-prompt`, `agent-guidelines`, `model-optimizer`）と `startup-clear` はフラグによらず常に読み込まれます。
 
 ## 読み込み順の意図
 

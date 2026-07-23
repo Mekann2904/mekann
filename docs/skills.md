@@ -11,7 +11,7 @@ Skill はすべてを常時 system prompt に出すと context を圧迫する�
 - Pi 本体の skill 自動表示は全 skill で無効化し、Mekann の `skill-surface` が表示対象を制御します。
 - `mekann-settings` の `Mekann Skills` で skill ごとに表示 on/off を切り替えられます。
 - デフォルト on: Matt Pocock 由来の engineering skill と cursor 由来の `thermo-nuclear-code-quality-review`, `cli-for-agents`
-- デフォルト off: `mekann-pi-skill-dev`, `autoresearch-create`, GSAP 系 skill
+- デフォルト off: `mekann-pi-skill-dev`, GSAP 系 skill
 - off でも `/skill:<name>` で明示起動できます。
 
 ## まずどの skill を使うか
@@ -30,7 +30,6 @@ Skill はすべてを常時 system prompt に出すと context を圧迫する�
 | agent が安全に実行できる CLI を設計・レビューしたい | [`cli-for-agents`](../mekann/skills/cli-for-agents/SKILL.md) | `thermo-nuclear-code-quality-review`, `tdd` |
 | GSAP animation を実装・レビューしたい | [`gsap-core`](../mekann/skills/gsap-core/SKILL.md) | `gsap-react`, `gsap-scrolltrigger`, `gsap-timeline`, `gsap-performance` |
 | engineering skills の初期設定をしたい | [`setup-matt-pocock-skills`](../mekann/skills/setup-matt-pocock-skills/SKILL.md) | `triage`, `to-prd`, `to-issues` |
-| 反復実験で最適化したい | [`autoresearch-create`](../mekann/skills/autoresearch-create/SKILL.md) | 通常は目的整理後に使う |
 | 複数セッションで体系的に学びたい | [`teach`](../mekann/skills/teach/SKILL.md) | `research` |
 | 日本語の記事や技術文書を執筆・推敲・再構成したい | [`writing-assistant`](../mekann/skills/writing-assistant/SKILL.md) | 日本語技術文書・認知リズムの reference unit、`research` |
 | Mekann の skill 自体を保守したい | [`mekann-pi-skill-dev`](../mekann/skills/mekann-pi-skill-dev/SKILL.md) | README / docs 更新 |
@@ -91,14 +90,6 @@ triage → grill-with-docs / diagnose / to-issues / tdd
 - bug は再現できるなら `diagnose` に進める。
 - 大きすぎる issue は `to-issues` で分割する。
 - `ready-for-agent` になった issue は `tdd` で実装しやすい。
-
-### 高自律な最適化を走らせる
-
-```text
-grill-with-docs / to-prd で目的を固める → autoresearch-create
-```
-
-`autoresearch-create` は通常の実装 skill ではなく、高自律な反復実験ループ用です。数値指標、benchmark command、対象ファイル、禁止事項が明確なときに使います。単発の実装、仕様が曖昧な product decision、人間の判断が主な作業には向きません。
 
 ## Skill 一覧
 
@@ -270,22 +261,6 @@ Sub mode は main mode と同じ挙動になりました。implementation-delega
 - 出力: 編集済み文書、主な変更点、未解決の事実確認事項、実行した文書チェック。
 - 重要な注意: 事実、コード、コマンド、API 名、規範表現を黙って変更しない。大幅な再構成は先に構成案を示して確認する。
 
-### 高自律・実験系 skill
-
-#### autoresearch-create
-
-- 詳細: [`mekann/skills/autoresearch-create/SKILL.md`](../mekann/skills/autoresearch-create/SKILL.md)
-- できること: 指標と benchmark に基づき、候補を試し、測定し、記録しながら反復最適化する autoresearch loop を開始する。
-- 使うタイミング: 数値指標で改善を測れるとき。複数の実験案を反復比較したいとき。benchmark と checks が agent 実行可能なとき。
-- 入力: 目的、主指標、方向、benchmark command、対象ファイル、禁止事項、制約。
-- 出力: `autoresearch.md`, `autoresearch.sh`, 実験ログ、採用または破棄された実験結果。
-- 次に使う skill: 通常はなし。目的が曖昧なら先に `grill-with-docs` や `to-prd` を使う。
-- 重要な注意: `/autoresearch on` または `/autoresearch <目的>` で autoresearch mode が有効なときだけ使う。通常の単発実装には使わない。
-- 呼び出し例:
-  - 「/autoresearch on」後に「この benchmark を最適化して」
-  - 「この処理時間を autoresearch で改善して」
-  - 「指標を決めて反復実験ループを始めて」
-
 ### 初期設定 skill
 
 #### GSAP skills
@@ -362,7 +337,6 @@ bug fix では `diagnose` が再現ループを作り、`tdd` がその学びを
 - `tdd` で全テストを先に書く。1テストずつ red-green-refactor する。
 - 再現ループなしに `diagnose` を進める。まず feedback loop を作る。
 - prototype を production code として放置する。削除または吸収する。
-- `autoresearch-create` を単発実装に使う。反復測定できる最適化に限定する。
 - `mekann-pi-skill-dev` で `vendor/` を直接編集する。Pi 向け編集は `mekann/skills/` 側で行う。
 
 ## maintainer 向けメモ

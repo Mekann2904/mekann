@@ -37,9 +37,8 @@ export const POST_COMPACTION_RESTORE_FRAGMENT_ID =
 /**
  * Priority for the restore fragment.
  *
- * Sits between the goal runtime-state fragment (700) and the autoresearch
- * active-context fragment (750) so it does not collide with any existing
- * dynamic runtime-state priority. model-optimizer's short hint lives at 180
+ * Runs after the goal runtime-state fragment (700) without colliding with
+ * existing dynamic runtime-state priorities. model-optimizer's short hint lives at 180
  * (a different fragment), so the two coexist without conflict.
  */
 export const POST_COMPACTION_RESTORE_PRIORITY = 720;

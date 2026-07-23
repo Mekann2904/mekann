@@ -61,13 +61,10 @@ function isThinkingLevel(value: unknown): value is ThinkingLevel {
 /** Provider + modelId pair identifying a specific model. */
 export interface ModelRef { provider: string; modelId: string; }
 
-/** All mode names managed by modes extension. */
-export type ModeName = "main" | "read_only" | "auto" | "sub";
-
 /**
  * Every mode/profile whose model + thinking preferences are stored under the
  * `modes` feature. This is the superset of:
- * - runtime-switchable collaboration modes (main/read_only/auto/sub — see
+ * - runtime-switchable collaboration modes (main/read_only/sub — see
  *   {@link MekannMode}), AND
  * - Work Pi profiles (review_fix, issue) whose model is applied once at the
  *   launch of a separate Pi session (no runtime transition).
@@ -75,7 +72,7 @@ export type ModeName = "main" | "read_only" | "auto" | "sub";
  * Single source of truth so the settings schema, the on-disk config shape, and
  * the normalizer never drift on which profiles exist.
  */
-export const MODE_PROFILE_NAMES = ["main", "read_only", "auto", "sub", "review_fix", "issue"] as const;
+export const MODE_PROFILE_NAMES = ["main", "read_only", "sub", "review_fix", "issue"] as const;
 
 /** A mode/profile name that can carry a model + thinking preference. */
 export type ModeProfileName = (typeof MODE_PROFILE_NAMES)[number];
@@ -194,7 +191,7 @@ export function updateConfigField<T>(
 
 
 /** Runtime mode managed by modes extension. */
-export type MekannMode = "main" | "read_only" | "auto" | "sub";
+export type MekannMode = "main" | "read_only" | "sub";
 
 export function isReadOnlyMode(mode: MekannMode): boolean {
 	return mode === "read_only";
@@ -214,8 +211,6 @@ export interface ModesState {
 	savedMainModel?: ModelRef;
 	/** Snapshot of the main-mode thinking level before entering a non-main mode (for fallback restore). */
 	savedMainThinking?: ThinkingLevel;
-	/** Mode to restore after leaving auto mode. */
-	modeBeforeAuto?: Exclude<MekannMode, "auto">;
 }
 
 export function createInitialState(modelConfig?: ModesConfig): ModesState {

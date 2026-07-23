@@ -106,7 +106,6 @@ GitHub Actions runs the production typecheck and the listed module test suites o
 - `sandbox-macos`: macOS (full integration with sandbox-exec)
 - `zip-repo`: Ubuntu (unit tests)
 - `subagent`: Ubuntu (unit tests + typecheck)
-- `autoresearch`: Ubuntu (unit tests)
 - `goal`: Ubuntu (unit tests)
 - `output-gate`: Ubuntu (unit tests)
 - `ledger`: Ubuntu (unit tests)
@@ -122,7 +121,6 @@ prepush = typecheck + CI prepare + workflow checks + module tests (parallel)
   ├── sandbox tests
   ├── subagent tests
   ├── zip-repo tests
-  ├── autoresearch fast tests
   ├── goal tests
   ├── output-gate tests
   └── ledger tests
@@ -163,17 +161,11 @@ hook from a linked worktree, git exports **`GIT_DIR`** (pointing at the worktree
 git dir) into the hook environment. Child `git` processes spawned by tests honor
 `GIT_DIR` over their cwd, so `git init`/`git add`/`git commit` operate on the
 developer's real repo — creating bogus `"initial"` commits that delete hundreds of
-files and polluting the shared config. The autoresearch vitest setup
-(`mekann/autonomy/autoresearch/vitest.setup.ts`) deletes the inherited `GIT_*`
-context variables (`GIT_DIR`, `GIT_WORK_TREE`, ...) so test git commands always
-operate on the explicit temp cwd, even inside a pre-push hook.
+files and polluting the shared config.
 
-Instead, provide the test identity through **environment variables**. They are
-inherited by every child `git` process (including production `gitAutoCommit` in
-`autoresearch/runner.ts`, which inherits `process.env`) without writing anywhere:
+Provide test identity through environment variables so child `git` processes inherit it without modifying configuration:
 
 ```ts
-// In a vitest setup file (see mekann/autonomy/autoresearch/vitest.setup.ts):
 process.env.GIT_AUTHOR_NAME = "Test User";
 process.env.GIT_AUTHOR_EMAIL = "test@example.com";
 process.env.GIT_COMMITTER_NAME = "Test User";

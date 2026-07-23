@@ -38,4 +38,4 @@
 
 Patch proposal は、存在するだけでは信頼されません。`PatchProposalPolicy` と patch proposal intake が、scope・base hash・authority・semantic metadata・validation hint を確認します。
 
-Autoresearch では直接 apply せず、candidate escrow に渡して評価します。
+Patch proposal は policy 検証後に workspace へ apply します。

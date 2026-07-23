@@ -116,7 +116,7 @@ describe("safeRepoRelativePath", () => {
 			expect(safeRepoRelativePath(dir)).toBeUndefined();
 			expect(safeRepoRelativePath(`${dir}/config`)).toBeUndefined();
 		}
-		// .pi explicitly: subagent/autoresearch now share this protection
+		// .pi is explicitly protected for subagent patches
 		expect(safeRepoRelativePath(".pi")).toBeUndefined();
 		expect(safeRepoRelativePath(".pi/state.json")).toBeUndefined();
 		expect(safeRepoRelativePath(".codex")).toBeUndefined();

@@ -1,6 +1,6 @@
 /**
  * Atomic JSONL line appender shared by the cross-process JSONL writers in the
- * context ledger, output gate, command-normalization, and autoresearch
+ * context ledger, output gate, and command-normalization
  * ledgers (issue #139).
  *
  * ## Why this exists
@@ -325,7 +325,7 @@ export async function atomicReplaceFile(target: string, data: string | Buffer, o
 }
 
 // ---------------------------------------------------------------------------
-// Sync variants (autoresearch ledgers, whose callers use a sync API)
+// Sync variants for callers that use a synchronous API
 // ---------------------------------------------------------------------------
 
 /**

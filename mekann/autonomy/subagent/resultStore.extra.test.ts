@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { SubagentResultStore, assertValidResultId, resultSummary } from "./resultStore.js";
@@ -100,15 +100,22 @@ describe("SubagentResultStore: status transitions", () => {
     } finally { rmSync(dir, { recursive: true }); }
   });
 
-  it("markEscrowed sets escrow_record", () => {
+
+  it("loads retired autoresearch escrow records as needs_review", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "srs-"));
     try {
       const store = new SubagentResultStore(dir);
       const stored = store.save(agent, observation());
-      store.markEscrowed(stored.result_id, { system: "autoresearch", candidate_id: "c1", contract_hash: "hash", escrowed_at: Date.now() });
-      const loaded = store.load(stored.result_id);
-      expect(loaded.status).toBe("escrowed");
-      expect(loaded.escrow_record).toBeDefined();
+      const jsonPath = path.join(store.dir, `${stored.result_id}.json`);
+      writeFileSync(jsonPath, JSON.stringify({
+        ...stored,
+        status: "escrowed",
+        escrow_record: { system: "autoresearch", candidate_id: "c1" },
+      }));
+      const loaded = new SubagentResultStore(dir).load(stored.result_id);
+      expect(loaded.status).toBe("needs_review");
+      expect(loaded.review_record?.reason).toBe("retired_autoresearch_escrow");
+      expect(loaded).not.toHaveProperty("escrow_record");
     } finally { rmSync(dir, { recursive: true }); }
   });
 
@@ -136,7 +143,7 @@ describe("SubagentResultStore: status transitions", () => {
     } finally { rmSync(dir, { recursive: true }); }
   });
 
-  it("markApplied clears reject/escrow/review fields", () => {
+  it("markApplied clears rejection and review state", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "srs-"));
     try {
       const store = new SubagentResultStore(dir);

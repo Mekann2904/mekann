@@ -6,7 +6,7 @@
 
 - 「この目的をしばらく追い続けてほしい」
 - metric-driven な実験ではない
-- autoresearch ほど重い候補評価ループは不要
+- 継続的に目的を追跡したい
 
 ## Command
 
@@ -25,4 +25,4 @@
 
 ## 境界
 
-`goal` は experiment contract ではありません。候補生成・繰り返し評価・acceptance decision が必要な場合は [`autoresearch`](../autoresearch/) を使います。
+`goal` は main mode 上で一般目的、調査、反復作業を継続します。専用の metric contract や candidate escrow は持ちません。評価には通常の checks、Subagent による fresh review、human review を使用します。

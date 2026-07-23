@@ -26,7 +26,7 @@ describe("buildRestoreFragment", () => {
 		expect(f.content).toContain("<mekann_session_context");
 	});
 
-	it("priority is unique among existing runtime-state fragments (goal 700, autoresearch 750, model-optimizer hint 180)", () => {
+	it("priority is unique among existing runtime-state fragments (goal 700, model-optimizer hint 180)", () => {
 		expect(POST_COMPACTION_RESTORE_PRIORITY).toBe(720);
 		expect([180, 700, 750]).not.toContain(POST_COMPACTION_RESTORE_PRIORITY);
 	});

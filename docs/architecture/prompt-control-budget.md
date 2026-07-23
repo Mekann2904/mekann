@@ -48,7 +48,6 @@ Current and candidate examples:
 - destructive git operation blocking
 - GitHub PR mergeability inspection
 - issue dependency gate
-- autoresearch acceptance policy
 - output-gate
 - command-normalization
 - patch proposal intake

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, unlinkSync, renameSync, statSync, openSync, closeSync } from "node:fs";
 import * as fsp from "node:fs/promises";
 import path from "node:path";
-import type { AgentMetadata, ApplyRecord, EscrowRecord, RejectReason, ResultFilter, SemanticApplyLogEntry, StoredResultStatus, StoredSubagentResult, SubagentResultV1 } from "./types.js";
+import type { AgentMetadata, ApplyRecord, RejectReason, ResultFilter, SemanticApplyLogEntry, StoredResultStatus, StoredSubagentResult, SubagentResultV1 } from "./types.js";
 import { tryParseSubagentResult } from "./resultSchema.js";
 import { bestEffort, bestEffortAsync, quarantineCorrupt } from "../../utils/best-effort.js";
 import { isPatchRefUnderDir } from "./pathSafety.js";
@@ -13,7 +13,29 @@ export function assertValidResultId(id: string): void {
   if (!/^sar_[a-z0-9]+_[0-9]+$/i.test(id)) throw new Error(`Invalid result_id: ${id}`);
 }
 
-const VALID_STATUSES = new Set<StoredResultStatus>(["pending", "escrowed", "applying", "applied", "rejected", "needs_review", "superseded"]);
+const VALID_STATUSES = new Set<StoredResultStatus>(["pending", "applying", "applied", "rejected", "needs_review", "superseded"]);
+
+/**
+ * Convert records written by the retired autoresearch escrow adapter before
+ * validating the current stored-result schema. This intentionally does not
+ * rewrite during read: result loading is side-effect free, and the next normal
+ * status transition persists the migrated shape atomically.
+ */
+function migrateLegacyStoredResult(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") return raw;
+  const record = raw as Record<string, unknown>;
+  if (record.status !== "escrowed") return raw;
+  const { escrow_record, ...current } = record;
+  return {
+    ...current,
+    status: "needs_review",
+    review_record: {
+      result_id: record.result_id,
+      reason: "retired_autoresearch_escrow",
+      details: escrow_record,
+    },
+  };
+}
 
 /**
  * How long an apply lock file is considered owned before a later process may
@@ -134,8 +156,9 @@ export class SubagentResultStore {
 
   /** Pure validator over already-parsed raw + pre-resolved patch payload. */
   private validateStoredResult(raw: unknown, expectedId: string | undefined, patch: GatheredPatch): StoredSubagentResult {
-    if (!raw || typeof raw !== "object") throw new Error("Invalid stored result: not an object");
-    const s = raw as StoredSubagentResult;
+    const migrated = migrateLegacyStoredResult(raw);
+    if (!migrated || typeof migrated !== "object") throw new Error("Invalid stored result: not an object");
+    const s = migrated as StoredSubagentResult;
     assertValidResultId(s.result_id);
     if (expectedId && s.result_id !== expectedId) throw new Error(`Stored result id mismatch: ${expectedId} != ${s.result_id}`);
     if (!VALID_STATUSES.has(s.status)) throw new Error(`Invalid stored result status: ${String(s.status)}`);
@@ -260,8 +283,7 @@ export class SubagentResultStore {
   /** Compatibility wrapper: unconditional pending-or-not transition. Prefer
    * {@link tryMarkApplying} from apply paths. */
   markApplying(resultId: string): void { const s = this.load(resultId); s.status = "applying"; s.applying_at = Date.now(); this.saveStored(s); }
-  markApplied(resultId: string, applyRecord: ApplyRecord): void { const s = this.load(resultId); s.status = "applied"; s.apply_record = applyRecord; delete s.applying_at; delete s.escrow_record; delete s.reject_reason; delete s.reject_details; delete s.review_record; delete s.superseded_reason; this.saveStored(s); }
-  markEscrowed(resultId: string, escrowRecord: EscrowRecord): void { const s = this.load(resultId); s.status = "escrowed"; s.escrow_record = escrowRecord; delete s.applying_at; delete s.apply_record; delete s.reject_reason; delete s.reject_details; delete s.review_record; delete s.superseded_reason; this.saveStored(s); }
+  markApplied(resultId: string, applyRecord: ApplyRecord): void { const s = this.load(resultId); s.status = "applied"; s.apply_record = applyRecord; delete s.applying_at; delete s.reject_reason; delete s.reject_details; delete s.review_record; delete s.superseded_reason; this.saveStored(s); }
   markRejected(resultId: string, reason: RejectReason, details?: unknown): void { const s = this.load(resultId); s.status = "rejected"; s.reject_reason = reason; s.reject_details = details; delete s.applying_at; delete s.apply_record; delete s.review_record; delete s.superseded_reason; this.saveStored(s); }
   markNeedsReview(resultId: string, reason: string, details?: unknown): void { const s = this.load(resultId); s.status = "needs_review"; s.review_record = { result_id: resultId, reason, details }; delete s.applying_at; delete s.apply_record; delete s.reject_reason; delete s.reject_details; delete s.superseded_reason; this.saveStored(s); }
   async recoverStaleApplying(maxAgeMs = 10 * 60 * 1000): Promise<number> { let count = 0; for (const s of await this.list({ status: "applying" })) { if ((s.applying_at ?? s.created_at) + maxAgeMs < Date.now()) { this.markNeedsReview(s.result_id, "stale_applying", { applying_at: s.applying_at }); count++; } } return count; }

@@ -14,13 +14,6 @@ const EXPECTED_TOOLS_BY_MODULE: Record<string, string[]> = {
 	],
 	"autonomy/review-fixer/index.ts": ["review_fixer"],
 	"utils/issue-workflow/index.ts": ["issue_workflow"],
-	"autonomy/autoresearch/toolsRegistration.ts": [
-		"autoresearch_evaluate_query", "autoresearch_init", "autoresearch_run", "autoresearch_log",
-		"autoresearch_plan", "autoresearch_approve", "autoresearch_candidate_escrow",
-		"autoresearch_list_candidates", "autoresearch_show_candidate", "autoresearch_reject_candidate",
-		"autoresearch_apply_candidate", "autoresearch_suggest_subagents",
-		"autoresearch_apply_candidate_isolated", "autoresearch_run_contract",
-	],
 };
 
 const EXPECTED_COMMANDS_BY_MODULE: Record<string, string[]> = {
@@ -28,7 +21,6 @@ const EXPECTED_COMMANDS_BY_MODULE: Record<string, string[]> = {
 	"safety/sandbox/index.ts": ["sandbox"],
 	"autonomy/goal/command.ts": ["goal"],
 	"autonomy/subagent/index.ts": ["agents", "wait-agent", "focus-agent", "close-agent"],
-	"autonomy/autoresearch/commands.ts": ["autoresearch"],
 	"utils/zip-repo/index.ts": ["zip"],
 	"utils/issue/extension.ts": ["issue", "issue-create", "clean-issue-worktrees"],
 	"utils/pr-workflow/index.ts": ["pr-check"],
@@ -45,7 +37,6 @@ const EXPECTED_PROMPT_PROVIDERS_BY_MODULE: Record<string, string[]> = {
 	"autonomy/goal/goalPromptProvider.ts": ["goal"],
 	"autonomy/subagent/promptProvider.ts": ["subagent"],
 	"autonomy/review-fixer/promptProvider.ts": ["review-fixer"],
-	"autonomy/autoresearch/promptProvider.ts": ["autoresearch"],
 };
 
 function read(rel: string): string {
@@ -103,10 +94,10 @@ describe("mekann integrated extension", () => {
 		expect(source.indexOf("gitSafety(pi);")).toBeGreaterThan(source.indexOf("modes(pi);"));
 	});
 
-	it("keeps autonomy modules in goal, subagent, review-fixer, autoresearch order", () => {
+	it("keeps autonomy modules in goal, subagent, review-fixer order", () => {
 		const source = read("mekann/autonomy/index.ts");
-		const calls = [...source.matchAll(/await (goal|subagent|reviewFixer|autoresearch)\(pi\);/g)].map((m) => m[1]);
-		expect(calls).toEqual(["goal", "subagent", "reviewFixer", "autoresearch"]);
+		const calls = [...source.matchAll(/await (goal|subagent|reviewFixer)\(pi\);/g)].map((m) => m[1]);
+		expect(calls).toEqual(["goal", "subagent", "reviewFixer"]);
 	});
 
 	it("keeps tool ownership separated across modules", () => {
@@ -121,7 +112,7 @@ describe("mekann integrated extension", () => {
 		}
 	});
 
-	it("does not call action methods while goal/autoresearch extensions are loading", async () => {
+	it("does not call action methods while extensions are loading", async () => {
 		const makePi = () => ({
 			registerFlag() {},
 			getFlag() { return true; },
@@ -134,11 +125,9 @@ describe("mekann integrated extension", () => {
 			setActiveTools() { throw new Error("action method called during extension loading"); },
 		});
 		const goal = await import("./autonomy/goal/index.js");
-		const autoresearch = await import("./autonomy/autoresearch/index.js");
 		const outputGate = await import("./context/output-gate/index.js");
 		const contextLedger = await import("./context/ledger/index.js");
 		expect(() => goal.default(makePi() as any)).not.toThrow();
-		expect(() => autoresearch.default(makePi() as any)).not.toThrow();
 		expect(() => outputGate.default(makePi() as any)).not.toThrow();
 		expect(() => contextLedger.default(makePi() as any)).not.toThrow();
 	});

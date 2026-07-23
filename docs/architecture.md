@@ -31,7 +31,7 @@ mekann
 |---|---|---|
 | `core` | prompt の土台、常時ガイドライン、provider-aware 最適化 | `prompt-core`, `cache-friendly-prompt`, `agent-guidelines`, `model-optimizer` |
 | `safety` | tool 実行や collaboration mode の安全境界 | `sandbox`, `modes`, `policy-core`, `git-safety` |
-| `autonomy` | 長い作業、並列作業、継続目標、反復研究 | `goal`, `subagent`, `review-fixer`, `autoresearch` |
+| `autonomy` | 長い作業、並列作業、継続目標、反復研究 | `goal`, `subagent`, `review-fixer` |
 | `context` | runtime context management と大出力制御 | `context-tracker`, `command-normalization`, `output-gate`, `context-ledger`, `cacheable-context` |
 | `utils` | human-facing helper と terminal integration | `issue`, `dashboard`, `codex-limits`, `codex-web-search`, `terminal-shortcuts`, `settings-editor`, `pr-workflow`, `verify`, `review-quality`, `zip-repo` |
 
@@ -62,6 +62,5 @@ Mekann は「自律性を上げるほど safety feature が必要になる」と
 - `sandbox` は `bash` tool execution を制御する。
 - `modes` は read-only などの collaboration mode を扱う。
 - `subagent` result は trust transition を通るまで信頼しない。
-- `autoresearch` は safety boundary でだけ user control に戻る。
 
 Security reporting とサポート範囲は [SECURITY.md](../SECURITY.md) を参照してください。

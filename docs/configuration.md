@@ -188,22 +188,6 @@ Pi 上では `/mekann-settings` を使って設定を確認・編集できます
 
 goal model tools を LLM に見せる条件。`toolSurface` は `slash`（`/goal` command のみ）、`active`（active goal 中のみ）、`always`（常時）のいずれかです。`maxObjectiveLength`（1〜200000、既定 100000）は goal objective の最大文字数で、200000 の sanity ceiling でクランプされます。objective は continuation 毎にプロンプトに埋め込まれるため、上限は context/cache コストを抑えるため控えめに設定されています。`compactReserveTokens`（0〜1000000、既定 16384）は goal continuation を送る前に compaction を発動する context token 予約幅で、Pi の `CompactionSettings.reserveTokens` と合わせて調整してください。いずれも restart 不要です。
 
-### Autoresearch
-
-```json
-{
-  "version": 1,
-  "features": {
-    "autoresearch": {
-      "enabled": true,
-      "toolSurface": "active"
-    }
-  }
-}
-```
-
-autoresearch model tools を LLM に見せる条件。`toolSurface` は `active`（`/autoresearch on` 実行中のみ）または `always`（常時）です。
-
 ### Review Fixer
 
 ```json
@@ -446,4 +430,4 @@ terminal shortcut handling を有効にします。`false` の場合、shortcut 
 
 ## Registered features
 
-現在 registry にある feature settings（`mekann/settings/registry.ts` の `mekannSettingsSchemas` 順）は、`modes`、`sandbox`、`goal`、`subagent`、`autoresearch`、`review-fixer`、`command-normalization`、`output-gate`、`context-ledger`、`context-tracker`、`cacheable-context`、`context-control`、`codex-shared`、`codex-web-search`、`codex-limits`、`dashboard`、`zip-repo`、`terminal-shortcuts`、`settings-editor`、`skills`、`model-optimizer`、`terminal`、`issue` の 23 feature です。詳細な key、default、validation は各 `settingsSchema.ts` を正とします。
+現在 registry にある feature settings（`mekann/settings/registry.ts` の `mekannSettingsSchemas` 順）は、`modes`、`sandbox`、`goal`、`subagent`、`review-fixer`、`command-normalization`、`output-gate`、`context-ledger`、`context-tracker`、`cacheable-context`、`context-control`、`codex-shared`、`codex-web-search`、`codex-limits`、`dashboard`、`zip-repo`、`terminal-shortcuts`、`settings-editor`、`commit-rewrite`、`skills`、`model-optimizer`、`terminal`、`issue`、`issue-workflow`、`pr-workflow` の 25 feature です。詳細な key、default、validation は各 `settingsSchema.ts` を正とします。

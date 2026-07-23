@@ -1,6 +1,5 @@
 #!/bin/bash
 # Parallel prepush: runs typecheck + fast module tests concurrently.
-# Full CI should run npm test to include slow autoresearch tests.
 #
 # Concurrency is capped (default 3) to avoid CPU oversubscription: each test
 # module spawns its own Vitest workers (~CPU-1), so 14 unbounded jobs on an
@@ -66,7 +65,6 @@ declare -A names=( [typecheck]="npm run typecheck"
   [sandbox]="npm run test:sandbox"
   [subagent]="npm run test:subagent"
   [zip-repo]="npm run test:zip-repo"
-  [autoresearch-fast]="npm run test:autoresearch:fast"
   [goal]="npm run test:goal"
   [output-gate]="npm run test:output-gate"
   [ledger]="npm run test:ledger" )

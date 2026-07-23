@@ -14,7 +14,6 @@ PACKAGES=(
   mekann/safety/sandbox
   mekann/autonomy/subagent
   mekann/utils/zip-repo
-  mekann/autonomy/autoresearch
   mekann/autonomy/goal
   mekann/context/output-gate
 )
