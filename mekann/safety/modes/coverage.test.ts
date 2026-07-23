@@ -168,7 +168,22 @@ describe("index.ts: persisted model restore failures", () => {
 	}));
 });
 
-describe("index.ts: startup flag main restore snapshots", () => {
+describe("index.ts: startup mode flags", () => {
+	it("applies the configured sub profile on --sub startup", async () => withModesConfig({
+		models: { sub: { provider: "openai", modelId: "gpt-5" } },
+		thinking: { sub: "high" },
+	}, async () => {
+		const mock = createMockApi();
+		mock._flags = { sub: true };
+		await loadExtension(mock);
+		const ctx = createMockCtx();
+
+		await mock._hooks.session_start({}, ctx);
+
+		expect(mock.setModel).toHaveBeenCalledWith({ provider: "openai", id: "gpt-5" });
+		expect(mock.setThinkingLevel).toHaveBeenCalledWith("high");
+	}));
+
 	it("restores initial main model after --read-only startup when models.main is unset", async () => withModesConfig({
 		models: { read_only: { provider: "openai", modelId: "gpt-5" } },
 	}, async () => {
