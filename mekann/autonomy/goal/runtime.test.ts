@@ -131,7 +131,8 @@ describe("GoalRuntime", () => {
     expect(afterSameTimestamp.tokens_used).toBe(450);
     expect(afterSameTimestamp.time_used_seconds).toBe(8);
 
-    // Exact duplicate event should not be double-counted.
+    // A distinct message with identical metadata remains distinct because Pi
+    // provides no stable event id and object identity is the safest seam.
     runtime.onMessageEnd(
       {
         message: {
@@ -143,9 +144,32 @@ describe("GoalRuntime", () => {
       ctx,
     );
 
-    const afterExactDup = store.getGoal()!;
-    expect(afterExactDup.tokens_used).toBe(450);
-    expect(afterExactDup.time_used_seconds).toBe(8);
+    const afterSameMetadata = store.getGoal()!;
+    expect(afterSameMetadata.tokens_used).toBe(750);
+    expect(afterSameMetadata.time_used_seconds).toBe(8);
+  });
+
+  it("counts distinct messages even when timestamp and usage are identical", () => {
+    const { runtime, ctx, store } = setupRuntimeWithGoal();
+    runtime.onTurnStart({ turnIndex: 0 }, ctx);
+    const first = { role: "assistant", timestamp: 123, usage: { input: 100, output: 10, cacheRead: 0 } };
+    const second = { role: "assistant", timestamp: 123, usage: { input: 100, output: 10, cacheRead: 0 } };
+
+    runtime.onMessageEnd({ message: first }, ctx);
+    runtime.onMessageEnd({ message: second }, ctx);
+
+    expect(store.getGoal()!.tokens_used).toBe(220);
+  });
+
+  it("dedupes the same message object if Pi emits it twice", () => {
+    const { runtime, ctx, store } = setupRuntimeWithGoal();
+    runtime.onTurnStart({ turnIndex: 0 }, ctx);
+    const message = { role: "assistant", timestamp: 123, usage: { input: 100, output: 10, cacheRead: 0 } };
+
+    runtime.onMessageEnd({ message }, ctx);
+    runtime.onMessageEnd({ message }, ctx);
+
+    expect(store.getGoal()!.tokens_used).toBe(110);
   });
 
   it("dedupes message usage using inputTotal when input is absent", () => {
@@ -219,9 +243,9 @@ describe("GoalRuntime", () => {
     expect(runtime.continuation_active).toBe(false);
   });
 
-  // ─── 5. interrupt pauses active goal ─────────────────────────
+  // ─── 5. interrupt accounts progress without changing user state ─────────
 
-  it("interrupt pauses active goal (aborted stopReason)", () => {
+  it("interrupt leaves an active goal resumable (aborted stopReason)", () => {
     const { runtime, ctx, store } = setupRuntimeWithGoal();
 
     runtime.onTurnStart({ turnIndex: 0 }, ctx);
@@ -238,9 +262,9 @@ describe("GoalRuntime", () => {
     );
 
     const goal = store.getGoal()!;
-    expect(goal.status).toBe("paused");
+    expect(goal.status).toBe("active");
     expect(runtime.active_goal_id).toBeNull();
-    // Wall-clock should have been accounted before pause
+    // Wall-clock should have been accounted before stopping the turn
     expect(goal.time_used_seconds).toBe(3);
   });
 
@@ -774,9 +798,9 @@ describe("GoalRuntime", () => {
     expect(goal!.tokens_used).toBe(50); // only output, input defaults to 0
   });
 
-  // ── 40. onAgentEnd pauses on aborted assistant ──
+  // ── 40. onAgentEnd preserves status on aborted assistant ──
 
-  it("onAgentEnd pauses goal when assistant was aborted", () => {
+  it("onAgentEnd leaves goal active when assistant was aborted", () => {
     const { runtime, store, ctx } = setupRuntimeWithGoal(1000);
     runtime.onTurnStart({ turnIndex: 0 }, ctx);
     runtime.onAgentEnd(
@@ -784,7 +808,22 @@ describe("GoalRuntime", () => {
       ctx,
     );
     const goal = store.getGoal();
-    expect(goal!.status).toBe("paused");
+    expect(goal!.status).toBe("active");
+  });
+
+  it("does not apply a settled error to a goal replaced after agent_end", () => {
+    const { runtime, store, ctx } = setupRuntimeWithGoal(1000);
+    runtime.onTurnStart({ turnIndex: 0 }, ctx);
+    runtime.onAgentEnd(
+      { messages: [{ role: "assistant", stopReason: "error", errorMessage: "terminal failure" }] },
+      ctx,
+    );
+    const replacement = store.replaceGoal("test-thread-1", "Replacement");
+    runtime.onExternalSet(replacement);
+
+    runtime.onAgentSettled();
+
+    expect(store.getGoal()).toMatchObject({ goal_id: replacement.goal_id, status: "active" });
   });
 
   // ─── Goal event callback ──────────────────────────────────────
@@ -812,8 +851,10 @@ describe("GoalRuntime", () => {
       ctx,
     );
 
-    expect(onGoalEvent).toHaveBeenCalledWith("budget_exhausted", expect.objectContaining({
-      status: "budget_limited",
+    expect(onGoalEvent).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "budget_exhausted",
+      attribution: "turn",
+      goal: expect.objectContaining({ status: "budget_limited" }),
     }));
   });
 
@@ -885,6 +926,21 @@ describe("GoalRuntime", () => {
       expect(runtime.continuation_active).toBe(false);
       // No continuation sent
       expect(pi.sendUserMessage).not.toHaveBeenCalled();
+    });
+
+    it("drops a stale continuation when the goal is replaced during compaction", () => {
+      const { runtime, pi, store } = setupRuntimeWithGoal();
+      let onComplete: (() => void) | undefined;
+      const ctx = createHighContextCtx(200_000, 190_000);
+      ctx.compact.mockImplementation((opts: any) => { onComplete = opts.onComplete; });
+
+      runtime.maybeContinueIfIdle(ctx);
+      const replacement = store.replaceGoal("test-thread-1", "Replacement objective");
+      runtime.onExternalSet(replacement);
+      onComplete!();
+
+      expect(pi.sendUserMessage).not.toHaveBeenCalled();
+      expect(runtime.continuation_active).toBe(false);
     });
 
     it("resets continuation_active when goal is no longer active after compaction", () => {

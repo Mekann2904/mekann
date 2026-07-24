@@ -16,7 +16,7 @@ export interface ModelManagerOptions {
 }
 
 /** Pi thinking levels. Kept here so model/thinking persistence is not owned by modes. */
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface ModeModelPersistenceOptions<Mode extends string> {
 	pi: Pick<ExtensionAPI, "on" | "getThinkingLevel">;

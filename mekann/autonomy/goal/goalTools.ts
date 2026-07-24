@@ -67,9 +67,6 @@ export function registerGoalTools(deps: GoalToolDeps): void {
     status: Type.Union([Type.Literal("complete"), Type.Literal("blocked")], {
       description: "Set to 'complete' only when fully achieved; set to 'blocked' only after the strict three-consecutive-goal-turn blocked audit is satisfied",
     }),
-    expected_goal_id: Type.Optional(
-      Type.String({ description: "Optional: expected goal_id for optimistic concurrency" }),
-    ),
   });
 
   pi.registerTool({
@@ -133,13 +130,22 @@ export function registerGoalTools(deps: GoalToolDeps): void {
       if (!deps.isEnabled(ctx) || !store || !runtime) return DISABLED_RESPONSE;
       try {
         const p = parseParams(createGoalParams, params);
-        const goal = store.createGoal(
-          ctx.sessionManager.getSessionId(),
-          p.objective,
-          p.token_budget ?? null,
-          "tool",
-        );
-        runtime.onExternalSet(goal);
+        const previousGoal = store.getGoal();
+        const goal = previousGoal?.status === "complete"
+          ? store.replaceGoal(
+              ctx.sessionManager.getSessionId(),
+              p.objective,
+              "active",
+              p.token_budget ?? null,
+              "tool",
+            )
+          : store.createGoal(
+              ctx.sessionManager.getSessionId(),
+              p.objective,
+              p.token_budget ?? null,
+              "tool",
+            );
+        runtime.onExternalSet(goal, previousGoal);
         deps.emitUpdated(ctx, goal, "set", "tool");
         return {
           content: [{ type: "text" as const, text: `Goal created: ${goal.objective}` }],
@@ -202,7 +208,7 @@ export function registerGoalTools(deps: GoalToolDeps): void {
         runtime.onExternalMutationStarting();
         const previousGoal = store.getGoal();
 
-        const goal = store.updateGoal(patch, p.expected_goal_id, "tool");
+        const goal = store.updateGoal(patch, current.goal_id, "tool");
 
         // Suppress budget steering since this is a terminal model-declared status.
         runtime.suppressBudgetSteering();

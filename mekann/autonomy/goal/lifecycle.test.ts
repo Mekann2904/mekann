@@ -179,6 +179,38 @@ describe("goal lifecycle and events", () => {
     });
   });
 
+  describe("fork inheritance", () => {
+    it("rebinds an inherited goal and defers continuation until the first explicit turn", async () => {
+      const entries: GoalStateEntry[] = [];
+      const parentStore = new GoalStore((entry) => entries.push(entry));
+      parentStore.createGoal("parent-thread", "Inherited objective");
+      const branch = entries.map((data, index) => ({
+        type: "custom", customType: "goal-state", data,
+        id: `fork-${index}`, parentId: null,
+        timestamp: new Date(Date.parse("2026-01-01T00:00:00Z") + index).toISOString(),
+      }));
+      const { mockPi, ctx, handlers } = bootstrap(undefined, {
+        sessionManager: {
+          getSessionId: vi.fn(() => "fork-thread"),
+          isPersisted: vi.fn(() => true),
+          getBranch: vi.fn(() => branch),
+        },
+      });
+      await handlers["session_start"]({ reason: "fork" }, ctx);
+
+      await handlers["agent_settled"]({}, ctx);
+      expect(mockPi.sendUserMessage).not.toHaveBeenCalled();
+      const inherited = await getTool(mockPi, "get_goal").execute("tc-fork", {}, undefined, undefined, ctx);
+      expect(inherited.details.goal.thread_id).toBe("fork-thread");
+      expect(inherited.details.goal.objective).toBe("Inherited objective");
+
+      await handlers["turn_start"]({ turnIndex: 0 }, ctx);
+      await handlers["turn_end"]({ turnIndex: 0 }, ctx);
+      await handlers["agent_settled"]({}, ctx);
+      expect(mockPi.sendUserMessage).toHaveBeenCalledOnce();
+    });
+  });
+
   describe("session_shutdown", () => {
     it("clears runtime and store on shutdown", async () => {
       const { mockPi, ctx, handlers } = bootstrap();
@@ -239,6 +271,40 @@ describe("goal lifecycle and events", () => {
         ctx,
       );
       expect(ctx.ui.setWidget).toHaveBeenCalled();
+    });
+
+    it("marks a settled usage-limit error as usage_limited", async () => {
+      const { mockPi, ctx, handlers } = bootstrap();
+      await getTool(mockPi, "create_goal").execute("tc-1", { objective: "Long task" }, undefined, undefined, ctx);
+
+      await handlers["agent_end"]({ messages: [{ role: "assistant", stopReason: "error", errorMessage: "Rate limit exceeded; usage limit reached" }] }, ctx);
+      await handlers["agent_settled"]({}, ctx);
+
+      const result = await getTool(mockPi, "get_goal").execute("tc-2", {}, undefined, undefined, ctx);
+      expect(result.details.goal.status).toBe("usage_limited");
+    });
+
+    it("marks another settled terminal error as blocked", async () => {
+      const { mockPi, ctx, handlers } = bootstrap();
+      await getTool(mockPi, "create_goal").execute("tc-1", { objective: "Long task" }, undefined, undefined, ctx);
+
+      await handlers["agent_end"]({ messages: [{ role: "assistant", stopReason: "error", errorMessage: "Compaction failed" }] }, ctx);
+      await handlers["agent_settled"]({}, ctx);
+
+      const result = await getTool(mockPi, "get_goal").execute("tc-2", {}, undefined, undefined, ctx);
+      expect(result.details.goal.status).toBe("blocked");
+    });
+
+    it("leaves a user-aborted goal active", async () => {
+      const { mockPi, ctx, handlers } = bootstrap();
+      await getTool(mockPi, "create_goal").execute("tc-1", { objective: "Long task" }, undefined, undefined, ctx);
+
+      await handlers["agent_end"]({ messages: [{ role: "assistant", stopReason: "aborted" }] }, ctx);
+      await handlers["agent_settled"]({}, ctx);
+
+      const result = await getTool(mockPi, "get_goal").execute("tc-2", {}, undefined, undefined, ctx);
+      expect(result.details.goal.status).toBe("active");
+      expect(mockPi.sendUserMessage).not.toHaveBeenCalled();
     });
 
     it("does not continue when no store on agent_end", async () => {
@@ -305,6 +371,30 @@ describe("goal lifecycle and events", () => {
   });
 
   describe("emitUpdated and emitCleared", () => {
+    it("emits structured local telemetry on create", async () => {
+      const { mockPi, ctx } = bootstrap();
+      await getTool(mockPi, "create_goal").execute("tc-1", { objective: "Measured goal" }, undefined, undefined, ctx);
+
+      expect(mockPi.events.emit).toHaveBeenCalledWith(
+        "goal:telemetry",
+        expect.objectContaining({ event: "set", source: "tool", thread_id: "test-thread-1", status: "active" }),
+      );
+    });
+
+    it("emits usage telemetry without broadcasting a state update", async () => {
+      const { mockPi, ctx, handlers } = bootstrap();
+      await getTool(mockPi, "create_goal").execute("tc-1", { objective: "Measured goal" }, undefined, undefined, ctx);
+      mockPi.events.emit.mockClear();
+      await handlers["turn_start"]({ turnIndex: 0 }, ctx);
+      await handlers["message_end"]({ message: { role: "assistant", timestamp: 1, usage: { input: 10, output: 5 } } }, ctx);
+
+      expect(mockPi.events.emit).toHaveBeenCalledWith(
+        "goal:telemetry",
+        expect.objectContaining({ event: "usage_accounted", attribution: "turn", tokens_used: 15 }),
+      );
+      expect(mockPi.events.emit).not.toHaveBeenCalledWith("goal:updated", expect.anything());
+    });
+
     it("emits goal:updated event and updates widget on create", async () => {
       const { mockPi, ctx } = bootstrap();
       mockPi.events.emit.mockClear();

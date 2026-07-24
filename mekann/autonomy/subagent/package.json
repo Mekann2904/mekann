@@ -8,14 +8,14 @@
     "typecheck": "tsc --noEmit --skipLibCheck"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.1.0"
+    "@earendil-works/pi-coding-agent": ">=0.81.1"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.75.3",
+    "@earendil-works/pi-agent-core": "0.81.1",
     "@sinclair/typebox": "^0.34.0"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "0.75.3",
+    "@earendil-works/pi-coding-agent": "0.81.1",
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^4.1.6",
     "typescript": "^5.0.0",

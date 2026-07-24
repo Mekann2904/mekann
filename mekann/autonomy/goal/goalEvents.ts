@@ -13,6 +13,11 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { recordGoalEvent, type GoalAction } from "./context-events.js";
 import type { Goal, GoalSource } from "./state.js";
+import type {
+  GoalAttribution,
+  GoalRuntimeDomainEvent,
+  GoalRuntimeEventName,
+} from "./goalDomainEvents.js";
 
 // ---------------------------------------------------------------------------
 // Context metadata extraction (single cast boundary)
@@ -98,6 +103,7 @@ export interface GoalEmitters {
     goal?: Goal | null,
     source?: "user" | "runtime",
   ) => void;
+  emitRuntimeEvent: (ctx: ExtensionContext, event: GoalRuntimeDomainEvent) => void;
 }
 
 /**
@@ -108,6 +114,24 @@ export interface GoalEmitters {
  * command share one implementation instead of duplicating the wiring.
  */
 export function createGoalEmitters(pi: ExtensionAPI, updateWidget: UpdateWidgetFn): GoalEmitters {
+  function emitTelemetry(
+    event: GoalAction | GoalRuntimeEventName,
+    goal: Goal | null,
+    source: GoalSource,
+    attribution: GoalAttribution,
+  ): void {
+    pi.events.emit("goal:telemetry", {
+      event,
+      source,
+      attribution,
+      thread_id: goal?.thread_id,
+      goal_id: goal?.goal_id,
+      status: goal?.status,
+      tokens_used: goal?.tokens_used,
+      time_used_seconds: goal?.time_used_seconds,
+    });
+  }
+
   function emitUpdated(
     ctx: ExtensionContext,
     goal: Goal,
@@ -115,6 +139,8 @@ export function createGoalEmitters(pi: ExtensionAPI, updateWidget: UpdateWidgetF
     source: GoalSource = "user",
   ): void {
     recordGoalAction({ action, goal, source, ctx });
+    const attribution = extractGoalContextMeta(ctx).turnId ? "turn" : "no_turn";
+    emitTelemetry(action, goal, source, attribution);
     pi.events.emit("goal:updated", { thread_id: goal.thread_id, goal });
     updateWidget(ctx);
   }
@@ -126,9 +152,21 @@ export function createGoalEmitters(pi: ExtensionAPI, updateWidget: UpdateWidgetF
     source: "user" | "runtime" = "user",
   ): void {
     recordGoalAction({ action: "cleared", goal, source, ctx });
+    const attribution = extractGoalContextMeta(ctx).turnId ? "turn" : "no_turn";
+    emitTelemetry("cleared", goal, source, attribution);
     pi.events.emit("goal:cleared", { thread_id: threadId });
     updateWidget(ctx);
   }
 
-  return { emitUpdated, emitCleared };
+  function emitRuntimeEvent(ctx: ExtensionContext, event: GoalRuntimeDomainEvent): void {
+    if (event.kind !== "usage_accounted") {
+      recordGoalAction({ action: event.kind, goal: event.goal, source: "runtime", ctx });
+    }
+    emitTelemetry(event.kind, event.goal, "runtime", event.attribution);
+    if (event.kind !== "usage_accounted") {
+      pi.events.emit("goal:updated", { thread_id: event.goal.thread_id, goal: event.goal });
+    }
+  }
+
+  return { emitUpdated, emitCleared, emitRuntimeEvent };
 }

@@ -11,6 +11,8 @@ import { continuationPrompt, budgetLimitPrompt, objectiveUpdatedPrompt } from ".
 import { MEKANN_GOAL_DEFAULTS } from "../../config.js";
 import { normalizeActualCacheUsage } from "../../core/cache-friendly-prompt/actualUsage.js";
 import { isPersistedSession } from "./session.js";
+import { classifyGoalStopReason } from "./stopReason.js";
+import type { GoalAttribution, GoalRuntimeDomainEvent } from "./goalDomainEvents.js";
 
 // ---------------------------------------------------------------------------
 // Compaction threshold
@@ -54,7 +56,9 @@ export function trimSetFifo<T>(set: Set<T>, max: number): void {
 // GoalRuntime
 // ---------------------------------------------------------------------------
 
-export type GoalEventCallback = (action: string, goal: Goal) => void;
+export type GoalEventCallback = (event: GoalRuntimeDomainEvent) => void;
+export type GoalSettlement = "continue" | "wait_for_explicit_turn" | "terminal_error" | "inactive";
+type ContinuationGate = "open" | "until_explicit_turn";
 
 /**
  * Pi's sessionManager exposes `isPersisted()` at runtime, but the SDK type for
@@ -80,12 +84,16 @@ export class GoalRuntime {
   budget_limit_reported_goal_id: string | null = null;
   /** Wall-clock baseline (ms since epoch) for time accounting. */
   last_accounted_wall_clock: number | null = null;
-  /** Set of assistant message usage events already accounted for tokens. */
-  private accounted_assistant_usage_keys: Set<string> = new Set();
+  /** Assistant message objects already accounted for; identity avoids synthetic-key collisions. */
+  private accounted_assistant_usage_keys: Set<object> = new Set();
   /** Whether idle continuation should be suppressed. */
   continuationSuppressed = false;
   /** Whether budget steering is suppressed for the current turn. */
   private suppress_budget_steering = false;
+  /** Terminal assistant error held until agent_settled confirms no retry remains. */
+  private pending_terminal_error: { message: string; goalId: string | null } | null = null;
+  /** Fork inheritance and user aborts wait for an explicit turn before continuing. */
+  private continuation_gate: ContinuationGate = "open";
   /** Resolves the compaction reserve (tokens) used to gate continuation. */
   private readonly getCompactReserveTokens: () => number;
 
@@ -113,7 +121,8 @@ export class GoalRuntime {
 
   // ─── Lifecycle: session_start ──────────────────────────────────
 
-  onSessionStart(_ctx: ExtensionContext): void {
+  onSessionStart(_ctx: ExtensionContext, options?: { deferContinuationUntilTurn?: boolean }): void {
+    this.continuation_gate = options?.deferContinuationUntilTurn === true ? "until_explicit_turn" : "open";
     const goal = this.store.getGoal();
     if (goal && goal.status === "active") {
       this.active_goal_id = goal.goal_id;
@@ -130,6 +139,7 @@ export class GoalRuntime {
   // ─── Lifecycle: turn_start ─────────────────────────────────────
 
   onTurnStart(_event: { turnIndex: number }, _ctx: ExtensionContext): void {
+    this.continuation_gate = "open";
     const goal = this.store.getGoal();
     if (goal && goal.status === "active") {
       this.active_goal_id = goal.goal_id;
@@ -147,14 +157,13 @@ export class GoalRuntime {
     if (msg.role !== "assistant") return;
     if (!msg.usage) return;
 
-    // Deduplicate exact repeated message_end events. Timestamp alone is not
-    // unique enough: two distinct assistant messages can be emitted in the same
-    // millisecond, so include usage fields in the key.
+    // Pi does not expose a stable message/turn usage ID. Use object identity so
+    // a duplicate delivery of the same event is ignored without collapsing two
+    // distinct messages that happen to share timestamp and usage values.
     const usage = msg.usage;
     const rawInputTotal = usage.inputTotal ?? usage.input ?? 0;
-    const usageKey = [msg.timestamp, rawInputTotal, usage.output ?? 0, usage.cacheRead ?? 0].join(":");
-    if (this.accounted_assistant_usage_keys.has(usageKey)) return;
-    this.accounted_assistant_usage_keys.add(usageKey);
+    if (this.accounted_assistant_usage_keys.has(msg)) return;
+    this.accounted_assistant_usage_keys.add(msg);
     trimSetFifo(this.accounted_assistant_usage_keys, MAX_ACCOUNTED_USAGE_KEYS);
 
     const goal = this.store.getGoal();
@@ -207,33 +216,50 @@ export class GoalRuntime {
 
   // ─── Lifecycle: agent_end ──────────────────────────────────────
 
-  onAgentEnd(event: { messages: Array<{ role: string; stopReason?: string }> }, _ctx: ExtensionContext): void {
-    // Check if the last assistant message was aborted
+  onAgentEnd(event: { messages: Array<{ role: string; stopReason?: string; errorMessage?: string }> }, _ctx: ExtensionContext): void {
     const lastAssistant = [...event.messages].reverse().find((m) => m.role === "assistant");
-    if (lastAssistant?.stopReason === "aborted") {
-      const goal = this.store.getGoal();
-      if (goal && goal.status === "active") {
-        // Final accounting before pausing
-        this.accountWallClockFinal();
-        try {
-          this.store.updateGoal({ status: "paused" }, undefined, "runtime");
-        } catch {
-          // Best effort
+    this.pending_terminal_error = lastAssistant?.stopReason === "error"
+      ? {
+          message: lastAssistant.errorMessage ?? "Unknown terminal agent error",
+          goalId: this.store.getGoal()?.goal_id ?? null,
         }
-        this.active_goal_id = null;
-      }
-    } else {
-      // Final wall-clock accounting
-      this.accountWallClockFinal();
+      : null;
+    // An abort may be user initiated or part of recovery. Like Codex turn_abort,
+    // it accounts progress but does not silently change the user's Goal status.
+    this.accountWallClockFinal();
+    if (lastAssistant?.stopReason === "aborted") {
+      this.active_goal_id = null;
+      this.continuation_gate = "until_explicit_turn";
     }
-
     this.active_turn_marker = false;
+  }
+
+  /** Apply terminal-error status only after Pi confirms retries/compaction are finished. */
+  onAgentSettled(): GoalSettlement {
+    const error = this.pending_terminal_error;
+    this.pending_terminal_error = null;
+    const goal = this.store.getGoal();
+    if (!goal || goal.status !== "active") return "inactive";
+    if (!error) {
+      return this.continuation_gate === "open" ? "continue" : "wait_for_explicit_turn";
+    }
+    if (goal.goal_id !== error.goalId) return "inactive";
+
+    const status = classifyGoalStopReason(error.message);
+    try {
+      const updated = this.store.updateGoal({ status }, goal.goal_id, "runtime");
+      this.onExternalSet(updated, goal);
+      this.emitRuntimeEvent(status, updated, "turn");
+    } catch {
+      // A concurrent user mutation won the race; preserve that newer state.
+    }
+    return "terminal_error";
   }
 
   // ─── Lifecycle: session_shutdown ───────────────────────────────
 
   onSessionShutdown(): void {
-    this.accountWallClockFinal();
+    this.accountWallClockFinal("no_turn");
     this.reset();
   }
 
@@ -241,7 +267,7 @@ export class GoalRuntime {
 
   /** Called before an external mutation (e.g., user command) to flush accounting. */
   onExternalMutationStarting(): void {
-    this.accountWallClockFinal();
+    this.accountWallClockFinal("no_turn");
   }
 
   /** Called when a goal is externally set/updated. */
@@ -257,7 +283,7 @@ export class GoalRuntime {
     // If objective changed and there's an active turn, inject objective-updated prompt
     if (previousGoal && previousGoal.objective !== goal.objective && this.active_turn_marker) {
       this.pi.sendUserMessage(
-        objectiveUpdatedPrompt(previousGoal.objective, goal.objective),
+        objectiveUpdatedPrompt(goal),
         { deliverAs: "followUp" },
       );
     }
@@ -282,6 +308,7 @@ export class GoalRuntime {
     if (this.pi.getFlag("goals") !== true) return;
     if (!isPersistedSession(ctx)) return;
     if (this.continuationSuppressed) return;
+    if (this.continuation_gate !== "open") return;
     if (this.active_turn_marker) return;
     if (this.continuation_active) return;
 
@@ -361,7 +388,7 @@ export class GoalRuntime {
     ctx.compact({
       onComplete: () => {
         const currentGoal = this.store.getGoal();
-        if (currentGoal && currentGoal.status === "active") {
+        if (currentGoal && currentGoal.status === "active" && currentGoal.goal_id === goal.goal_id) {
           this.pi.sendUserMessage(
             continuationPrompt(currentGoal),
             { deliverAs: "followUp" },
@@ -390,18 +417,27 @@ export class GoalRuntime {
     return Math.max(0, Math.round(elapsedMs / 1000));
   }
 
+  private emitRuntimeEvent(
+    kind: GoalRuntimeDomainEvent["kind"],
+    goal: Goal,
+    attribution: GoalAttribution,
+  ): void {
+    this.goalEventCallback?.({ kind, goal, attribution });
+  }
+
   /** Account usage and handle budget limiting. */
   private accountUsage(timeDelta: number, tokenDelta: number, checkBudget?: boolean): void {
     if (timeDelta <= 0 && tokenDelta <= 0) return;
     const expectedGoalId = this.active_goal_id ?? undefined;
     const result = this.store.accountGoalUsage(timeDelta, tokenDelta, expectedGoalId, "active_only");
+    if (result) this.emitRuntimeEvent("usage_accounted", result.goal, "turn");
     if (result?.budgetLimited && (checkBudget !== false) && !this.suppress_budget_steering) {
       this.onBudgetLimited(result.goal);
     }
   }
 
   /** Final wall-clock accounting (clears baseline). */
-  private accountWallClockFinal(): void {
+  private accountWallClockFinal(attribution: GoalAttribution = "turn"): void {
     const goal = this.store.getGoal();
     if (!goal || goal.status !== "active") {
       this.last_accounted_wall_clock = null;
@@ -410,7 +446,8 @@ export class GoalRuntime {
     const timeDelta = this.consumeWallClockSeconds();
     if (timeDelta > 0) {
       const expectedGoalId = this.active_goal_id ?? undefined;
-      this.store.accountGoalUsage(timeDelta, 0, expectedGoalId, "active_only");
+      const result = this.store.accountGoalUsage(timeDelta, 0, expectedGoalId, "active_only");
+      if (result) this.emitRuntimeEvent("usage_accounted", result.goal, attribution);
     }
     this.last_accounted_wall_clock = null;
   }
@@ -421,7 +458,7 @@ export class GoalRuntime {
     if (this.budget_limit_reported_goal_id === goal.goal_id) return;
     this.budget_limit_reported_goal_id = goal.goal_id;
 
-    this.goalEventCallback?.("budget_exhausted", goal);
+    this.emitRuntimeEvent("budget_exhausted", goal, "turn");
 
     this.pi.sendUserMessage(
       budgetLimitPrompt(goal),
@@ -439,5 +476,7 @@ export class GoalRuntime {
     this.accounted_assistant_usage_keys.clear();
     this.continuationSuppressed = false;
     this.suppress_budget_steering = false;
+    this.pending_terminal_error = null;
+    this.continuation_gate = "open";
   }
 }

@@ -226,10 +226,8 @@ async function handleSetObjective(
   const parsed = parseObjectiveInput(input, ctx);
   if (!parsed) return;
 
-  runtime.onExternalMutationStarting();
-
   const existingGoal = store.getGoal();
-  if (existingGoal) {
+  if (existingGoal && existingGoal.status !== "complete") {
     const confirmed = await ctx.ui.confirm(
       "Replace existing goal?",
       `Current: "${existingGoal.objective}"\nNew: "${parsed.objective}"`,
@@ -241,6 +239,7 @@ async function handleSetObjective(
   }
 
   try {
+    runtime.onExternalMutationStarting();
     const previousGoal = store.getGoal();
     const newGoal = existingGoal
       ? store.replaceGoal(ctx.sessionManager.getSessionId(), parsed.objective, "active", parsed.budget, "user")

@@ -142,6 +142,19 @@ describe("goal tools", () => {
     expect(result.details.error).toBeDefined();
   });
 
+  it("create_goal replaces a completed goal but not unfinished work", async () => {
+    const createTool = getTool(mockPi, "create_goal");
+    const updateTool = getTool(mockPi, "update_goal");
+    const first = await createTool.execute("tc-1", { objective: "Finished work" }, undefined, undefined, ctx);
+    await updateTool.execute("tc-2", { status: "complete" }, undefined, undefined, ctx);
+
+    const second = await createTool.execute("tc-3", { objective: "Fresh work" }, undefined, undefined, ctx);
+
+    expect(second.content[0].text).toBe("Goal created: Fresh work");
+    expect(second.details.goal.goal_id).not.toBe(first.details.goal.goal_id);
+    expect(second.details.goal.tokens_used).toBe(0);
+  });
+
   // 4. update_goal only accepts complete (status must be "complete")
   it("update_goal only accepts status='complete'", async () => {
     const createTool = getTool(mockPi, "create_goal");

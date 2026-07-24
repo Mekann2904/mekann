@@ -192,6 +192,18 @@ describe("/goal command", () => {
     );
   });
 
+  it("replaces a completed goal without confirmation", async () => {
+    await goalCommand.handler("Finished objective", ctx);
+    const updateTool = mockPi.tools.find((tool) => tool.name === "update_goal")!;
+    await updateTool.execute("tc-complete", { status: "complete" }, undefined, undefined, ctx);
+
+    ctx.ui.confirm.mockClear();
+    await goalCommand.handler("Fresh objective", ctx);
+
+    expect(ctx.ui.confirm).not.toHaveBeenCalled();
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Goal set: Fresh objective", "info");
+  });
+
   // 9. --budget prefix parsing
   it("parses --budget prefix in objective", async () => {
     await goalCommand.handler("--budget 5000 Build the feature", ctx);

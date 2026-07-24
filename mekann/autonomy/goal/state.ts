@@ -358,6 +358,15 @@ export class GoalStore {
     return { ...goal };
   }
 
+  /** Rebind an inherited fork snapshot to the new thread without resetting usage or identity. */
+  rebindThread(threadId: string): Goal | null {
+    if (!this.goal || this.goal.thread_id === threadId) return this.getGoal();
+    const goal = { ...this.goal, thread_id: threadId, updated_at_ms: Date.now() };
+    this.goal = goal;
+    this.persistFn({ kind: "set", goal: { ...goal }, source: "runtime" });
+    return { ...goal };
+  }
+
   /** Delete the current goal. Returns true if a goal was deleted. */
   deleteGoal(source: "user" | "runtime" = "user"): boolean {
     if (!this.goal) return false;

@@ -136,14 +136,21 @@ describe("goal/prompts", () => {
 
   describe("objectiveUpdatedPrompt", () => {
     it("includes old and new objectives", () => {
-      const prompt = objectiveUpdatedPrompt("Old goal", "New goal");
+      const prompt = objectiveUpdatedPrompt(createMockGoal({ objective: "New goal" }));
       expect(prompt).toContain("supersedes any previous thread goal objective");
       expect(prompt).toContain("<untrusted_objective>");
       expect(prompt).toContain("objective was edited by the user");
     });
 
+    it("includes the current budget snapshot", () => {
+      const prompt = objectiveUpdatedPrompt(createMockGoal({ objective: "New goal", token_budget: 5000 }));
+      expect(prompt).toContain("Tokens used: 100");
+      expect(prompt).toContain("Token budget: 5000");
+      expect(prompt).toContain("Tokens remaining: 4900");
+    });
+
     it("escapes XML in objectives", () => {
-      const prompt = objectiveUpdatedPrompt("a <b>", "c & d");
+      const prompt = objectiveUpdatedPrompt(createMockGoal({ objective: "c & d" }));
       expect(prompt).not.toContain("&lt;b&gt;");
       expect(prompt).toContain("c &amp; d");
     });

@@ -18,8 +18,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { GoalStore, type GoalStateEntry } from "./state.js";
 import { GoalRuntime } from "./runtime.js";
-import { recordGoalAction } from "./goalEvents.js";
-import type { GoalAction } from "./context-events.js";
+import type { GoalRuntimeDomainEvent } from "./goalDomainEvents.js";
 
 // ---------------------------------------------------------------------------
 // Dependencies
@@ -49,6 +48,8 @@ export interface GoalLifecycleDeps {
   getMaxObjectiveLength(): number;
   /** Resolve the compaction reserve (tokens) used to gate continuation. */
   getCompactReserveTokens(): number;
+  /** Canonical projection of runtime domain events to telemetry/UI events. */
+  emitRuntimeEvent(ctx: ExtensionContext, event: GoalRuntimeDomainEvent): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,7 +123,7 @@ export function registerGoalLifecycle(deps: GoalLifecycleDeps): void {
 
   // ─── Session lifecycle ────────────────────────────────────────
 
-  pi.on("session_start", async (_event, ctx: ExtensionContext) => {
+  pi.on("session_start", async (event, ctx: ExtensionContext) => {
     if (!deps.isEnabled(ctx)) {
       deps.setStore(null);
       deps.setRuntime(null);
@@ -137,18 +138,21 @@ export function registerGoalLifecycle(deps: GoalLifecycleDeps): void {
     const goalEntries = collectGoalEntriesChronologically(branch, deps.customType);
 
     const store = GoalStore.fromEntries(goalEntries, deps.persist, deps.getMaxObjectiveLength());
-    const runtime = new GoalRuntime(store, pi, (action, goal) => {
-      recordGoalAction({
-        action: action as GoalAction,
-        goal,
-        source: "runtime",
-        ctx,
-      });
-    }, { getCompactReserveTokens: deps.getCompactReserveTokens });
+    if (event.reason === "fork") {
+      // Pi copies the selected branch into the fork. Preserve the inherited
+      // Goal snapshot/goal_id and usage, but bind it to the fork's session ID.
+      store.rebindThread(ctx.sessionManager.getSessionId());
+    }
+    const runtime = new GoalRuntime(
+      store,
+      pi,
+      (runtimeEvent) => deps.emitRuntimeEvent(ctx, runtimeEvent),
+      { getCompactReserveTokens: deps.getCompactReserveTokens },
+    );
     deps.setStore(store);
     deps.setRuntime(runtime);
 
-    runtime.onSessionStart(ctx);
+    runtime.onSessionStart(ctx, { deferContinuationUntilTurn: event.reason === "fork" });
     deps.updateWidget(ctx);
   });
 
@@ -185,13 +189,18 @@ export function registerGoalLifecycle(deps: GoalLifecycleDeps): void {
   });
 
   pi.on("agent_end", async (event, ctx) => {
+    deps.getRuntime()?.onAgentEnd(event, ctx);
+    deps.updateWidget(ctx);
+  });
+
+  // agent_end can still be followed by retry or compaction recovery. Only
+  // classify terminal errors and launch idle Goal continuation once Pi has
+  // fully settled.
+  pi.on("agent_settled", async (_event, ctx) => {
     const runtime = deps.getRuntime();
     const store = deps.getStore();
-    runtime?.onAgentEnd(event, ctx);
+    const settlement = runtime?.onAgentSettled();
     deps.updateWidget(ctx);
-    // Consider idle continuation after agent finishes
-    if (runtime && store) {
-      runtime.maybeContinueIfIdle(ctx);
-    }
+    if (runtime && store && settlement === "continue") runtime.maybeContinueIfIdle(ctx);
   });
 }

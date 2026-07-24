@@ -127,7 +127,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
   const widget = createGoalWidgetController(pi, getStore);
 
   // goal:updated / goal:cleared emitters + ledger recording
-  const { emitUpdated, emitCleared } = createGoalEmitters(pi, widget.updateWidget);
+  const { emitUpdated, emitCleared, emitRuntimeEvent } = createGoalEmitters(pi, widget.updateWidget);
 
   // get_goal / create_goal / update_goal
   registerGoalTools({ pi, getStore, getRuntime, isEnabled, emitUpdated });
@@ -149,6 +149,7 @@ export default function goalExtension(pi: ExtensionAPI): void {
     updateWidget: widget.updateWidget,
     getMaxObjectiveLength,
     getCompactReserveTokens,
+    emitRuntimeEvent,
   });
 
   // /goal command

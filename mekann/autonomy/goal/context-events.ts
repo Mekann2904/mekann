@@ -30,6 +30,7 @@ export type GoalAction =
 	| "resumed"
 	| "completed"
 	| "blocked"
+	| "usage_limited"
 	| "cleared"
 	| "budget_exhausted";
 
@@ -54,13 +55,14 @@ export function goalPriority(action: GoalAction): 0 | 1 | 2 | 3 | 4 {
 		case "paused":
 		case "completed":
 		case "blocked":
+		case "usage_limited":
 		case "cleared":
 			return 2;
 	}
 }
 
 export function goalKind(action: GoalAction): "task" | "error" {
-	if (action === "budget_exhausted") return "error";
+	if (action === "budget_exhausted" || action === "usage_limited") return "error";
 	return "task";
 }
 

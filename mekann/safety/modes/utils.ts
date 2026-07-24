@@ -48,10 +48,10 @@ export function loadPrompt(name: string, vars?: Record<string, string>): string 
 // ─── Thinking level ───────────────────────────────────────────────
 
 /** Pi thinking levels. */
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 /** ThinkingLevel values (used by normalizeConfig). */
-const VALID_THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
+const VALID_THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 function isThinkingLevel(value: unknown): value is ThinkingLevel {
 	return typeof value === "string" && VALID_THINKING_LEVELS.has(value);
 }
